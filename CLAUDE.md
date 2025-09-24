@@ -76,12 +76,12 @@ Deliver a working `plat` CLI binary that:
 ---
 
 ## 5. Parser (`plat-parser` + `plat-ast`)
-- [ ] Build recursive-descent parser for:
-  - [ ] Expressions (precedence climbing, C-like)
-  - [ ] Statements (`let`, `var`, blocks, function definitions, `print`)
-  - [ ] Program root
-- [ ] Produce AST structs (enums with spans)
-- [ ] Syntax error reporting via Ariadne
+- [x] Build recursive-descent parser for:
+  - [x] Expressions (precedence climbing, C-like)
+  - [x] Statements (`let`, `var`, blocks, function definitions, `print`)
+  - [x] Program root
+- [x] Produce AST structs (enums with spans)
+- [x] Syntax error reporting via Ariadne
 - [ ] Round-trip parser/formatter tests
 
 ---

@@ -11,6 +11,7 @@ regex.workspace = true
 plat-lexer = { path = "../plat-lexer" }
 plat-parser = { path = "../plat-parser" }
 plat-ast = { path = "../plat-ast" }
+plat-diags = { path = "../plat-diags" }
 
 [dev-dependencies]
 insta.workspace = true
