@@ -13,3 +13,4 @@ plat-diags = { path = "../plat-diags" }
 
 [dev-dependencies]
 insta.workspace = true
+plat-parser = { path = "../plat-parser" }

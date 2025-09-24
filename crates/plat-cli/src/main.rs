@@ -59,10 +59,21 @@ fn build_command(file: PathBuf) -> Result<()> {
 
     println!("{} {}", "Building".green().bold(), file.display());
 
-    // TODO: Implement actual compilation
+    // Parse the source code
     println!("  {} Lexing...", "→".cyan());
     println!("  {} Parsing...", "→".cyan());
+
+    let parser = plat_parser::Parser::new(&_source)
+        .with_context(|| "Failed to create parser")?;
+    let program = parser.parse()
+        .with_context(|| "Failed to parse program")?;
+
+    // Type check the program
     println!("  {} Type checking...", "→".cyan());
+    let type_checker = plat_hir::TypeChecker::new();
+    type_checker.check_program(&program)
+        .with_context(|| "Type checking failed")?;
+
     println!("  {} Generating code...", "→".cyan());
     println!("  {} Linking...", "→".cyan());
 
