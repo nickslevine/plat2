@@ -1,0 +1,14 @@
+fn add(x: i32, y: i32) -> i32 {
+  return x + y;
+}
+
+fn multiply(x: i32, y: i32) -> i32 {
+  return x * y;
+}
+
+fn main() {
+  let a = 5;
+  let b = 3;
+  let sum = add(a, b);
+  let product = multiply(sum, 2);
+}

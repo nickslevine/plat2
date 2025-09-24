@@ -6,6 +6,10 @@ rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 
+[lib]
+name = "plat_runtime"
+crate-type = ["cdylib", "rlib"]
+
 [dependencies]
 # Note: Boehm GC binding will be added later when we integrate GC
 # boehm-rs.workspace = true

@@ -2,6 +2,8 @@
 mod tests;
 
 use std::fmt;
+use std::ffi::CStr;
+use std::os::raw::c_char;
 
 /// Runtime value types for the Plat language
 #[derive(Debug, Clone, PartialEq)]
@@ -290,3 +292,22 @@ impl fmt::Display for RuntimeError {
 }
 
 impl std::error::Error for RuntimeError {}
+
+/// C-compatible print function that can be called from generated code
+///
+/// # Safety
+/// This function is unsafe because it deals with raw pointers from generated code
+#[no_mangle]
+pub extern "C" fn plat_print(str_ptr: *const c_char) {
+    if str_ptr.is_null() {
+        println!("<null>");
+        return;
+    }
+
+    unsafe {
+        match CStr::from_ptr(str_ptr).to_str() {
+            Ok(s) => println!("{}", s),
+            Err(_) => println!("<invalid UTF-8>"),
+        }
+    }
+}

@@ -9,9 +9,11 @@ license.workspace = true
 [dependencies]
 anyhow.workspace = true
 cranelift-codegen.workspace = true
+cranelift-frontend.workspace = true
 cranelift-module.workspace = true
 cranelift-object.workspace = true
 target-lexicon.workspace = true
+object.workspace = true
 plat-hir = { path = "../plat-hir" }
 plat-ast = { path = "../plat-ast" }
 plat-runtime = { path = "../plat-runtime" }

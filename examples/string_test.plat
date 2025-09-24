@@ -1,0 +1,6 @@
+fn main() {
+  let name = "World";
+  let greeting = "Hello, ${name}!";
+  let x = 42;
+  print(greeting);
+}

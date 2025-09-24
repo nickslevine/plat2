@@ -87,13 +87,13 @@ Deliver a working `plat` CLI binary that:
 ---
 
 ## 6. Semantic Analysis (`plat-hir`)
-- [ ] Type checker:
-  - [ ] Enforce `let` immutability and no shadowing
-  - [ ] Allow reassignment only for `var`
-  - [ ] Ensure `main` exists with correct signature
-- [ ] Optional constant folding
-- [ ] Ariadne type error reporting
-- [ ] Unit tests for semantic errors
+- [x] Type checker:
+  - [x] Enforce `let` immutability and no shadowing
+  - [x] Allow reassignment only for `var`
+  - [x] Ensure `main` exists with correct signature
+- [x] Optional constant folding
+- [x] Ariadne type error reporting
+- [x] Unit tests for semantic errors
 
 ---
 
@@ -101,10 +101,10 @@ Deliver a working `plat` CLI binary that:
 - [ ] Bind to **Boehm GC**:
   - [ ] Initialize GC in `main`
   - [ ] Expose `gc_alloc`, `gc_collect`
-- [ ] Implement `PlatString` (UTF-8, immutable, GC heap)
-- [ ] Provide builtins:
-  - [ ] `print(PlatString)` (prints with newline)
-- [ ] GC stress tests (many string allocations)
+- [x] Implement `PlatString` (UTF-8, immutable, GC heap)
+- [x] Provide builtins:
+  - [x] `print(PlatString)` (prints with newline)
+- [x] GC stress tests (many string allocations)
 
 ---
 
