@@ -1,0 +1,14 @@
+[package]
+name = "plat-runtime"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+# Note: Boehm GC binding will be added later when we integrate GC
+# boehm-rs.workspace = true
+
+[build-dependencies]
+# For linking with system libgc

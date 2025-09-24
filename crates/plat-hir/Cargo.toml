@@ -1,0 +1,15 @@
+[package]
+name = "plat-hir"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+plat-ast = { path = "../plat-ast" }
+plat-diags = { path = "../plat-diags" }
+
+[dev-dependencies]
+insta.workspace = true

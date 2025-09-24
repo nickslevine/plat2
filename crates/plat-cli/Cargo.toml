@@ -1,0 +1,28 @@
+[package]
+name = "plat-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "plat"
+path = "src/main.rs"
+
+[dependencies]
+clap.workspace = true
+colored.workspace = true
+anyhow.workspace = true
+plat-lexer = { path = "../plat-lexer" }
+plat-parser = { path = "../plat-parser" }
+plat-ast = { path = "../plat-ast" }
+plat-hir = { path = "../plat-hir" }
+plat-codegen = { path = "../plat-codegen" }
+plat-runtime = { path = "../plat-runtime" }
+plat-fmt = { path = "../plat-fmt" }
+plat-diags = { path = "../plat-diags" }
+
+[dev-dependencies]
+tempfile.workspace = true
+insta.workspace = true

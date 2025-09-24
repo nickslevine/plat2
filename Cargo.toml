@@ -1,0 +1,42 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/plat-cli",
+    "crates/plat-lexer",
+    "crates/plat-parser",
+    "crates/plat-ast",
+    "crates/plat-hir",
+    "crates/plat-codegen",
+    "crates/plat-runtime",
+    "crates/plat-fmt",
+    "crates/plat-diags",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.77"
+authors = ["Plat Language Contributors"]
+license = "MIT"
+
+[workspace.dependencies]
+# CLI and utilities
+clap = { version = "4.5", features = ["derive"] }
+colored = "2.1"
+ariadne = "0.4"
+anyhow = "1.0"
+thiserror = "1.0"
+
+# Cranelift for code generation
+cranelift-codegen = "0.111"
+cranelift-module = "0.111"
+cranelift-object = "0.111"
+target-lexicon = "0.12"
+
+# GC support (will need system libgc installed)
+# boehm-rs = "0.1"
+
+# Testing and utilities
+regex = "1.10"
+insta = { version = "1.40", features = ["yaml"] }
+tempfile = "3.10"
