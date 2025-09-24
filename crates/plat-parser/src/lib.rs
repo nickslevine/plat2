@@ -1,1 +1,669 @@
-pub struct Parser;
+#[cfg(test)]
+mod tests;
+
+use plat_ast::*;
+use plat_diags::DiagnosticError;
+use plat_lexer::{Lexer, Span, StringPart, Token, TokenWithSpan};
+
+pub struct Parser {
+    tokens: Vec<TokenWithSpan>,
+    current: usize,
+}
+
+impl Parser {
+    pub fn new(input: &str) -> Result<Self, DiagnosticError> {
+        let lexer = Lexer::new(input);
+        let tokens = lexer.tokenize()?;
+        Ok(Self { tokens, current: 0 })
+    }
+
+    pub fn parse(mut self) -> Result<Program, DiagnosticError> {
+        let mut functions = Vec::new();
+
+        while !self.is_at_end() {
+            functions.push(self.parse_function()?);
+        }
+
+        Ok(Program { functions })
+    }
+
+    fn parse_function(&mut self) -> Result<Function, DiagnosticError> {
+        let start = self.current_span().start;
+
+        self.consume(Token::Fn, "Expected 'fn'")?;
+
+        let name = self.consume_identifier("Expected function name")?;
+
+        self.consume(Token::LeftParen, "Expected '('")?;
+
+        let params = self.parse_parameters()?;
+
+        self.consume(Token::RightParen, "Expected ')'")?;
+
+        let return_type = if self.match_token(&Token::Arrow) {
+            Some(self.parse_type()?)
+        } else {
+            None
+        };
+
+        let body = self.parse_block()?;
+        let end = body.span.end;
+
+        Ok(Function {
+            name,
+            params,
+            return_type,
+            body,
+            span: Span::new(start, end),
+        })
+    }
+
+    fn parse_parameters(&mut self) -> Result<Vec<Parameter>, DiagnosticError> {
+        let mut params = Vec::new();
+
+        if !self.check(&Token::RightParen) {
+            loop {
+                let start = self.current_span().start;
+                let name = self.consume_identifier("Expected parameter name")?;
+                self.consume(Token::Colon, "Expected ':' after parameter name")?;
+                let ty = self.parse_type()?;
+                let end = self.previous_span().end;
+
+                params.push(Parameter {
+                    name,
+                    ty,
+                    span: Span::new(start, end),
+                });
+
+                if !self.match_token(&Token::Comma) {
+                    break;
+                }
+            }
+        }
+
+        Ok(params)
+    }
+
+    fn parse_type(&mut self) -> Result<Type, DiagnosticError> {
+        let type_name = self.consume_identifier("Expected type name")?;
+
+        match type_name.as_str() {
+            "bool" => Ok(Type::Bool),
+            "i32" => Ok(Type::I32),
+            "i64" => Ok(Type::I64),
+            "string" => Ok(Type::String),
+            _ => Err(DiagnosticError::Syntax(
+                format!("Unknown type: {}", type_name)
+            )),
+        }
+    }
+
+    fn parse_block(&mut self) -> Result<Block, DiagnosticError> {
+        let start = self.current_span().start;
+        self.consume(Token::LeftBrace, "Expected '{'")?;
+
+        let mut statements = Vec::new();
+
+        while !self.check(&Token::RightBrace) && !self.is_at_end() {
+            statements.push(self.parse_statement()?);
+        }
+
+        self.consume(Token::RightBrace, "Expected '}'")?;
+        let end = self.previous_span().end;
+
+        Ok(Block {
+            statements,
+            span: Span::new(start, end),
+        })
+    }
+
+    fn parse_statement(&mut self) -> Result<Statement, DiagnosticError> {
+        if self.match_token(&Token::Let) {
+            self.parse_let_statement()
+        } else if self.match_token(&Token::Var) {
+            self.parse_var_statement()
+        } else if self.match_token(&Token::Return) {
+            self.parse_return_statement()
+        } else if self.match_token(&Token::If) {
+            self.parse_if_statement()
+        } else if self.match_token(&Token::While) {
+            self.parse_while_statement()
+        } else if self.match_token(&Token::Print) {
+            self.parse_print_statement()
+        } else {
+            let expr = self.parse_expression()?;
+            self.consume(Token::Semicolon, "Expected ';' after expression")?;
+            Ok(Statement::Expression(expr))
+        }
+    }
+
+    fn parse_let_statement(&mut self) -> Result<Statement, DiagnosticError> {
+        let start = self.previous_span().start;
+        let name = self.consume_identifier("Expected variable name")?;
+
+        let ty = if self.match_token(&Token::Colon) {
+            Some(self.parse_type()?)
+        } else {
+            None
+        };
+
+        self.consume(Token::Assign, "Expected '=' in let statement")?;
+        let value = self.parse_expression()?;
+        self.consume(Token::Semicolon, "Expected ';' after let statement")?;
+        let end = self.previous_span().end;
+
+        Ok(Statement::Let {
+            name,
+            ty,
+            value,
+            span: Span::new(start, end),
+        })
+    }
+
+    fn parse_var_statement(&mut self) -> Result<Statement, DiagnosticError> {
+        let start = self.previous_span().start;
+        let name = self.consume_identifier("Expected variable name")?;
+
+        let ty = if self.match_token(&Token::Colon) {
+            Some(self.parse_type()?)
+        } else {
+            None
+        };
+
+        self.consume(Token::Assign, "Expected '=' in var statement")?;
+        let value = self.parse_expression()?;
+        self.consume(Token::Semicolon, "Expected ';' after var statement")?;
+        let end = self.previous_span().end;
+
+        Ok(Statement::Var {
+            name,
+            ty,
+            value,
+            span: Span::new(start, end),
+        })
+    }
+
+    fn parse_return_statement(&mut self) -> Result<Statement, DiagnosticError> {
+        let start = self.previous_span().start;
+
+        let value = if self.check(&Token::Semicolon) {
+            None
+        } else {
+            Some(self.parse_expression()?)
+        };
+
+        self.consume(Token::Semicolon, "Expected ';' after return statement")?;
+        let end = self.previous_span().end;
+
+        Ok(Statement::Return {
+            value,
+            span: Span::new(start, end),
+        })
+    }
+
+    fn parse_if_statement(&mut self) -> Result<Statement, DiagnosticError> {
+        let start = self.previous_span().start;
+
+        self.consume(Token::LeftParen, "Expected '(' after 'if'")?;
+        let condition = self.parse_expression()?;
+        self.consume(Token::RightParen, "Expected ')' after condition")?;
+
+        let then_branch = self.parse_block()?;
+
+        let else_branch = if self.match_token(&Token::Else) {
+            Some(self.parse_block()?)
+        } else {
+            None
+        };
+
+        let end = else_branch.as_ref()
+            .map(|b| b.span.end)
+            .unwrap_or(then_branch.span.end);
+
+        Ok(Statement::If {
+            condition,
+            then_branch,
+            else_branch,
+            span: Span::new(start, end),
+        })
+    }
+
+    fn parse_while_statement(&mut self) -> Result<Statement, DiagnosticError> {
+        let start = self.previous_span().start;
+
+        self.consume(Token::LeftParen, "Expected '(' after 'while'")?;
+        let condition = self.parse_expression()?;
+        self.consume(Token::RightParen, "Expected ')' after condition")?;
+
+        let body = self.parse_block()?;
+        let end = body.span.end;
+
+        Ok(Statement::While {
+            condition,
+            body,
+            span: Span::new(start, end),
+        })
+    }
+
+    fn parse_print_statement(&mut self) -> Result<Statement, DiagnosticError> {
+        let start = self.previous_span().start;
+
+        self.consume(Token::LeftParen, "Expected '(' after 'print'")?;
+        let value = self.parse_expression()?;
+        self.consume(Token::RightParen, "Expected ')' after print argument")?;
+        self.consume(Token::Semicolon, "Expected ';' after print statement")?;
+        let end = self.previous_span().end;
+
+        Ok(Statement::Print {
+            value,
+            span: Span::new(start, end),
+        })
+    }
+
+    fn parse_expression(&mut self) -> Result<Expression, DiagnosticError> {
+        self.parse_assignment()
+    }
+
+    fn parse_assignment(&mut self) -> Result<Expression, DiagnosticError> {
+        let expr = self.parse_logical_or()?;
+
+        if self.match_token(&Token::Assign) {
+            if let Expression::Identifier { name, span } = expr {
+                let value = Box::new(self.parse_assignment()?);
+                let end = self.previous_span().end;
+                return Ok(Expression::Assignment {
+                    name,
+                    value,
+                    span: Span::new(span.start, end),
+                });
+            } else {
+                return Err(DiagnosticError::Syntax(
+                    "Invalid assignment target".to_string()
+                ));
+            }
+        }
+
+        Ok(expr)
+    }
+
+    fn parse_logical_or(&mut self) -> Result<Expression, DiagnosticError> {
+        let mut expr = self.parse_logical_and()?;
+
+        while self.match_token(&Token::Or) {
+            let op = BinaryOp::Or;
+            let right = Box::new(self.parse_logical_and()?);
+            let span = Span::new(
+                match &expr {
+                    Expression::Binary { span, .. } => span.start,
+                    Expression::Unary { span, .. } => span.start,
+                    Expression::Literal(lit) => match lit {
+                        Literal::Bool(_, s) | Literal::Integer(_, s) |
+                        Literal::String(_, s) | Literal::InterpolatedString(_, s) => s.start,
+                    },
+                    Expression::Identifier { span, .. } => span.start,
+                    Expression::Call { span, .. } => span.start,
+                    Expression::Assignment { span, .. } => span.start,
+                    Expression::Block(b) => b.span.start,
+                },
+                self.previous_span().end,
+            );
+            expr = Expression::Binary {
+                left: Box::new(expr),
+                op,
+                right,
+                span,
+            };
+        }
+
+        Ok(expr)
+    }
+
+    fn parse_logical_and(&mut self) -> Result<Expression, DiagnosticError> {
+        let mut expr = self.parse_equality()?;
+
+        while self.match_token(&Token::And) {
+            let op = BinaryOp::And;
+            let right = Box::new(self.parse_equality()?);
+            let span = self.get_expression_span(&expr, self.previous_span().end);
+            expr = Expression::Binary {
+                left: Box::new(expr),
+                op,
+                right,
+                span,
+            };
+        }
+
+        Ok(expr)
+    }
+
+    fn parse_equality(&mut self) -> Result<Expression, DiagnosticError> {
+        let mut expr = self.parse_comparison()?;
+
+        while let Some(op) = self.match_tokens(&[Token::Eq, Token::NotEq]) {
+            let op = match op {
+                Token::Eq => BinaryOp::Equal,
+                Token::NotEq => BinaryOp::NotEqual,
+                _ => unreachable!(),
+            };
+            let right = Box::new(self.parse_comparison()?);
+            let span = self.get_expression_span(&expr, self.previous_span().end);
+            expr = Expression::Binary {
+                left: Box::new(expr),
+                op,
+                right,
+                span,
+            };
+        }
+
+        Ok(expr)
+    }
+
+    fn parse_comparison(&mut self) -> Result<Expression, DiagnosticError> {
+        let mut expr = self.parse_term()?;
+
+        while let Some(op) = self.match_tokens(&[
+            Token::Greater, Token::GreaterEq, Token::Less, Token::LessEq
+        ]) {
+            let op = match op {
+                Token::Greater => BinaryOp::Greater,
+                Token::GreaterEq => BinaryOp::GreaterEqual,
+                Token::Less => BinaryOp::Less,
+                Token::LessEq => BinaryOp::LessEqual,
+                _ => unreachable!(),
+            };
+            let right = Box::new(self.parse_term()?);
+            let span = self.get_expression_span(&expr, self.previous_span().end);
+            expr = Expression::Binary {
+                left: Box::new(expr),
+                op,
+                right,
+                span,
+            };
+        }
+
+        Ok(expr)
+    }
+
+    fn parse_term(&mut self) -> Result<Expression, DiagnosticError> {
+        let mut expr = self.parse_factor()?;
+
+        while let Some(op) = self.match_tokens(&[Token::Plus, Token::Minus]) {
+            let op = match op {
+                Token::Plus => BinaryOp::Add,
+                Token::Minus => BinaryOp::Subtract,
+                _ => unreachable!(),
+            };
+            let right = Box::new(self.parse_factor()?);
+            let span = self.get_expression_span(&expr, self.previous_span().end);
+            expr = Expression::Binary {
+                left: Box::new(expr),
+                op,
+                right,
+                span,
+            };
+        }
+
+        Ok(expr)
+    }
+
+    fn parse_factor(&mut self) -> Result<Expression, DiagnosticError> {
+        let mut expr = self.parse_unary()?;
+
+        while let Some(op) = self.match_tokens(&[Token::Star, Token::Slash, Token::Percent]) {
+            let op = match op {
+                Token::Star => BinaryOp::Multiply,
+                Token::Slash => BinaryOp::Divide,
+                Token::Percent => BinaryOp::Modulo,
+                _ => unreachable!(),
+            };
+            let right = Box::new(self.parse_unary()?);
+            let span = self.get_expression_span(&expr, self.previous_span().end);
+            expr = Expression::Binary {
+                left: Box::new(expr),
+                op,
+                right,
+                span,
+            };
+        }
+
+        Ok(expr)
+    }
+
+    fn parse_unary(&mut self) -> Result<Expression, DiagnosticError> {
+        if let Some(op) = self.match_tokens(&[Token::Not, Token::Minus]) {
+            let start = self.previous_span().start;
+            let op = match op {
+                Token::Not => UnaryOp::Not,
+                Token::Minus => UnaryOp::Negate,
+                _ => unreachable!(),
+            };
+            let operand = Box::new(self.parse_unary()?);
+            let end = self.previous_span().end;
+            return Ok(Expression::Unary {
+                op,
+                operand,
+                span: Span::new(start, end),
+            });
+        }
+
+        self.parse_call()
+    }
+
+    fn parse_call(&mut self) -> Result<Expression, DiagnosticError> {
+        let mut expr = self.parse_primary()?;
+
+        while self.match_token(&Token::LeftParen) {
+            if let Expression::Identifier { name, span } = expr {
+                let args = self.parse_arguments()?;
+                self.consume(Token::RightParen, "Expected ')' after arguments")?;
+                let end = self.previous_span().end;
+                expr = Expression::Call {
+                    function: name,
+                    args,
+                    span: Span::new(span.start, end),
+                };
+            } else {
+                return Err(DiagnosticError::Syntax(
+                    "Can only call functions".to_string()
+                ));
+            }
+        }
+
+        Ok(expr)
+    }
+
+    fn parse_arguments(&mut self) -> Result<Vec<Expression>, DiagnosticError> {
+        let mut args = Vec::new();
+
+        if !self.check(&Token::RightParen) {
+            loop {
+                args.push(self.parse_expression()?);
+                if !self.match_token(&Token::Comma) {
+                    break;
+                }
+            }
+        }
+
+        Ok(args)
+    }
+
+    fn parse_primary(&mut self) -> Result<Expression, DiagnosticError> {
+        if self.match_token(&Token::True) {
+            let span = self.previous_span();
+            return Ok(Expression::Literal(Literal::Bool(true, span)));
+        }
+
+        if self.match_token(&Token::False) {
+            let span = self.previous_span();
+            return Ok(Expression::Literal(Literal::Bool(false, span)));
+        }
+
+        if let Some(Token::IntLiteral(n)) = self.match_if(|t| matches!(t, Token::IntLiteral(_))) {
+            let span = self.previous_span();
+            return Ok(Expression::Literal(Literal::Integer(n, span)));
+        }
+
+        if let Some(Token::StringLiteral(s)) = self.match_if(|t| matches!(t, Token::StringLiteral(_))) {
+            let span = self.previous_span();
+            return Ok(Expression::Literal(Literal::String(s, span)));
+        }
+
+        if let Some(Token::InterpolatedString(parts)) = self.match_if(|t| matches!(t, Token::InterpolatedString(_))) {
+            let span = self.previous_span();
+            let interpolation_parts = self.parse_interpolated_string(parts)?;
+            return Ok(Expression::Literal(Literal::InterpolatedString(interpolation_parts, span)));
+        }
+
+        if let Some(Token::Ident(name)) = self.match_if(|t| matches!(t, Token::Ident(_))) {
+            let span = self.previous_span();
+            return Ok(Expression::Identifier { name, span });
+        }
+
+        if self.match_token(&Token::LeftParen) {
+            let expr = self.parse_expression()?;
+            self.consume(Token::RightParen, "Expected ')' after expression")?;
+            return Ok(expr);
+        }
+
+        if self.match_token(&Token::LeftBrace) {
+            self.current -= 1; // Back up to re-parse the block
+            let block = self.parse_block()?;
+            return Ok(Expression::Block(block));
+        }
+
+        Err(DiagnosticError::Syntax("Expected expression".to_string()))
+    }
+
+    fn parse_interpolated_string(&mut self, parts: Vec<StringPart>) -> Result<Vec<InterpolationPart>, DiagnosticError> {
+        let mut result = Vec::new();
+
+        for part in parts {
+            match part {
+                StringPart::Text(text) => {
+                    result.push(InterpolationPart::Text(text));
+                }
+                StringPart::Interpolation(expr_str) => {
+                    // Parse the interpolation expression
+                    let mut parser = Parser::new(&expr_str)?;
+                    let expr = parser.parse_expression()?;
+                    result.push(InterpolationPart::Expression(Box::new(expr)));
+                }
+            }
+        }
+
+        Ok(result)
+    }
+
+    fn get_expression_span(&self, expr: &Expression, end: usize) -> Span {
+        let start = match expr {
+            Expression::Binary { span, .. } => span.start,
+            Expression::Unary { span, .. } => span.start,
+            Expression::Literal(lit) => match lit {
+                Literal::Bool(_, s) | Literal::Integer(_, s) |
+                Literal::String(_, s) | Literal::InterpolatedString(_, s) => s.start,
+            },
+            Expression::Identifier { span, .. } => span.start,
+            Expression::Call { span, .. } => span.start,
+            Expression::Assignment { span, .. } => span.start,
+            Expression::Block(b) => b.span.start,
+        };
+        Span::new(start, end)
+    }
+
+    // Helper methods
+
+    fn match_token(&mut self, token: &Token) -> bool {
+        if self.check(token) {
+            self.advance();
+            true
+        } else {
+            false
+        }
+    }
+
+    fn match_tokens(&mut self, tokens: &[Token]) -> Option<Token> {
+        for token in tokens {
+            if self.check(token) {
+                let matched = self.peek().token.clone();
+                self.advance();
+                return Some(matched);
+            }
+        }
+        None
+    }
+
+    fn match_if<F>(&mut self, predicate: F) -> Option<Token>
+    where
+        F: Fn(&Token) -> bool,
+    {
+        if !self.is_at_end() && predicate(&self.peek().token) {
+            let token = self.peek().token.clone();
+            self.advance();
+            Some(token)
+        } else {
+            None
+        }
+    }
+
+    fn check(&self, token: &Token) -> bool {
+        if self.is_at_end() {
+            false
+        } else {
+            std::mem::discriminant(&self.peek().token) == std::mem::discriminant(token)
+        }
+    }
+
+    fn advance(&mut self) -> &TokenWithSpan {
+        if !self.is_at_end() {
+            self.current += 1;
+        }
+        self.previous()
+    }
+
+    fn is_at_end(&self) -> bool {
+        matches!(self.peek().token, Token::Eof)
+    }
+
+    fn peek(&self) -> &TokenWithSpan {
+        &self.tokens[self.current]
+    }
+
+    fn previous(&self) -> &TokenWithSpan {
+        &self.tokens[self.current - 1]
+    }
+
+    fn current_span(&self) -> Span {
+        self.peek().span
+    }
+
+    fn previous_span(&self) -> Span {
+        self.previous().span
+    }
+
+    fn consume(&mut self, token: Token, message: &str) -> Result<(), DiagnosticError> {
+        if self.check(&token) {
+            self.advance();
+            Ok(())
+        } else {
+            Err(DiagnosticError::Syntax(format!(
+                "{} at position {}",
+                message,
+                self.current_span().start
+            )))
+        }
+    }
+
+    fn consume_identifier(&mut self, message: &str) -> Result<String, DiagnosticError> {
+        if let Token::Ident(name) = &self.peek().token {
+            let name = name.clone();
+            self.advance();
+            Ok(name)
+        } else {
+            Err(DiagnosticError::Syntax(format!(
+                "{} at position {}",
+                message,
+                self.current_span().start
+            )))
+        }
+    }
+}

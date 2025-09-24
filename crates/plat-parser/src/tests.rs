@@ -1,0 +1,336 @@
+#[cfg(test)]
+mod tests {
+    use crate::Parser;
+    use plat_ast::*;
+
+    #[test]
+    fn test_parse_simple_function() {
+        let input = r#"
+            fn main() {
+                print("Hello, world!");
+            }
+        "#;
+
+        let parser = Parser::new(input).unwrap();
+        let program = parser.parse().unwrap();
+
+        assert_eq!(program.functions.len(), 1);
+        assert_eq!(program.functions[0].name, "main");
+        assert_eq!(program.functions[0].params.len(), 0);
+        assert_eq!(program.functions[0].return_type, None);
+    }
+
+    #[test]
+    fn test_parse_function_with_params() {
+        let input = r#"
+            fn add(x: i32, y: i32) -> i32 {
+                return x + y;
+            }
+        "#;
+
+        let parser = Parser::new(input).unwrap();
+        let program = parser.parse().unwrap();
+
+        assert_eq!(program.functions.len(), 1);
+        let func = &program.functions[0];
+        assert_eq!(func.name, "add");
+        assert_eq!(func.params.len(), 2);
+        assert_eq!(func.params[0].name, "x");
+        assert_eq!(func.params[0].ty, Type::I32);
+        assert_eq!(func.params[1].name, "y");
+        assert_eq!(func.params[1].ty, Type::I32);
+        assert_eq!(func.return_type, Some(Type::I32));
+    }
+
+    #[test]
+    fn test_parse_let_and_var_statements() {
+        let input = r#"
+            fn main() {
+                let x = 10;
+                let y: i32 = 20;
+                var z = 30;
+                var w: i64 = 40;
+            }
+        "#;
+
+        let parser = Parser::new(input).unwrap();
+        let program = parser.parse().unwrap();
+
+        let statements = &program.functions[0].body.statements;
+        assert_eq!(statements.len(), 4);
+
+        match &statements[0] {
+            Statement::Let { name, ty, .. } => {
+                assert_eq!(name, "x");
+                assert_eq!(*ty, None);
+            }
+            _ => panic!("Expected let statement"),
+        }
+
+        match &statements[1] {
+            Statement::Let { name, ty, .. } => {
+                assert_eq!(name, "y");
+                assert_eq!(*ty, Some(Type::I32));
+            }
+            _ => panic!("Expected let statement"),
+        }
+
+        match &statements[2] {
+            Statement::Var { name, ty, .. } => {
+                assert_eq!(name, "z");
+                assert_eq!(*ty, None);
+            }
+            _ => panic!("Expected var statement"),
+        }
+
+        match &statements[3] {
+            Statement::Var { name, ty, .. } => {
+                assert_eq!(name, "w");
+                assert_eq!(*ty, Some(Type::I64));
+            }
+            _ => panic!("Expected var statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_if_else() {
+        let input = r#"
+            fn main() {
+                if (x > 10) {
+                    print("greater");
+                } else {
+                    print("less or equal");
+                }
+            }
+        "#;
+
+        let parser = Parser::new(input).unwrap();
+        let program = parser.parse().unwrap();
+
+        let statements = &program.functions[0].body.statements;
+        assert_eq!(statements.len(), 1);
+
+        match &statements[0] {
+            Statement::If { then_branch, else_branch, .. } => {
+                assert_eq!(then_branch.statements.len(), 1);
+                assert!(else_branch.is_some());
+                assert_eq!(else_branch.as_ref().unwrap().statements.len(), 1);
+            }
+            _ => panic!("Expected if statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_while_loop() {
+        let input = r#"
+            fn main() {
+                while (x < 10) {
+                    x = x + 1;
+                }
+            }
+        "#;
+
+        let parser = Parser::new(input).unwrap();
+        let program = parser.parse().unwrap();
+
+        let statements = &program.functions[0].body.statements;
+        assert_eq!(statements.len(), 1);
+
+        match &statements[0] {
+            Statement::While { body, .. } => {
+                assert_eq!(body.statements.len(), 1);
+            }
+            _ => panic!("Expected while statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_expressions() {
+        let input = r#"
+            fn main() {
+                let a = 1 + 2 * 3;
+                let b = (1 + 2) * 3;
+                let c = true and false or not true;
+                let d = x == 5 and y != 10;
+            }
+        "#;
+
+        let parser = Parser::new(input).unwrap();
+        let program = parser.parse().unwrap();
+
+        let statements = &program.functions[0].body.statements;
+        assert_eq!(statements.len(), 4);
+    }
+
+    #[test]
+    fn test_parse_function_calls() {
+        let input = r#"
+            fn main() {
+                print("Hello");
+                let result = add(10, 20);
+                let complex = multiply(add(1, 2), subtract(5, 3));
+            }
+        "#;
+
+        let parser = Parser::new(input).unwrap();
+        let program = parser.parse().unwrap();
+
+        let statements = &program.functions[0].body.statements;
+        assert_eq!(statements.len(), 3);
+
+        match &statements[0] {
+            Statement::Print { .. } => {}
+            _ => panic!("Expected print statement"),
+        }
+
+        match &statements[1] {
+            Statement::Let { value, .. } => {
+                match value {
+                    Expression::Call { function, args, .. } => {
+                        assert_eq!(function, "add");
+                        assert_eq!(args.len(), 2);
+                    }
+                    _ => panic!("Expected function call"),
+                }
+            }
+            _ => panic!("Expected let statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_string_interpolation() {
+        let input = r#"
+            fn main() {
+                let name = "World";
+                print("Hello, ${name}!");
+                print("The sum of 2 + 2 is ${2 + 2}");
+            }
+        "#;
+
+        let parser = Parser::new(input).unwrap();
+        let program = parser.parse().unwrap();
+
+        let statements = &program.functions[0].body.statements;
+        assert_eq!(statements.len(), 3);
+    }
+
+    #[test]
+    fn test_parse_all_operators() {
+        let input = r#"
+            fn main() {
+                let a = 10 + 5;
+                let b = 10 - 5;
+                let c = 10 * 5;
+                let d = 10 / 5;
+                let e = 10 % 3;
+                let f = 10 == 10;
+                let g = 10 != 5;
+                let h = 10 > 5;
+                let i = 10 >= 10;
+                let j = 10 < 15;
+                let k = 10 <= 10;
+                let l = true and false;
+                let m = true or false;
+                let n = not true;
+                let o = -5;
+            }
+        "#;
+
+        let parser = Parser::new(input).unwrap();
+        let program = parser.parse().unwrap();
+
+        let statements = &program.functions[0].body.statements;
+        assert_eq!(statements.len(), 15);
+    }
+
+    #[test]
+    fn test_parse_assignment() {
+        let input = r#"
+            fn main() {
+                var x = 10;
+                x = 20;
+                x = x + 1;
+            }
+        "#;
+
+        let parser = Parser::new(input).unwrap();
+        let program = parser.parse().unwrap();
+
+        let statements = &program.functions[0].body.statements;
+        assert_eq!(statements.len(), 3);
+
+        match &statements[1] {
+            Statement::Expression(Expression::Assignment { name, .. }) => {
+                assert_eq!(name, "x");
+            }
+            _ => panic!("Expected assignment expression"),
+        }
+    }
+
+    #[test]
+    fn test_parse_multiple_functions() {
+        let input = r#"
+            fn add(x: i32, y: i32) -> i32 {
+                return x + y;
+            }
+
+            fn main() {
+                let result = add(5, 3);
+                print("Result: ${result}");
+            }
+        "#;
+
+        let parser = Parser::new(input).unwrap();
+        let program = parser.parse().unwrap();
+
+        assert_eq!(program.functions.len(), 2);
+        assert_eq!(program.functions[0].name, "add");
+        assert_eq!(program.functions[1].name, "main");
+    }
+
+    #[test]
+    fn test_parse_literals() {
+        let input = r#"
+            fn main() {
+                let a = true;
+                let b = false;
+                let c = 42;
+                let d = 100i64;
+                let e = "hello";
+                let f = "hello ${name}";
+            }
+        "#;
+
+        let parser = Parser::new(input).unwrap();
+        let program = parser.parse().unwrap();
+
+        let statements = &program.functions[0].body.statements;
+        assert_eq!(statements.len(), 6);
+    }
+
+    #[test]
+    fn test_parse_error_missing_semicolon() {
+        let input = r#"
+            fn main() {
+                let x = 10
+            }
+        "#;
+
+        let parser = Parser::new(input).unwrap();
+        let result = parser.parse();
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_error_invalid_type() {
+        let input = r#"
+            fn main() {
+                let x: invalid = 10;
+            }
+        "#;
+
+        let parser = Parser::new(input).unwrap();
+        let result = parser.parse();
+        assert!(result.is_err());
+    }
+}
