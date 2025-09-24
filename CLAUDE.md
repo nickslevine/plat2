@@ -21,36 +21,36 @@ Deliver a working `plat` CLI binary that:
 ---
 
 ## 1. Project Setup
-- [ ] Create Cargo workspace with crates:
-  - [ ] `plat-cli` (main binary, CLI)
-  - [ ] `plat-lexer`
-  - [ ] `plat-parser`
-  - [ ] `plat-ast`
-  - [ ] `plat-hir` (semantic checks)
-  - [ ] `plat-codegen` (Cranelift backend)
-  - [ ] `plat-runtime` (Boehm GC bindings, builtins)
-  - [ ] `plat-fmt`
-  - [ ] `plat-diags` (Ariadne helpers)
-- [ ] Add dependencies:
-  - [ ] `clap` (CLI parsing)
-  - [ ] `colored` (colored terminal output)
-  - [ ] `ariadne` (diagnostics)
-  - [ ] `anyhow`, `thiserror` (error handling)
-  - [ ] `cranelift-codegen`, `cranelift-module`, `cranelift-object`
+- [x] Create Cargo workspace with crates:
+  - [x] `plat-cli` (main binary, CLI)
+  - [x] `plat-lexer`
+  - [x] `plat-parser`
+  - [x] `plat-ast`
+  - [x] `plat-hir` (semantic checks)
+  - [x] `plat-codegen` (Cranelift backend)
+  - [x] `plat-runtime` (Boehm GC bindings, builtins)
+  - [x] `plat-fmt`
+  - [x] `plat-diags` (Ariadne helpers)
+- [x] Add dependencies:
+  - [x] `clap` (CLI parsing)
+  - [x] `colored` (colored terminal output)
+  - [x] `ariadne` (diagnostics)
+  - [x] `anyhow`, `thiserror` (error handling)
+  - [x] `cranelift-codegen`, `cranelift-module`, `cranelift-object`
   - [ ] `libgc` + `boehm-rs` (FFI to Boehm GC)
-  - [ ] `regex` (string interpolation scanning in formatter)
-- [ ] Set `rust-version` (MSRV 1.77+)
+  - [x] `regex` (string interpolation scanning in formatter)
+- [x] Set `rust-version` (MSRV 1.77+)
 
 ---
 
 ## 2. CLI (`plat-cli`)
-- [ ] Define subcommands:
-  - [ ] `plat build <file.plat>`
-  - [ ] `plat run <file.plat>`
-  - [ ] `plat fmt <file.plat>`
-- [ ] Implement `target/plat/<name>` output directory logic
-- [ ] Add failing tests for CLI arg parsing
-- [ ] Make tests pass (red-green-refactor)
+- [x] Define subcommands:
+  - [x] `plat build <file.plat>`
+  - [x] `plat run <file.plat>`
+  - [x] `plat fmt <file.plat>`
+- [x] Implement `target/plat/<name>` output directory logic
+- [x] Add failing tests for CLI arg parsing
+- [x] Make tests pass (red-green-refactor)
 
 ---
 
