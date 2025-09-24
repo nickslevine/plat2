@@ -96,7 +96,8 @@ fn fmt_command(file: PathBuf) -> Result<()> {
 
     println!("{} {}", "Formatting".green().bold(), file.display());
 
-    let formatted = plat_fmt::Formatter::format(&source);
+    let formatted = plat_fmt::Formatter::format(&source)
+        .with_context(|| "Failed to format file")?;
 
     fs::write(&file, formatted)
         .with_context(|| format!("Failed to write formatted file: {}", file.display()))?;

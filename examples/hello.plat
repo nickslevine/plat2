@@ -1,0 +1,10 @@
+fn main() {
+  let name = "World";
+  print("Hello, ${name}!");
+  let x = 5;
+  let y = 10;
+  if (x < y) {
+    print("x is less than y");
+  } else {
+    print("x is greater than or equal to y");
+  }}

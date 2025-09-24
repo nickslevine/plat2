@@ -55,12 +55,12 @@ Deliver a working `plat` CLI binary that:
 ---
 
 ## 3. Formatter (`plat-fmt`)
-- [ ] Tokenize and reprint code with:
-  - [ ] 2-space indent
-  - [ ] consistent semicolons
-  - [ ] normalized newlines
-- [ ] Ensure idempotence (`fmt` run twice is a no-op)
-- [ ] Golden-file tests
+- [x] Tokenize and reprint code with:
+  - [x] 2-space indent
+  - [x] consistent semicolons
+  - [x] normalized newlines
+- [x] Ensure idempotence (`fmt` run twice is a no-op)
+- [x] Golden-file tests
 
 ---
 
