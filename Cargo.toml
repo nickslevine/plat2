@@ -35,8 +35,8 @@ cranelift-object = "0.111"
 target-lexicon = "0.12"
 object = "0.36"
 
-# GC support (will need system libgc installed)
-# boehm-rs = "0.1"
+# GC support - using conservative GC
+gc = "0.5"
 
 # Testing and utilities
 regex = "1.10"

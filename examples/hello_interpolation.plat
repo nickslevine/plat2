@@ -1,0 +1,10 @@
+// Example: Hello World with string interpolation
+fn main() -> i32 {
+  let name = "Plat";
+  let version = 1;
+
+  // String interpolation (simplified - shows placeholders for now)
+  print("Hello from ${name} version ${version}!");
+
+  return 0;
+}

@@ -20,3 +20,4 @@ plat-runtime = { path = "../plat-runtime" }
 
 [dev-dependencies]
 tempfile.workspace = true
+plat-parser = { path = "../plat-parser" }

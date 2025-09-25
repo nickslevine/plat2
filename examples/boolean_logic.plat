@@ -1,0 +1,38 @@
+// Example: Boolean logic and short-circuit evaluation
+fn returns_true() -> bool {
+  print("returns_true() called");
+  return true;
+}
+
+fn returns_false() -> bool {
+  print("returns_false() called");
+  return false;
+}
+
+fn main() -> i32 {
+  print("Testing boolean logic...");
+
+  // Basic boolean operations
+  let t = true;
+  let f = false;
+
+  let and_result = t and f;  // false
+  let or_result = t or f;    // true
+  let not_result = not f;    // true
+
+  // Short-circuit evaluation tests
+  print("Testing AND short-circuit:");
+  let short1 = false and returns_true();  // returns_true() should NOT be called
+
+  print("Testing OR short-circuit:");
+  let short2 = true or returns_false();   // returns_false() should NOT be called
+
+  // Complex boolean expressions
+  let complex1 = (true and true) or false;
+  let complex2 = not (false or false);
+  let complex3 = (true or false) and (not false);
+
+  print("Boolean logic tests complete!");
+
+  return 0;
+}

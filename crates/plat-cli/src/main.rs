@@ -170,10 +170,11 @@ fn run_command(file: PathBuf) -> Result<()> {
         eprint!("{}", String::from_utf8_lossy(&run_result.stderr));
     }
 
-    // Check exit status
+    // Check exit status and propagate it
     if !run_result.status.success() {
         if let Some(code) = run_result.status.code() {
             println!("{} Process exited with code: {}", "ℹ".yellow().bold(), code);
+            process::exit(code);
         }
     }
 

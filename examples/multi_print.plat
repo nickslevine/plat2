@@ -1,0 +1,6 @@
+fn main() -> i32 {
+  print("First print");
+  print("Second print");
+  print("Third print");
+  return 0;
+}

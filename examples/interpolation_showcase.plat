@@ -1,0 +1,17 @@
+fn calculate(a: i32, b: i32) -> i32 {
+  return a * b + 10;
+}
+
+fn main() -> i32 {
+  let x = 6;
+  let y = 7;
+
+  print("===== String Interpolation Showcase =====");
+  print("Variables: x = ${x}, y = ${y}");
+  print("Expression: x + y = ${x + y}");
+  print("Function call: calculate(x, y) = ${calculate(x, y)}");
+  print("Complex: (x * 2) + (y - 3) = ${(x * 2) + (y - 3)}");
+  print("==========================================");
+
+  return 0;
+}

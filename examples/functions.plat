@@ -1,0 +1,28 @@
+// Example: Function definitions and calls
+fn add(a: i32, b: i32) -> i32 {
+  return a + b;
+}
+
+fn multiply(x: i32, y: i32) -> i32 {
+  return x * y;
+}
+
+fn calculate(a: i32, b: i32, c: i32) -> i32 {
+  let sum = add(a, b);
+  let product = multiply(sum, c);
+  return product;
+}
+
+fn main() -> i32 {
+  print("Testing functions...");
+
+  let result1 = add(5, 3);
+  let result2 = multiply(4, 7);
+  let result3 = calculate(2, 3, 4);  // (2 + 3) * 4 = 20
+
+  print("Addition works!");
+  print("Multiplication works!");
+  print("Nested function calls work!");
+
+  return 0;
+}

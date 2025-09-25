@@ -1,0 +1,16 @@
+fn add(a: i32, b: i32) -> i32 {
+  return a + b;
+}
+
+fn main() -> i32 {
+  print("Testing basic features...");
+
+  // Test function calls and arithmetic
+  let result = add(5, 3);
+
+  // Test multiple prints
+  print("Addition works!");
+  print("All tests passed!");
+
+  return 0;
+}

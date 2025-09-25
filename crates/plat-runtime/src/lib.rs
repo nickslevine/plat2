@@ -4,6 +4,7 @@ mod tests;
 use std::fmt;
 use std::ffi::CStr;
 use std::os::raw::c_char;
+use gc::Gc;
 
 /// Runtime value types for the Plat language
 #[derive(Debug, Clone, PartialEq)]
@@ -15,25 +16,29 @@ pub enum PlatValue {
     Unit,
 }
 
-/// GC-managed string type
-/// For now, this is just a wrapper around Rust's String
-/// In the future, this will integrate with Boehm GC
-#[derive(Debug, Clone, PartialEq)]
+/// GC-managed string type using gc crate
+#[derive(Debug, Clone)]
 pub struct PlatString {
-    data: String,
+    data: Gc<String>,
+}
+
+impl PartialEq for PlatString {
+    fn eq(&self, other: &Self) -> bool {
+        self.data.as_str() == other.data.as_str()
+    }
 }
 
 impl PlatString {
     pub fn new(s: String) -> Self {
-        Self { data: s }
+        Self { data: Gc::new(s) }
     }
 
     pub fn from_str(s: &str) -> Self {
-        Self { data: s.to_string() }
+        Self { data: Gc::new(s.to_string()) }
     }
 
     pub fn as_str(&self) -> &str {
-        &self.data
+        self.data.as_str()
     }
 
     pub fn len(&self) -> usize {
@@ -46,13 +51,13 @@ impl PlatString {
 
     /// String concatenation
     pub fn concat(&self, other: &PlatString) -> PlatString {
-        PlatString::new(format!("{}{}", self.data, other.data))
+        PlatString::new(format!("{}{}", self.data.as_str(), other.data.as_str()))
     }
 }
 
 impl fmt::Display for PlatString {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.data)
+        write!(f, "{}", self.data.as_str())
     }
 }
 
@@ -108,9 +113,9 @@ impl From<PlatString> for PlatValue {
 pub struct Runtime;
 
 impl Runtime {
-    /// Initialize the runtime system
-    /// In the future, this will initialize the Boehm GC
+    /// Initialize the runtime system and GC
     pub fn initialize() -> Self {
+        // The gc crate initializes automatically, no need for explicit init
         Runtime
     }
 
@@ -269,6 +274,18 @@ impl Runtime {
             _ => Err(RuntimeError::TypeMismatch(format!("Cannot negate {:?}", operand))),
         }
     }
+
+    /// Force garbage collection
+    pub fn gc_collect(&self) {
+        gc::force_collect();
+    }
+
+    /// Get statistics about GC
+    pub fn gc_stats(&self) -> (usize, usize) {
+        // Return (allocated_bytes, collected_objects) - mock implementation for now
+        // The gc crate doesn't expose detailed stats
+        (0, 0)
+    }
 }
 
 /// Runtime errors
@@ -310,4 +327,168 @@ pub extern "C" fn plat_print(str_ptr: *const c_char) {
             Err(_) => println!("<invalid UTF-8>"),
         }
     }
+}
+
+/// C-compatible GC allocation function that can be called from generated code
+///
+/// # Safety
+/// This function is unsafe because it returns raw pointers to GC memory
+#[no_mangle]
+pub extern "C" fn plat_gc_alloc(size: usize) -> *mut u8 {
+    let vec = vec![0u8; size];
+    let gc_vec = Gc::new(vec);
+    // For the gc crate, we need to use a different approach
+    // This is a simplified version - real implementation would need more care
+    Box::into_raw(Box::new(gc_vec.clone())) as *mut Vec<u8> as *mut u8
+}
+
+/// C-compatible GC collection function that can be called from generated code
+#[no_mangle]
+pub extern "C" fn plat_gc_collect() {
+    gc::force_collect();
+}
+
+/// C-compatible function to get GC stats (mock)
+#[no_mangle]
+pub extern "C" fn plat_gc_stats() -> usize {
+    // The gc crate doesn't expose detailed stats
+    0
+}
+
+/// Convert an i32 to a C string (null-terminated) on the GC heap
+///
+/// # Safety
+/// This function returns a raw pointer to GC memory
+#[no_mangle]
+pub extern "C" fn plat_i32_to_string(value: i32) -> *const c_char {
+    let string_repr = value.to_string();
+    let mut bytes = string_repr.into_bytes();
+    bytes.push(0); // null terminator
+
+    // Allocate on GC heap
+    let size = bytes.len();
+    let gc_ptr = plat_gc_alloc(size);
+
+    if gc_ptr.is_null() {
+        return std::ptr::null();
+    }
+
+    // Copy string data to GC memory
+    unsafe {
+        std::ptr::copy_nonoverlapping(bytes.as_ptr(), gc_ptr, size);
+    }
+
+    gc_ptr as *const c_char
+}
+
+/// Convert an i64 to a C string (null-terminated) on the GC heap
+///
+/// # Safety
+/// This function returns a raw pointer to GC memory
+#[no_mangle]
+pub extern "C" fn plat_i64_to_string(value: i64) -> *const c_char {
+    let string_repr = value.to_string();
+    let mut bytes = string_repr.into_bytes();
+    bytes.push(0); // null terminator
+
+    // Allocate on GC heap
+    let size = bytes.len();
+    let gc_ptr = plat_gc_alloc(size);
+
+    if gc_ptr.is_null() {
+        return std::ptr::null();
+    }
+
+    // Copy string data to GC memory
+    unsafe {
+        std::ptr::copy_nonoverlapping(bytes.as_ptr(), gc_ptr, size);
+    }
+
+    gc_ptr as *const c_char
+}
+
+/// Convert a bool to a C string (null-terminated) on the GC heap
+///
+/// # Safety
+/// This function returns a raw pointer to GC memory
+#[no_mangle]
+pub extern "C" fn plat_bool_to_string(value: bool) -> *const c_char {
+    let string_repr = if value { "true" } else { "false" };
+    let mut bytes = string_repr.as_bytes().to_vec();
+    bytes.push(0); // null terminator
+
+    // Allocate on GC heap
+    let size = bytes.len();
+    let gc_ptr = plat_gc_alloc(size);
+
+    if gc_ptr.is_null() {
+        return std::ptr::null();
+    }
+
+    // Copy string data to GC memory
+    unsafe {
+        std::ptr::copy_nonoverlapping(bytes.as_ptr(), gc_ptr, size);
+    }
+
+    gc_ptr as *const c_char
+}
+
+/// Perform string interpolation by replacing ${N} placeholders with values
+///
+/// # Safety
+/// This function takes raw pointers and returns raw pointers to GC memory
+#[no_mangle]
+pub extern "C" fn plat_string_interpolate(
+    template_ptr: *const c_char,
+    values_ptr: *const *const c_char,
+    values_count: usize
+) -> *const c_char {
+    if template_ptr.is_null() {
+        return std::ptr::null();
+    }
+
+    let template = unsafe {
+        match CStr::from_ptr(template_ptr).to_str() {
+            Ok(s) => s,
+            Err(_) => return std::ptr::null(),
+        }
+    };
+
+    let mut result = template.to_string();
+
+    // Replace ${N} placeholders with actual values
+    for i in 0..values_count {
+        let placeholder = format!("${{{}}}", i);
+
+        if !values_ptr.is_null() {
+            let value_ptr = unsafe { *values_ptr.add(i) };
+            if !value_ptr.is_null() {
+                let value_str = unsafe {
+                    match CStr::from_ptr(value_ptr).to_str() {
+                        Ok(s) => s,
+                        Err(_) => "<invalid>",
+                    }
+                };
+                result = result.replace(&placeholder, value_str);
+            }
+        }
+    }
+
+    // Allocate result on GC heap
+    let mut result_bytes = result.into_bytes();
+    result_bytes.push(0); // null terminator
+
+    let size = result_bytes.len();
+    let gc_ptr = plat_gc_alloc(size);
+
+    if gc_ptr.is_null() {
+        return std::ptr::null();
+    }
+
+    // Copy result to GC memory
+    unsafe {
+        std::ptr::copy_nonoverlapping(result_bytes.as_ptr(), gc_ptr, size);
+    }
+
+    gc_ptr as *const c_char
 }

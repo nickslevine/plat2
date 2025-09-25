@@ -1,0 +1,9 @@
+fn main() -> i32 {
+  let x = 42;
+  let y = 7;
+  let result = x + y;
+
+  print("The sum of ${x} and ${y} is ${result}");
+
+  return 0;
+}

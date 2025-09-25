@@ -3,6 +3,7 @@
 
 use plat_ast::{self as ast, *};
 use cranelift_codegen::ir::types::*;
+use std::os::raw::c_char;
 use cranelift_codegen::ir::{
     AbiParam, Value, condcodes::IntCC,
 };
@@ -279,42 +280,115 @@ impl CodeGenerator {
                 }
             }
             Expression::Binary { left, op, right, .. } => {
-                let left_val = Self::generate_expression_helper(builder, left, variables, functions, module, string_counter)?;
-                let right_val = Self::generate_expression_helper(builder, right, variables, functions, module, string_counter)?;
-
                 match op {
-                    BinaryOp::Add => Ok(builder.ins().iadd(left_val, right_val)),
-                    BinaryOp::Subtract => Ok(builder.ins().isub(left_val, right_val)),
-                    BinaryOp::Multiply => Ok(builder.ins().imul(left_val, right_val)),
-                    BinaryOp::Divide => Ok(builder.ins().sdiv(left_val, right_val)),
-                    BinaryOp::Modulo => Ok(builder.ins().srem(left_val, right_val)),
-                    BinaryOp::Equal => {
-                        let cmp = builder.ins().icmp(IntCC::Equal, left_val, right_val);
-                        Ok(builder.ins().uextend(I32, cmp))
+                    // For non-short-circuit operators, evaluate both operands first
+                    BinaryOp::Add | BinaryOp::Subtract | BinaryOp::Multiply |
+                    BinaryOp::Divide | BinaryOp::Modulo | BinaryOp::Equal |
+                    BinaryOp::NotEqual | BinaryOp::Less | BinaryOp::LessEqual |
+                    BinaryOp::Greater | BinaryOp::GreaterEqual => {
+                        let left_val = Self::generate_expression_helper(builder, left, variables, functions, module, string_counter)?;
+                        let right_val = Self::generate_expression_helper(builder, right, variables, functions, module, string_counter)?;
+
+                        match op {
+                            BinaryOp::Add => Ok(builder.ins().iadd(left_val, right_val)),
+                            BinaryOp::Subtract => Ok(builder.ins().isub(left_val, right_val)),
+                            BinaryOp::Multiply => Ok(builder.ins().imul(left_val, right_val)),
+                            BinaryOp::Divide => Ok(builder.ins().sdiv(left_val, right_val)),
+                            BinaryOp::Modulo => Ok(builder.ins().srem(left_val, right_val)),
+                            BinaryOp::Equal => {
+                                let cmp = builder.ins().icmp(IntCC::Equal, left_val, right_val);
+                                Ok(builder.ins().uextend(I32, cmp))
+                            }
+                            BinaryOp::NotEqual => {
+                                let cmp = builder.ins().icmp(IntCC::NotEqual, left_val, right_val);
+                                Ok(builder.ins().uextend(I32, cmp))
+                            }
+                            BinaryOp::Less => {
+                                let cmp = builder.ins().icmp(IntCC::SignedLessThan, left_val, right_val);
+                                Ok(builder.ins().uextend(I32, cmp))
+                            }
+                            BinaryOp::LessEqual => {
+                                let cmp = builder.ins().icmp(IntCC::SignedLessThanOrEqual, left_val, right_val);
+                                Ok(builder.ins().uextend(I32, cmp))
+                            }
+                            BinaryOp::Greater => {
+                                let cmp = builder.ins().icmp(IntCC::SignedGreaterThan, left_val, right_val);
+                                Ok(builder.ins().uextend(I32, cmp))
+                            }
+                            BinaryOp::GreaterEqual => {
+                                let cmp = builder.ins().icmp(IntCC::SignedGreaterThanOrEqual, left_val, right_val);
+                                Ok(builder.ins().uextend(I32, cmp))
+                            }
+                            _ => unreachable!()
+                        }
                     }
-                    BinaryOp::NotEqual => {
-                        let cmp = builder.ins().icmp(IntCC::NotEqual, left_val, right_val);
-                        Ok(builder.ins().uextend(I32, cmp))
+                    BinaryOp::And => {
+                        // Short-circuit AND: evaluate left first
+                        let left_val = Self::generate_expression_helper(builder, left, variables, functions, module, string_counter)?;
+
+                        // If left is false, don't evaluate right
+                        let zero = builder.ins().iconst(I32, 0);
+                        let left_is_true = builder.ins().icmp_imm(IntCC::NotEqual, left_val, 0);
+
+                        // Create blocks for short-circuit evaluation
+                        let eval_right_block = builder.create_block();
+                        let merge_block = builder.create_block();
+
+                        // Add block parameter to merge block to receive the result
+                        builder.append_block_param(merge_block, I32);
+
+                        // If left is true, evaluate right; otherwise, short-circuit to false
+                        builder.ins().brif(left_is_true, eval_right_block, &[], merge_block, &[zero]);
+
+                        // Evaluate right expression
+                        builder.switch_to_block(eval_right_block);
+                        builder.seal_block(eval_right_block);
+
+                        // Now evaluate the right operand
+                        let right_val = Self::generate_expression_helper(builder, right, variables, functions, module, string_counter)?;
+                        let right_is_true = builder.ins().icmp_imm(IntCC::NotEqual, right_val, 0);
+                        let right_as_i32 = builder.ins().uextend(I32, right_is_true);
+                        builder.ins().jump(merge_block, &[right_as_i32]);
+
+                        // Merge block contains the final result
+                        builder.switch_to_block(merge_block);
+                        builder.seal_block(merge_block);
+
+                        Ok(builder.block_params(merge_block)[0])
                     }
-                    BinaryOp::Less => {
-                        let cmp = builder.ins().icmp(IntCC::SignedLessThan, left_val, right_val);
-                        Ok(builder.ins().uextend(I32, cmp))
-                    }
-                    BinaryOp::LessEqual => {
-                        let cmp = builder.ins().icmp(IntCC::SignedLessThanOrEqual, left_val, right_val);
-                        Ok(builder.ins().uextend(I32, cmp))
-                    }
-                    BinaryOp::Greater => {
-                        let cmp = builder.ins().icmp(IntCC::SignedGreaterThan, left_val, right_val);
-                        Ok(builder.ins().uextend(I32, cmp))
-                    }
-                    BinaryOp::GreaterEqual => {
-                        let cmp = builder.ins().icmp(IntCC::SignedGreaterThanOrEqual, left_val, right_val);
-                        Ok(builder.ins().uextend(I32, cmp))
-                    }
-                    _ => {
-                        // TODO: Implement logical operators with short-circuiting
-                        Err(CodegenError::UnsupportedFeature("Logical operators not yet implemented".to_string()))
+                    BinaryOp::Or => {
+                        // Short-circuit OR: evaluate left first
+                        let left_val = Self::generate_expression_helper(builder, left, variables, functions, module, string_counter)?;
+
+                        // If left is true, don't evaluate right
+                        let one = builder.ins().iconst(I32, 1);
+                        let left_is_false = builder.ins().icmp_imm(IntCC::Equal, left_val, 0);
+
+                        // Create blocks for short-circuit evaluation
+                        let eval_right_block = builder.create_block();
+                        let merge_block = builder.create_block();
+
+                        // Add block parameter to merge block to receive the result
+                        builder.append_block_param(merge_block, I32);
+
+                        // If left is false, evaluate right; otherwise, short-circuit to true
+                        builder.ins().brif(left_is_false, eval_right_block, &[], merge_block, &[one]);
+
+                        // Evaluate right expression
+                        builder.switch_to_block(eval_right_block);
+                        builder.seal_block(eval_right_block);
+
+                        // Now evaluate the right operand
+                        let right_val = Self::generate_expression_helper(builder, right, variables, functions, module, string_counter)?;
+                        let right_is_true = builder.ins().icmp_imm(IntCC::NotEqual, right_val, 0);
+                        let right_as_i32 = builder.ins().uextend(I32, right_is_true);
+                        builder.ins().jump(merge_block, &[right_as_i32]);
+
+                        // Merge block contains the final result
+                        builder.switch_to_block(merge_block);
+                        builder.seal_block(merge_block);
+
+                        Ok(builder.block_params(merge_block)[0])
                     }
                 }
             }
@@ -393,7 +467,34 @@ impl CodeGenerator {
                 Ok(builder.ins().iconst(I32, *i))
             }
             Literal::String(s, _) => {
-                // Create a unique string constant name
+                // Allocate string on GC heap
+
+                // First, declare the plat_gc_alloc function if not already declared
+                let gc_alloc_name = "plat_gc_alloc";
+                let gc_alloc_sig = {
+                    let mut sig = module.make_signature();
+                    sig.call_conv = CallConv::SystemV;
+                    sig.params.push(AbiParam::new(I64)); // size parameter
+                    sig.returns.push(AbiParam::new(I64)); // returns pointer
+                    sig
+                };
+
+                let gc_alloc_id = module.declare_function(gc_alloc_name, Linkage::Import, &gc_alloc_sig)
+                    .map_err(CodegenError::ModuleError)?;
+                let gc_alloc_ref = module.declare_func_in_func(gc_alloc_id, builder.func);
+
+                // Calculate string size (including null terminator)
+                let string_size = s.len() + 1;
+                let size_val = builder.ins().iconst(I64, string_size as i64);
+
+                // Call plat_gc_alloc to allocate memory
+                let call = builder.ins().call(gc_alloc_ref, &[size_val]);
+                let string_ptr = builder.inst_results(call)[0];
+
+                // Now we need to copy the string data to the allocated memory
+                // For this, we'll create a static string and use memcpy
+
+                // Create a unique string constant name for the source data
                 let string_name = format!("str_{}", *string_counter);
                 *string_counter += 1;
 
@@ -401,7 +502,7 @@ impl CodeGenerator {
                 let mut string_data = s.as_bytes().to_vec();
                 string_data.push(0); // null terminator
 
-                // Declare data object for the string
+                // Declare data object for the source string
                 let string_id = module.declare_data(&string_name, Linkage::Local, false, false)
                     .map_err(CodegenError::ModuleError)?;
 
@@ -411,18 +512,31 @@ impl CodeGenerator {
                 module.define_data(string_id, &data_desc)
                     .map_err(CodegenError::ModuleError)?;
 
-                // Get a reference to the string data in the function
+                // Get a reference to the source string data
                 let string_ref = module.declare_data_in_func(string_id, builder.func);
-                let string_ptr = builder.ins().symbol_value(I64, string_ref);
+                let source_ptr = builder.ins().symbol_value(I64, string_ref);
+
+                // Declare memcpy function
+                let memcpy_sig = {
+                    let mut sig = module.make_signature();
+                    sig.call_conv = CallConv::SystemV;
+                    sig.params.push(AbiParam::new(I64)); // dest
+                    sig.params.push(AbiParam::new(I64)); // src
+                    sig.params.push(AbiParam::new(I64)); // size
+                    sig.returns.push(AbiParam::new(I64)); // returns dest
+                    sig
+                };
+
+                let memcpy_id = module.declare_function("memcpy", Linkage::Import, &memcpy_sig)
+                    .map_err(CodegenError::ModuleError)?;
+                let memcpy_ref = module.declare_func_in_func(memcpy_id, builder.func);
+
+                // Call memcpy to copy string data to GC memory
+                builder.ins().call(memcpy_ref, &[string_ptr, source_ptr, size_val]);
 
                 Ok(string_ptr)
             }
             Literal::InterpolatedString(parts, _) => {
-                // For string interpolation, we need to:
-                // 1. Generate each part (text or expression)
-                // 2. Convert expressions to strings
-                // 3. Concatenate all parts
-
                 if parts.is_empty() {
                     // Empty interpolated string - create empty string constant
                     let string_name = format!("str_{}", *string_counter);
@@ -440,10 +554,9 @@ impl CodeGenerator {
                     return Ok(builder.ins().symbol_value(I64, string_ref));
                 }
 
-                // For now, let's implement a simple approach: build the interpolated string
-                // by creating a template with placeholders and collect the expression values
+                // Build template with ${N} placeholders and collect expression values
                 let mut template = String::new();
-                let mut expr_values = Vec::new();
+                let mut expression_values = Vec::new();
                 let mut placeholder_count = 0;
 
                 for part in parts {
@@ -454,10 +567,12 @@ impl CodeGenerator {
                         ast::InterpolationPart::Expression(expr) => {
                             template.push_str(&format!("${{{}}}", placeholder_count));
                             placeholder_count += 1;
-                            let val = Self::generate_expression_helper(
+
+                            // Generate the expression value
+                            let expr_val = Self::generate_expression_helper(
                                 builder, expr, variables, functions, module, string_counter
                             )?;
-                            expr_values.push(val);
+                            expression_values.push(expr_val);
                         }
                     }
                 }
@@ -478,9 +593,79 @@ impl CodeGenerator {
                 let template_ref = module.declare_data_in_func(template_id, builder.func);
                 let template_ptr = builder.ins().symbol_value(I64, template_ref);
 
-                // For now, return just the template pointer until we implement runtime interpolation
-                // TODO: Call runtime interpolation function with template and values
-                Ok(template_ptr)
+                // Convert expression values to strings
+                let mut string_values = Vec::new();
+                for expr_val in expression_values {
+                    // For now, assume all expressions are i32. In a full implementation,
+                    // we'd check the type and call the appropriate conversion function
+                    let convert_sig = {
+                        let mut sig = module.make_signature();
+                        sig.call_conv = CallConv::SystemV;
+                        sig.params.push(AbiParam::new(I32)); // value
+                        sig.returns.push(AbiParam::new(I64)); // string pointer
+                        sig
+                    };
+
+                    let convert_id = module.declare_function("plat_i32_to_string", Linkage::Import, &convert_sig)
+                        .map_err(CodegenError::ModuleError)?;
+                    let convert_ref = module.declare_func_in_func(convert_id, builder.func);
+
+                    let call = builder.ins().call(convert_ref, &[expr_val]);
+                    let string_val = builder.inst_results(call)[0];
+                    string_values.push(string_val);
+                }
+
+                if string_values.is_empty() {
+                    // No expressions to interpolate, just return template
+                    return Ok(template_ptr);
+                }
+
+                // Allocate array for string value pointers
+                let ptr_size = std::mem::size_of::<*const c_char>();
+                let array_size = ptr_size * string_values.len();
+                let gc_alloc_sig = {
+                    let mut sig = module.make_signature();
+                    sig.call_conv = CallConv::SystemV;
+                    sig.params.push(AbiParam::new(I64)); // size
+                    sig.returns.push(AbiParam::new(I64)); // pointer
+                    sig
+                };
+
+                let gc_alloc_id = module.declare_function("plat_gc_alloc", Linkage::Import, &gc_alloc_sig)
+                    .map_err(CodegenError::ModuleError)?;
+                let gc_alloc_ref = module.declare_func_in_func(gc_alloc_id, builder.func);
+
+                let array_size_val = builder.ins().iconst(I64, array_size as i64);
+                let call = builder.ins().call(gc_alloc_ref, &[array_size_val]);
+                let values_array = builder.inst_results(call)[0];
+
+                // Store string pointers in array
+                for (i, string_val) in string_values.iter().enumerate() {
+                    let offset = (i * ptr_size) as i64;
+                    let ptr_addr = builder.ins().iadd_imm(values_array, offset);
+                    builder.ins().store(cranelift_codegen::ir::MemFlags::new(), *string_val, ptr_addr, 0);
+                }
+
+                // Call string interpolation function
+                let interpolate_sig = {
+                    let mut sig = module.make_signature();
+                    sig.call_conv = CallConv::SystemV;
+                    sig.params.push(AbiParam::new(I64)); // template_ptr
+                    sig.params.push(AbiParam::new(I64)); // values_ptr
+                    sig.params.push(AbiParam::new(I64)); // values_count
+                    sig.returns.push(AbiParam::new(I64)); // result string
+                    sig
+                };
+
+                let interpolate_id = module.declare_function("plat_string_interpolate", Linkage::Import, &interpolate_sig)
+                    .map_err(CodegenError::ModuleError)?;
+                let interpolate_ref = module.declare_func_in_func(interpolate_id, builder.func);
+
+                let count_val = builder.ins().iconst(I64, string_values.len() as i64);
+                let call = builder.ins().call(interpolate_ref, &[template_ptr, values_array, count_val]);
+                let result = builder.inst_results(call)[0];
+
+                Ok(result)
             }
         }
     }

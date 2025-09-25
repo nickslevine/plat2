@@ -50,9 +50,15 @@ impl TypeChecker {
 
         // Validate main function signature
         let main_sig = &self.functions["main"];
-        if !main_sig.params.is_empty() || main_sig.return_type != HirType::Unit {
+        if !main_sig.params.is_empty() {
             return Err(DiagnosticError::Type(
-                "Main function must have no parameters and no return type".to_string()
+                "Main function must have no parameters".to_string()
+            ));
+        }
+        // Main can return either Unit or i32 (for exit code)
+        if main_sig.return_type != HirType::Unit && main_sig.return_type != HirType::I32 {
+            return Err(DiagnosticError::Type(
+                "Main function must return either nothing or i32".to_string()
             ));
         }
 

@@ -11,8 +11,7 @@ name = "plat_runtime"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-# Note: Boehm GC binding will be added later when we integrate GC
-# boehm-rs.workspace = true
+gc.workspace = true
 
 [build-dependencies]
 # For linking with system libgc

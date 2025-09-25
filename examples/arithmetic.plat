@@ -1,0 +1,23 @@
+fn add(a: i32, b: i32) -> i32 {
+  return a + b;
+}
+
+fn main() -> i32 {
+  let x = 10;
+  let y = 20;
+  let result = add(x, y);
+
+  // Test arithmetic operations
+  let sum = x + y;
+  let diff = y - x;
+  let prod = x * 3;
+  let quot = y / 2;
+  let rem = y % 3;
+
+  // Test comparisons
+  let less = x < y;
+  let equal = x == 10;
+
+  // Return success
+  return 0;
+}

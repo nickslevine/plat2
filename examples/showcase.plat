@@ -1,0 +1,91 @@
+// Plat Language Feature Showcase
+
+fn fibonacci(n: i32) -> i32 {
+  // Base cases
+  let zero = 0;
+  let one = 1;
+
+  // Compute iteratively (no if statements yet)
+  var a = 0;
+  var b = 1;
+  var counter = n;
+
+  // Simple computation for demo
+  return a + b;
+}
+
+fn test_arithmetic() -> i32 {
+  print("=== Testing Arithmetic ===");
+
+  let a = 10;
+  let b = 3;
+
+  let sum = a + b;       // 13
+  let diff = a - b;      // 7
+  let prod = a * b;      // 30
+  let quot = a / b;      // 3
+  let rem = a % b;       // 1
+
+  print("Arithmetic operations complete");
+  return sum + diff + prod + quot + rem;  // 54
+}
+
+fn test_boolean() -> bool {
+  print("=== Testing Boolean Logic ===");
+
+  let t = true;
+  let f = false;
+
+  // Test AND with short-circuit
+  let and1 = t and t;    // true
+  let and2 = t and f;    // false
+  let and3 = f and t;    // false (t not evaluated)
+
+  // Test OR with short-circuit
+  let or1 = t or f;      // true (f not evaluated)
+  let or2 = f or t;      // true
+  let or3 = f or f;      // false
+
+  // Test NOT
+  let not1 = not t;      // false
+  let not2 = not f;      // true
+
+  print("Boolean operations complete");
+  return (and1 or and2) and (not not1);  // true
+}
+
+fn test_variables() -> i32 {
+  print("=== Testing Variables ===");
+
+  // Immutable with let
+  let immutable = 100;
+
+  // Mutable with var
+  var mutable = 50;
+  mutable = mutable + 10;
+  mutable = mutable * 2;
+  mutable = mutable - 20;
+
+  print("Variable operations complete");
+  return immutable + mutable;  // 200
+}
+
+fn main() -> i32 {
+  print("===================================");
+  print("     Plat Language Showcase");
+  print("===================================");
+
+  // Test different features
+  let arith_result = test_arithmetic();
+  let bool_result = test_boolean();
+  let var_result = test_variables();
+
+  // Test function composition
+  let fib_result = fibonacci(5);
+
+  print("===================================");
+  print("     All Tests Complete!");
+  print("===================================");
+
+  return 0;
+}

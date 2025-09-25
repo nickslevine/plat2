@@ -1,0 +1,11 @@
+fn double(x: i32) -> i32 {
+  return x * 2;
+}
+
+fn main() -> i32 {
+  let base = 5;
+
+  print("Testing function call in interpolation: ${double(base)}");
+
+  return 0;
+}

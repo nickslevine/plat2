@@ -1,0 +1,20 @@
+fn main() -> i32 {
+  let a = true;
+  let b = false;
+
+  // Test logical AND with short-circuit
+  let and_result = a and b;
+  let and_short = false and a;  // Should not evaluate 'a'
+
+  // Test logical OR with short-circuit
+  let or_result = a or b;
+  let or_short = true or b;  // Should not evaluate 'b'
+
+  // Test logical NOT
+  let not_result = not a;
+
+  // Test complex boolean expression
+  let complex = (true and false) or (not false);
+
+  return 0;
+}

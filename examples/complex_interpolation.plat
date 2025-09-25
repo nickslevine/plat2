@@ -1,0 +1,16 @@
+fn square(x: i32) -> i32 {
+  return x * x;
+}
+
+fn main() -> i32 {
+  let base = 5;
+  let multiplier = 3;
+  let offset = 10;
+
+  // Complex expression interpolation
+  print("Base: ${base}, Squared: ${square(base)}");
+  print("Complex: ${(base + multiplier) * 2 - offset}");
+  print("Nested: Result is ${base * multiplier + square(2)}");
+
+  return 0;
+}
