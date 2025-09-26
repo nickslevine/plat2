@@ -17,6 +17,7 @@ pub enum HirType {
     I32,
     I64,
     String,
+    List(Box<HirType>),
     Unit, // For functions that don't return anything
 }
 
@@ -283,6 +284,42 @@ impl TypeChecker {
 
                 Ok(HirType::Unit)
             }
+            Expression::Index { object, index, .. } => {
+                let object_type = self.check_expression(object)?;
+                let index_type = self.check_expression(index)?;
+
+                // Index must be i32
+                if index_type != HirType::I32 {
+                    return Err(DiagnosticError::Type(
+                        format!("Array index must be i32, got {:?}", index_type)
+                    ));
+                }
+
+                // Object must be List
+                match object_type {
+                    HirType::List(element_type) => Ok(*element_type),
+                    _ => Err(DiagnosticError::Type(
+                        format!("Cannot index into type {:?}", object_type)
+                    ))
+                }
+            }
+            Expression::MethodCall { object, method, args, .. } => {
+                let object_type = self.check_expression(object)?;
+
+                match (&object_type, method.as_str()) {
+                    (HirType::List(_), "len") => {
+                        if !args.is_empty() {
+                            return Err(DiagnosticError::Type(
+                                "len() method takes no arguments".to_string()
+                            ));
+                        }
+                        Ok(HirType::I32)
+                    }
+                    _ => Err(DiagnosticError::Type(
+                        format!("Type {:?} has no method '{}'", object_type, method)
+                    ))
+                }
+            }
             Expression::Block(block) => {
                 self.push_scope();
                 self.check_block(block)?;
@@ -292,12 +329,34 @@ impl TypeChecker {
         }
     }
 
-    fn check_literal(&self, literal: &Literal) -> Result<HirType, DiagnosticError> {
+    fn check_literal(&mut self, literal: &Literal) -> Result<HirType, DiagnosticError> {
         match literal {
             Literal::Bool(_, _) => Ok(HirType::Bool),
             Literal::Integer(_, _) => Ok(HirType::I32), // Default integer type
             Literal::String(_, _) => Ok(HirType::String),
             Literal::InterpolatedString(_, _) => Ok(HirType::String),
+            Literal::Array(elements, _) => {
+                if elements.is_empty() {
+                    return Err(DiagnosticError::Type(
+                        "Cannot infer type of empty array literal. Use explicit type annotation.".to_string()
+                    ));
+                }
+
+                // Check first element to determine type
+                let first_type = self.check_expression(&elements[0])?;
+
+                // Check all elements have the same type
+                for (i, element) in elements.iter().enumerate().skip(1) {
+                    let element_type = self.check_expression(element)?;
+                    if element_type != first_type {
+                        return Err(DiagnosticError::Type(
+                            format!("Array element {} has type {:?}, expected {:?}", i, element_type, first_type)
+                        ));
+                    }
+                }
+
+                Ok(HirType::List(Box::new(first_type)))
+            }
         }
     }
 
@@ -369,6 +428,10 @@ impl TypeChecker {
             Type::I32 => Ok(HirType::I32),
             Type::I64 => Ok(HirType::I64),
             Type::String => Ok(HirType::String),
+            Type::List(element_type) => {
+                let element_hir_type = self.ast_type_to_hir_type(element_type)?;
+                Ok(HirType::List(Box::new(element_hir_type)))
+            }
         }
     }
 

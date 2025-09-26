@@ -13,6 +13,7 @@ pub enum PlatValue {
     I32(i32),
     I64(i64),
     String(PlatString),
+    Array(PlatArray),
     Unit,
 }
 
@@ -61,6 +62,45 @@ impl fmt::Display for PlatString {
     }
 }
 
+/// GC-managed homogeneous array type
+#[derive(Debug, Clone)]
+pub struct PlatArray {
+    data: Gc<Vec<i32>>, // For now, only support i32 arrays (we can extend later)
+    length: usize,
+}
+
+impl PartialEq for PlatArray {
+    fn eq(&self, other: &Self) -> bool {
+        self.data.as_ref() == other.data.as_ref()
+    }
+}
+
+impl PlatArray {
+    pub fn new_i32(elements: Vec<i32>) -> Self {
+        let length = elements.len();
+        Self {
+            data: Gc::new(elements),
+            length,
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.length
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.length == 0
+    }
+
+    pub fn get(&self, index: usize) -> Option<i32> {
+        self.data.as_ref().get(index).copied()
+    }
+
+    pub fn as_slice(&self) -> &[i32] {
+        self.data.as_ref().as_slice()
+    }
+}
+
 impl fmt::Display for PlatValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -68,6 +108,16 @@ impl fmt::Display for PlatValue {
             PlatValue::I32(i) => write!(f, "{}", i),
             PlatValue::I64(i) => write!(f, "{}", i),
             PlatValue::String(s) => write!(f, "{}", s),
+            PlatValue::Array(arr) => {
+                write!(f, "[")?;
+                for (i, elem) in arr.as_slice().iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", elem)?;
+                }
+                write!(f, "]")
+            }
             PlatValue::Unit => write!(f, "()"),
         }
     }
@@ -94,6 +144,12 @@ impl From<i64> for PlatValue {
 impl From<String> for PlatValue {
     fn from(s: String) -> Self {
         PlatValue::String(PlatString::new(s))
+    }
+}
+
+impl From<PlatArray> for PlatValue {
+    fn from(arr: PlatArray) -> Self {
+        PlatValue::Array(arr)
     }
 }
 
@@ -491,4 +547,139 @@ pub extern "C" fn plat_string_interpolate(
     }
 
     gc_ptr as *const c_char
+}
+
+/// Array structure for runtime (C-compatible)
+#[repr(C)]
+pub struct RuntimeArray {
+    data: *mut i32,
+    length: usize,
+    capacity: usize,
+}
+
+/// Create a new array on the GC heap
+///
+/// # Safety
+/// This function allocates GC memory and returns raw pointers
+#[no_mangle]
+pub extern "C" fn plat_array_create(elements: *const i32, count: usize) -> *mut RuntimeArray {
+    if elements.is_null() && count > 0 {
+        return std::ptr::null_mut();
+    }
+
+    // Allocate the array struct
+    let array_size = std::mem::size_of::<RuntimeArray>();
+    let array_ptr = plat_gc_alloc(array_size) as *mut RuntimeArray;
+
+    if array_ptr.is_null() {
+        return std::ptr::null_mut();
+    }
+
+    // Allocate space for the data
+    let data_size = count * std::mem::size_of::<i32>();
+    let data_ptr = if count > 0 {
+        plat_gc_alloc(data_size) as *mut i32
+    } else {
+        std::ptr::null_mut()
+    };
+
+    if count > 0 && data_ptr.is_null() {
+        return std::ptr::null_mut();
+    }
+
+    // Copy elements to the data array
+    if count > 0 {
+        unsafe {
+            std::ptr::copy_nonoverlapping(elements, data_ptr, count);
+        }
+    }
+
+    // Initialize the array struct
+    unsafe {
+        (*array_ptr) = RuntimeArray {
+            data: data_ptr,
+            length: count,
+            capacity: count,
+        };
+    }
+
+    array_ptr
+}
+
+/// Get an element from an array by index
+///
+/// # Safety
+/// This function works with raw pointers from generated code
+#[no_mangle]
+pub extern "C" fn plat_array_get(array_ptr: *const RuntimeArray, index: usize) -> i32 {
+    if array_ptr.is_null() {
+        return 0; // Default value for error case
+    }
+
+    unsafe {
+        let array = &*array_ptr;
+        if index >= array.length || array.data.is_null() {
+            return 0; // Out of bounds, return default
+        }
+        *array.data.add(index)
+    }
+}
+
+/// Get the length of an array
+///
+/// # Safety
+/// This function works with raw pointers from generated code
+#[no_mangle]
+pub extern "C" fn plat_array_len(array_ptr: *const RuntimeArray) -> usize {
+    if array_ptr.is_null() {
+        return 0;
+    }
+
+    unsafe {
+        (*array_ptr).length
+    }
+}
+
+/// Convert an array to a string for interpolation
+///
+/// # Safety
+/// This function works with raw pointers and returns GC memory
+#[no_mangle]
+pub extern "C" fn plat_array_to_string(array_ptr: *const RuntimeArray) -> *const c_char {
+    if array_ptr.is_null() {
+        return std::ptr::null();
+    }
+
+    unsafe {
+        let array = &*array_ptr;
+        let mut result = String::from("[");
+
+        for i in 0..array.length {
+            if i > 0 {
+                result.push_str(", ");
+            }
+            if !array.data.is_null() {
+                let value = *array.data.add(i);
+                result.push_str(&value.to_string());
+            }
+        }
+
+        result.push(']');
+
+        // Allocate result on GC heap
+        let mut result_bytes = result.into_bytes();
+        result_bytes.push(0); // null terminator
+
+        let size = result_bytes.len();
+        let gc_ptr = plat_gc_alloc(size);
+
+        if gc_ptr.is_null() {
+            return std::ptr::null();
+        }
+
+        // Copy result to GC memory
+        std::ptr::copy_nonoverlapping(result_bytes.as_ptr(), gc_ptr, size);
+
+        gc_ptr as *const c_char
+    }
 }

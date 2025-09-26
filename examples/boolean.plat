@@ -15,6 +15,7 @@ fn main() -> i32 {
 
   // Test complex boolean expression
   let complex = (true and false) or (not false);
+  print("${b}");
 
   return 0;
 }

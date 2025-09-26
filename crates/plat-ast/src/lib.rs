@@ -27,6 +27,7 @@ pub enum Type {
     I32,
     I64,
     String,
+    List(Box<Type>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -99,6 +100,17 @@ pub enum Expression {
         value: Box<Expression>,
         span: Span,
     },
+    Index {
+        object: Box<Expression>,
+        index: Box<Expression>,
+        span: Span,
+    },
+    MethodCall {
+        object: Box<Expression>,
+        method: String,
+        args: Vec<Expression>,
+        span: Span,
+    },
     Block(Block),
 }
 
@@ -108,6 +120,7 @@ pub enum Literal {
     Integer(i64, Span),
     String(String, Span),
     InterpolatedString(Vec<InterpolationPart>, Span),
+    Array(Vec<Expression>, Span),
 }
 
 #[derive(Debug, Clone, PartialEq)]

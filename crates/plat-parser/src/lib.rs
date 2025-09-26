@@ -85,6 +85,13 @@ impl Parser {
     }
 
     fn parse_type(&mut self) -> Result<Type, DiagnosticError> {
+        if self.match_token(&Token::List) {
+            self.consume(Token::LeftBracket, "Expected '[' after 'List'")?;
+            let element_type = self.parse_type()?;
+            self.consume(Token::RightBracket, "Expected ']' after element type")?;
+            return Ok(Type::List(Box::new(element_type)));
+        }
+
         let type_name = self.consume_identifier("Expected type name")?;
 
         match type_name.as_str() {
@@ -298,11 +305,14 @@ impl Parser {
                     Expression::Unary { span, .. } => span.start,
                     Expression::Literal(lit) => match lit {
                         Literal::Bool(_, s) | Literal::Integer(_, s) |
-                        Literal::String(_, s) | Literal::InterpolatedString(_, s) => s.start,
+                        Literal::String(_, s) | Literal::InterpolatedString(_, s) |
+                        Literal::Array(_, s) => s.start,
                     },
                     Expression::Identifier { span, .. } => span.start,
                     Expression::Call { span, .. } => span.start,
                     Expression::Assignment { span, .. } => span.start,
+                    Expression::Index { span, .. } => span.start,
+                    Expression::MethodCall { span, .. } => span.start,
                     Expression::Block(b) => b.span.start,
                 },
                 self.previous_span().end,
@@ -452,20 +462,53 @@ impl Parser {
     fn parse_call(&mut self) -> Result<Expression, DiagnosticError> {
         let mut expr = self.parse_primary()?;
 
-        while self.match_token(&Token::LeftParen) {
-            if let Expression::Identifier { name, span } = expr {
-                let args = self.parse_arguments()?;
-                self.consume(Token::RightParen, "Expected ')' after arguments")?;
+        loop {
+            if self.match_token(&Token::LeftParen) {
+                if let Expression::Identifier { name, span } = expr {
+                    let args = self.parse_arguments()?;
+                    self.consume(Token::RightParen, "Expected ')' after arguments")?;
+                    let end = self.previous_span().end;
+                    expr = Expression::Call {
+                        function: name,
+                        args,
+                        span: Span::new(span.start, end),
+                    };
+                } else {
+                    return Err(DiagnosticError::Syntax(
+                        "Can only call functions".to_string()
+                    ));
+                }
+            } else if self.match_token(&Token::LeftBracket) {
+                let index = self.parse_expression()?;
+                self.consume(Token::RightBracket, "Expected ']' after index")?;
                 let end = self.previous_span().end;
-                expr = Expression::Call {
-                    function: name,
-                    args,
-                    span: Span::new(span.start, end),
+                let start = self.get_expression_span(&expr, end).start;
+                expr = Expression::Index {
+                    object: Box::new(expr),
+                    index: Box::new(index),
+                    span: Span::new(start, end),
                 };
+            } else if self.match_token(&Token::Dot) {
+                let method = self.consume_identifier("Expected method name after '.'")?;
+
+                if self.match_token(&Token::LeftParen) {
+                    let args = self.parse_arguments()?;
+                    self.consume(Token::RightParen, "Expected ')' after method arguments")?;
+                    let end = self.previous_span().end;
+                    let start = self.get_expression_span(&expr, end).start;
+                    expr = Expression::MethodCall {
+                        object: Box::new(expr),
+                        method,
+                        args,
+                        span: Span::new(start, end),
+                    };
+                } else {
+                    return Err(DiagnosticError::Syntax(
+                        "Expected '(' after method name".to_string()
+                    ));
+                }
             } else {
-                return Err(DiagnosticError::Syntax(
-                    "Can only call functions".to_string()
-                ));
+                break;
             }
         }
 
@@ -531,6 +574,25 @@ impl Parser {
             return Ok(Expression::Block(block));
         }
 
+        if self.match_token(&Token::LeftBracket) {
+            let start = self.previous_span().start;
+            let mut elements = Vec::new();
+
+            if !self.check(&Token::RightBracket) {
+                loop {
+                    elements.push(self.parse_expression()?);
+                    if !self.match_token(&Token::Comma) {
+                        break;
+                    }
+                }
+            }
+
+            self.consume(Token::RightBracket, "Expected ']' after array elements")?;
+            let end = self.previous_span().end;
+
+            return Ok(Expression::Literal(Literal::Array(elements, Span::new(start, end))));
+        }
+
         Err(DiagnosticError::Syntax("Expected expression".to_string()))
     }
 
@@ -560,11 +622,14 @@ impl Parser {
             Expression::Unary { span, .. } => span.start,
             Expression::Literal(lit) => match lit {
                 Literal::Bool(_, s) | Literal::Integer(_, s) |
-                Literal::String(_, s) | Literal::InterpolatedString(_, s) => s.start,
+                Literal::String(_, s) | Literal::InterpolatedString(_, s) |
+                Literal::Array(_, s) => s.start,
             },
             Expression::Identifier { span, .. } => span.start,
             Expression::Call { span, .. } => span.start,
             Expression::Assignment { span, .. } => span.start,
+            Expression::Index { span, .. } => span.start,
+            Expression::MethodCall { span, .. } => span.start,
             Expression::Block(b) => b.span.start,
         };
         Span::new(start, end)

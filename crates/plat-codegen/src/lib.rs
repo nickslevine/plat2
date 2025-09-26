@@ -5,7 +5,7 @@ use plat_ast::{self as ast, *};
 use cranelift_codegen::ir::types::*;
 use std::os::raw::c_char;
 use cranelift_codegen::ir::{
-    AbiParam, Value, condcodes::IntCC,
+    AbiParam, Value, condcodes::IntCC, StackSlotData, StackSlotKind, MemFlags,
 };
 use cranelift_codegen::isa::CallConv;
 use cranelift_codegen::settings::{self, Configurable};
@@ -188,6 +188,9 @@ impl CodeGenerator {
                 let var_type = match value {
                     Expression::Literal(Literal::String(_, _)) => I64,
                     Expression::Literal(Literal::InterpolatedString(_, _)) => I64,
+                    Expression::Literal(Literal::Array(_, _)) => I64,
+                    Expression::Index { .. } => I32, // Array indexing returns i32 elements
+                    Expression::MethodCall { method, .. } if method == "len" => I32, // len() returns i32
                     _ => I32,
                 };
 
@@ -205,6 +208,9 @@ impl CodeGenerator {
                 let var_type = match value {
                     Expression::Literal(Literal::String(_, _)) => I64,
                     Expression::Literal(Literal::InterpolatedString(_, _)) => I64,
+                    Expression::Literal(Literal::Array(_, _)) => I64,
+                    Expression::Index { .. } => I32, // Array indexing returns i32 elements
+                    Expression::MethodCall { method, .. } if method == "len" => I32, // len() returns i32
                     _ => I32,
                 };
 
@@ -443,6 +449,67 @@ impl CodeGenerator {
                     Ok(results[0])
                 }
             }
+            Expression::Index { object, index, .. } => {
+                let object_val = Self::generate_expression_helper(builder, object, variables, functions, module, string_counter)?;
+                let index_val = Self::generate_expression_helper(builder, index, variables, functions, module, string_counter)?;
+
+                // Declare plat_array_get function
+                let get_sig = {
+                    let mut sig = module.make_signature();
+                    sig.call_conv = CallConv::SystemV;
+                    sig.params.push(AbiParam::new(I64)); // array pointer
+                    sig.params.push(AbiParam::new(I64)); // index (we'll convert i32 to usize)
+                    sig.returns.push(AbiParam::new(I32)); // element value
+                    sig
+                };
+
+                let get_id = module.declare_function("plat_array_get", Linkage::Import, &get_sig)
+                    .map_err(CodegenError::ModuleError)?;
+                let get_ref = module.declare_func_in_func(get_id, builder.func);
+
+                // Convert i32 index to i64 for function call
+                let index_i64 = builder.ins().uextend(I64, index_val);
+
+                // Call plat_array_get
+                let call = builder.ins().call(get_ref, &[object_val, index_i64]);
+                let result = builder.inst_results(call)[0];
+
+                Ok(result)
+            }
+            Expression::MethodCall { object, method, args, .. } => {
+                match method.as_str() {
+                    "len" => {
+                        if !args.is_empty() {
+                            return Err(CodegenError::UnsupportedFeature("len() method takes no arguments".to_string()));
+                        }
+
+                        let object_val = Self::generate_expression_helper(builder, object, variables, functions, module, string_counter)?;
+
+                        // Declare plat_array_len function
+                        let len_sig = {
+                            let mut sig = module.make_signature();
+                            sig.call_conv = CallConv::SystemV;
+                            sig.params.push(AbiParam::new(I64)); // array pointer
+                            sig.returns.push(AbiParam::new(I64)); // length
+                            sig
+                        };
+
+                        let len_id = module.declare_function("plat_array_len", Linkage::Import, &len_sig)
+                            .map_err(CodegenError::ModuleError)?;
+                        let len_ref = module.declare_func_in_func(len_id, builder.func);
+
+                        // Call plat_array_len
+                        let call = builder.ins().call(len_ref, &[object_val]);
+                        let len_i64 = builder.inst_results(call)[0];
+
+                        // Convert length from i64 to i32 for consistency
+                        let len_i32 = builder.ins().ireduce(I32, len_i64);
+
+                        Ok(len_i32)
+                    }
+                    _ => Err(CodegenError::UnsupportedFeature(format!("Method '{}' not implemented", method)))
+                }
+            }
             _ => {
                 // TODO: Implement blocks, etc.
                 Err(CodegenError::UnsupportedFeature("Complex expressions not yet implemented".to_string()))
@@ -596,22 +663,27 @@ impl CodeGenerator {
                 // Convert expression values to strings
                 let mut string_values = Vec::new();
                 for expr_val in expression_values {
-                    // For now, assume all expressions are i32. In a full implementation,
-                    // we'd check the type and call the appropriate conversion function
-                    let convert_sig = {
-                        let mut sig = module.make_signature();
-                        sig.call_conv = CallConv::SystemV;
-                        sig.params.push(AbiParam::new(I32)); // value
-                        sig.returns.push(AbiParam::new(I64)); // string pointer
-                        sig
+                    // Check the type of the value to determine how to handle it
+                    let val_type = builder.func.dfg.value_type(expr_val);
+
+                    let string_val = if val_type == I64 {
+                        // I64 values are assumed to be string pointers, use directly
+                        expr_val
+                    } else {
+                        // I32 values need to be converted to strings
+                        let convert_sig = {
+                            let mut sig = module.make_signature();
+                            sig.call_conv = CallConv::SystemV;
+                            sig.params.push(AbiParam::new(I32));
+                            sig.returns.push(AbiParam::new(I64));
+                            sig
+                        };
+                        let convert_id = module.declare_function("plat_i32_to_string", Linkage::Import, &convert_sig)
+                            .map_err(CodegenError::ModuleError)?;
+                        let convert_ref = module.declare_func_in_func(convert_id, builder.func);
+                        let call = builder.ins().call(convert_ref, &[expr_val]);
+                        builder.inst_results(call)[0]
                     };
-
-                    let convert_id = module.declare_function("plat_i32_to_string", Linkage::Import, &convert_sig)
-                        .map_err(CodegenError::ModuleError)?;
-                    let convert_ref = module.declare_func_in_func(convert_id, builder.func);
-
-                    let call = builder.ins().call(convert_ref, &[expr_val]);
-                    let string_val = builder.inst_results(call)[0];
                     string_values.push(string_val);
                 }
 
@@ -666,6 +738,53 @@ impl CodeGenerator {
                 let result = builder.inst_results(call)[0];
 
                 Ok(result)
+            }
+            Literal::Array(elements, _) => {
+                // First, evaluate all elements
+                let mut element_values = Vec::new();
+                for element in elements {
+                    let element_val = Self::generate_expression_helper(builder, element, variables, functions, module, string_counter)?;
+                    element_values.push(element_val);
+                }
+
+                // Create array literal on stack temporarily
+                let count = elements.len() as i64;
+                let element_size = std::mem::size_of::<i32>() as i64;
+                let total_size = count * element_size;
+
+                // Allocate stack space for temporary array data
+                let stack_slot = builder.create_sized_stack_slot(StackSlotData::new(StackSlotKind::ExplicitSlot, total_size as u32, 4));
+
+                // Store each element to the stack array
+                for (i, &element_val) in element_values.iter().enumerate() {
+                    let offset = (i as i64) * element_size;
+                    let addr = builder.ins().stack_addr(I64, stack_slot, offset as i32);
+                    builder.ins().store(MemFlags::new(), element_val, addr, 0);
+                }
+
+                // Get pointer to stack array data
+                let stack_addr = builder.ins().stack_addr(I64, stack_slot, 0);
+
+                // Declare plat_array_create function
+                let create_sig = {
+                    let mut sig = module.make_signature();
+                    sig.call_conv = CallConv::SystemV;
+                    sig.params.push(AbiParam::new(I64)); // elements pointer
+                    sig.params.push(AbiParam::new(I64)); // count
+                    sig.returns.push(AbiParam::new(I64)); // array pointer
+                    sig
+                };
+
+                let create_id = module.declare_function("plat_array_create", Linkage::Import, &create_sig)
+                    .map_err(CodegenError::ModuleError)?;
+                let create_ref = module.declare_func_in_func(create_id, builder.func);
+
+                // Call plat_array_create with stack data and count
+                let count_val = builder.ins().iconst(I64, count);
+                let call = builder.ins().call(create_ref, &[stack_addr, count_val]);
+                let array_ptr = builder.inst_results(call)[0];
+
+                Ok(array_ptr)
             }
         }
     }

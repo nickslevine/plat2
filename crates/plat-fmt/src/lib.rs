@@ -64,13 +64,17 @@ impl Formatter {
     }
 
     fn format_type(&mut self, ty: &Type) {
-        let type_str = match ty {
-            Type::Bool => "bool",
-            Type::I32 => "i32",
-            Type::I64 => "i64",
-            Type::String => "string",
-        };
-        self.write(type_str);
+        match ty {
+            Type::Bool => self.write("bool"),
+            Type::I32 => self.write("i32"),
+            Type::I64 => self.write("i64"),
+            Type::String => self.write("string"),
+            Type::List(element_type) => {
+                self.write("List[");
+                self.format_type(element_type);
+                self.write("]");
+            }
+        }
     }
 
     fn format_function_block(&mut self, block: &Block) {
@@ -194,6 +198,25 @@ impl Formatter {
                 self.write(" = ");
                 self.format_expression(value);
             }
+            Expression::Index { object, index, .. } => {
+                self.format_expression(object);
+                self.write("[");
+                self.format_expression(index);
+                self.write("]");
+            }
+            Expression::MethodCall { object, method, args, .. } => {
+                self.format_expression(object);
+                self.write(".");
+                self.write(method);
+                self.write("(");
+                for (i, arg) in args.iter().enumerate() {
+                    if i > 0 {
+                        self.write(", ");
+                    }
+                    self.format_expression(arg);
+                }
+                self.write(")");
+            }
             Expression::Block(block) => {
                 self.format_function_block(block);
             }
@@ -244,6 +267,16 @@ impl Formatter {
                     }
                 }
                 self.write("\"");
+            }
+            Literal::Array(elements, _) => {
+                self.write("[");
+                for (i, element) in elements.iter().enumerate() {
+                    if i > 0 {
+                        self.write(", ");
+                    }
+                    self.format_expression(element);
+                }
+                self.write("]");
             }
         }
     }
