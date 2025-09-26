@@ -3,6 +3,7 @@ fn main() -> i32 {
   let len = arr.len();
   let first = arr[0];
   print("Array has ${len} elements, first is ${first}");
+  print("About to print array");
   print("${arr}");
   return 0;
 }

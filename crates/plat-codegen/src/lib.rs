@@ -16,6 +16,16 @@ use cranelift_module::{Linkage, Module, ModuleError, FuncId, DataDescription};
 use cranelift_object::{ObjectBuilder, ObjectModule};
 use std::collections::HashMap;
 
+/// Track the original Plat types of variables for better codegen decisions
+#[derive(Debug, Clone, PartialEq)]
+pub enum VariableType {
+    Bool,
+    I32,
+    I64,
+    String,
+    Array,
+}
+
 pub struct CodeGenerator {
     module: ObjectModule,
     context: Context,
@@ -117,6 +127,7 @@ impl CodeGenerator {
 
         // Create local variables map for this function
         let mut variables = HashMap::new();
+        let mut variable_types = HashMap::new(); // Track original variable types
         let mut variable_counter = 0u32;
 
         // Add function parameters as variables
@@ -127,6 +138,10 @@ impl CodeGenerator {
             builder.declare_var(var, I32);
             builder.def_var(var, params[i]);
             variables.insert(param.name.clone(), var);
+
+            // Track parameter type (for now, assume all params are I32)
+            // TODO: Get actual parameter type from function signature
+            variable_types.insert(param.name.clone(), VariableType::I32);
         }
 
         // Generate function body - we need to avoid borrowing conflicts
@@ -138,6 +153,7 @@ impl CodeGenerator {
                 &mut builder,
                 statement,
                 &mut variables,
+                &mut variable_types,
                 &mut variable_counter,
                 &functions_copy,
                 &mut self.module,
@@ -173,6 +189,7 @@ impl CodeGenerator {
         builder: &mut FunctionBuilder,
         statement: &Statement,
         variables: &mut HashMap<String, Variable>,
+        variable_types: &mut HashMap<String, VariableType>,
         variable_counter: &mut u32,
         functions: &HashMap<String, FuncId>,
         module: &mut ObjectModule,
@@ -180,48 +197,52 @@ impl CodeGenerator {
     ) -> Result<bool, CodegenError> {
         match statement {
             Statement::Let { name, value, .. } => {
-                let val = Self::generate_expression_helper(builder, value, variables, functions, module, string_counter)?;
+                let val = Self::generate_expression_helper(builder, value, variables, variable_types, functions, module, string_counter)?;
                 let var = Variable::from_u32(*variable_counter);
                 *variable_counter += 1;
 
-                // Determine type based on expression
-                let var_type = match value {
-                    Expression::Literal(Literal::String(_, _)) => I64,
-                    Expression::Literal(Literal::InterpolatedString(_, _)) => I64,
-                    Expression::Literal(Literal::Array(_, _)) => I64,
-                    Expression::Index { .. } => I32, // Array indexing returns i32 elements
-                    Expression::MethodCall { method, .. } if method == "len" => I32, // len() returns i32
-                    _ => I32,
+                // Determine Cranelift type and Plat type based on expression
+                let (cranelift_type, plat_type) = match value {
+                    Expression::Literal(Literal::String(_, _)) => (I64, VariableType::String),
+                    Expression::Literal(Literal::InterpolatedString(_, _)) => (I64, VariableType::String),
+                    Expression::Literal(Literal::Array(_, _)) => (I64, VariableType::Array),
+                    Expression::Index { .. } => (I32, VariableType::I32), // Array indexing returns i32 elements
+                    Expression::MethodCall { method, .. } if method == "len" => (I32, VariableType::I32), // len() returns i32
+                    Expression::Literal(Literal::Bool(_, _)) => (I32, VariableType::Bool),
+                    _ => (I32, VariableType::I32),
                 };
 
-                builder.declare_var(var, var_type);
+                builder.declare_var(var, cranelift_type);
                 builder.def_var(var, val);
                 variables.insert(name.clone(), var);
+                variable_types.insert(name.clone(), plat_type);
                 Ok(false)
             }
             Statement::Var { name, value, .. } => {
-                let val = Self::generate_expression_helper(builder, value, variables, functions, module, string_counter)?;
+                let val = Self::generate_expression_helper(builder, value, variables, variable_types, functions, module, string_counter)?;
                 let var = Variable::from_u32(*variable_counter);
                 *variable_counter += 1;
 
-                // Determine type based on expression
-                let var_type = match value {
-                    Expression::Literal(Literal::String(_, _)) => I64,
-                    Expression::Literal(Literal::InterpolatedString(_, _)) => I64,
-                    Expression::Literal(Literal::Array(_, _)) => I64,
-                    Expression::Index { .. } => I32, // Array indexing returns i32 elements
-                    Expression::MethodCall { method, .. } if method == "len" => I32, // len() returns i32
-                    _ => I32,
+                // Determine Cranelift type and Plat type based on expression
+                let (cranelift_type, plat_type) = match value {
+                    Expression::Literal(Literal::String(_, _)) => (I64, VariableType::String),
+                    Expression::Literal(Literal::InterpolatedString(_, _)) => (I64, VariableType::String),
+                    Expression::Literal(Literal::Array(_, _)) => (I64, VariableType::Array),
+                    Expression::Index { .. } => (I32, VariableType::I32), // Array indexing returns i32 elements
+                    Expression::MethodCall { method, .. } if method == "len" => (I32, VariableType::I32), // len() returns i32
+                    Expression::Literal(Literal::Bool(_, _)) => (I32, VariableType::Bool),
+                    _ => (I32, VariableType::I32),
                 };
 
-                builder.declare_var(var, var_type);
+                builder.declare_var(var, cranelift_type);
                 builder.def_var(var, val);
                 variables.insert(name.clone(), var);
+                variable_types.insert(name.clone(), plat_type);
                 Ok(false)
             }
             Statement::Return { value, .. } => {
                 if let Some(expr) = value {
-                    let val = Self::generate_expression_helper(builder, expr, variables, functions, module, string_counter)?;
+                    let val = Self::generate_expression_helper(builder, expr, variables, variable_types, functions, module, string_counter)?;
                     builder.ins().return_(&[val]);
                 } else {
                     builder.ins().return_(&[]);
@@ -229,12 +250,12 @@ impl CodeGenerator {
                 Ok(true)
             }
             Statement::Expression(expr) => {
-                Self::generate_expression_helper(builder, expr, variables, functions, module, string_counter)?;
+                Self::generate_expression_helper(builder, expr, variables, variable_types, functions, module, string_counter)?;
                 Ok(false)
             }
             Statement::Print { value, .. } => {
                 // Generate the value to print
-                let val = Self::generate_expression_helper(builder, value, variables, functions, module, string_counter)?;
+                let val = Self::generate_expression_helper(builder, value, variables, variable_types, functions, module, string_counter)?;
 
                 // Call the print runtime function
                 // For now, we need to declare the print function if it's not already declared
@@ -270,13 +291,14 @@ impl CodeGenerator {
         builder: &mut FunctionBuilder,
         expr: &Expression,
         variables: &HashMap<String, Variable>,
+        variable_types: &HashMap<String, VariableType>,
         functions: &HashMap<String, FuncId>,
         module: &mut ObjectModule,
         string_counter: &mut usize
     ) -> Result<Value, CodegenError> {
         match expr {
             Expression::Literal(literal) => {
-                Self::generate_literal(builder, literal, variables, functions, module, string_counter)
+                Self::generate_literal(builder, literal, variables, variable_types, functions, module, string_counter)
             }
             Expression::Identifier { name, .. } => {
                 if let Some(&var) = variables.get(name) {
@@ -292,8 +314,8 @@ impl CodeGenerator {
                     BinaryOp::Divide | BinaryOp::Modulo | BinaryOp::Equal |
                     BinaryOp::NotEqual | BinaryOp::Less | BinaryOp::LessEqual |
                     BinaryOp::Greater | BinaryOp::GreaterEqual => {
-                        let left_val = Self::generate_expression_helper(builder, left, variables, functions, module, string_counter)?;
-                        let right_val = Self::generate_expression_helper(builder, right, variables, functions, module, string_counter)?;
+                        let left_val = Self::generate_expression_helper(builder, left, variables, variable_types, functions, module, string_counter)?;
+                        let right_val = Self::generate_expression_helper(builder, right, variables, variable_types, functions, module, string_counter)?;
 
                         match op {
                             BinaryOp::Add => Ok(builder.ins().iadd(left_val, right_val)),
@@ -330,7 +352,7 @@ impl CodeGenerator {
                     }
                     BinaryOp::And => {
                         // Short-circuit AND: evaluate left first
-                        let left_val = Self::generate_expression_helper(builder, left, variables, functions, module, string_counter)?;
+                        let left_val = Self::generate_expression_helper(builder, left, variables, variable_types, functions, module, string_counter)?;
 
                         // If left is false, don't evaluate right
                         let zero = builder.ins().iconst(I32, 0);
@@ -351,7 +373,7 @@ impl CodeGenerator {
                         builder.seal_block(eval_right_block);
 
                         // Now evaluate the right operand
-                        let right_val = Self::generate_expression_helper(builder, right, variables, functions, module, string_counter)?;
+                        let right_val = Self::generate_expression_helper(builder, right, variables, variable_types, functions, module, string_counter)?;
                         let right_is_true = builder.ins().icmp_imm(IntCC::NotEqual, right_val, 0);
                         let right_as_i32 = builder.ins().uextend(I32, right_is_true);
                         builder.ins().jump(merge_block, &[right_as_i32]);
@@ -364,7 +386,7 @@ impl CodeGenerator {
                     }
                     BinaryOp::Or => {
                         // Short-circuit OR: evaluate left first
-                        let left_val = Self::generate_expression_helper(builder, left, variables, functions, module, string_counter)?;
+                        let left_val = Self::generate_expression_helper(builder, left, variables, variable_types, functions, module, string_counter)?;
 
                         // If left is true, don't evaluate right
                         let one = builder.ins().iconst(I32, 1);
@@ -385,7 +407,7 @@ impl CodeGenerator {
                         builder.seal_block(eval_right_block);
 
                         // Now evaluate the right operand
-                        let right_val = Self::generate_expression_helper(builder, right, variables, functions, module, string_counter)?;
+                        let right_val = Self::generate_expression_helper(builder, right, variables, variable_types, functions, module, string_counter)?;
                         let right_is_true = builder.ins().icmp_imm(IntCC::NotEqual, right_val, 0);
                         let right_as_i32 = builder.ins().uextend(I32, right_is_true);
                         builder.ins().jump(merge_block, &[right_as_i32]);
@@ -399,7 +421,7 @@ impl CodeGenerator {
                 }
             }
             Expression::Unary { op, operand, .. } => {
-                let operand_val = Self::generate_expression_helper(builder, operand, variables, functions, module, string_counter)?;
+                let operand_val = Self::generate_expression_helper(builder, operand, variables, variable_types, functions, module, string_counter)?;
 
                 match op {
                     UnaryOp::Negate => Ok(builder.ins().ineg(operand_val)),
@@ -412,7 +434,7 @@ impl CodeGenerator {
                 }
             }
             Expression::Assignment { name, value, .. } => {
-                let val = Self::generate_expression_helper(builder, value, variables, functions, module, string_counter)?;
+                let val = Self::generate_expression_helper(builder, value, variables, variable_types, functions, module, string_counter)?;
                 if let Some(&var) = variables.get(name) {
                     builder.def_var(var, val);
                     Ok(val)
@@ -433,7 +455,7 @@ impl CodeGenerator {
                 // Evaluate arguments
                 let mut arg_values = Vec::new();
                 for arg in args {
-                    let arg_val = Self::generate_expression_helper(builder, arg, variables, functions, module, string_counter)?;
+                    let arg_val = Self::generate_expression_helper(builder, arg, variables, variable_types, functions, module, string_counter)?;
                     arg_values.push(arg_val);
                 }
 
@@ -450,8 +472,8 @@ impl CodeGenerator {
                 }
             }
             Expression::Index { object, index, .. } => {
-                let object_val = Self::generate_expression_helper(builder, object, variables, functions, module, string_counter)?;
-                let index_val = Self::generate_expression_helper(builder, index, variables, functions, module, string_counter)?;
+                let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter)?;
+                let index_val = Self::generate_expression_helper(builder, index, variables, variable_types, functions, module, string_counter)?;
 
                 // Declare plat_array_get function
                 let get_sig = {
@@ -483,7 +505,7 @@ impl CodeGenerator {
                             return Err(CodegenError::UnsupportedFeature("len() method takes no arguments".to_string()));
                         }
 
-                        let object_val = Self::generate_expression_helper(builder, object, variables, functions, module, string_counter)?;
+                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter)?;
 
                         // Declare plat_array_len function
                         let len_sig = {
@@ -521,6 +543,7 @@ impl CodeGenerator {
         builder: &mut FunctionBuilder,
         literal: &Literal,
         variables: &HashMap<String, Variable>,
+        variable_types: &HashMap<String, VariableType>,
         functions: &HashMap<String, FuncId>,
         module: &mut ObjectModule,
         string_counter: &mut usize
@@ -621,9 +644,9 @@ impl CodeGenerator {
                     return Ok(builder.ins().symbol_value(I64, string_ref));
                 }
 
-                // Build template with ${N} placeholders and collect expression values
+                // Build template with ${N} placeholders and collect expression values with their types
                 let mut template = String::new();
-                let mut expression_values = Vec::new();
+                let mut expression_data = Vec::new(); // Store (value, expression) pairs
                 let mut placeholder_count = 0;
 
                 for part in parts {
@@ -637,9 +660,9 @@ impl CodeGenerator {
 
                             // Generate the expression value
                             let expr_val = Self::generate_expression_helper(
-                                builder, expr, variables, functions, module, string_counter
+                                builder, expr, variables, variable_types, functions, module, string_counter
                             )?;
-                            expression_values.push(expr_val);
+                            expression_data.push((expr_val, expr.as_ref()));
                         }
                     }
                 }
@@ -660,29 +683,146 @@ impl CodeGenerator {
                 let template_ref = module.declare_data_in_func(template_id, builder.func);
                 let template_ptr = builder.ins().symbol_value(I64, template_ref);
 
-                // Convert expression values to strings
+                // Convert expression values to strings based on their original types
                 let mut string_values = Vec::new();
-                for expr_val in expression_values {
-                    // Check the type of the value to determine how to handle it
-                    let val_type = builder.func.dfg.value_type(expr_val);
-
-                    let string_val = if val_type == I64 {
-                        // I64 values are assumed to be string pointers, use directly
-                        expr_val
-                    } else {
-                        // I32 values need to be converted to strings
-                        let convert_sig = {
-                            let mut sig = module.make_signature();
-                            sig.call_conv = CallConv::SystemV;
-                            sig.params.push(AbiParam::new(I32));
-                            sig.returns.push(AbiParam::new(I64));
-                            sig
-                        };
-                        let convert_id = module.declare_function("plat_i32_to_string", Linkage::Import, &convert_sig)
-                            .map_err(CodegenError::ModuleError)?;
-                        let convert_ref = module.declare_func_in_func(convert_id, builder.func);
-                        let call = builder.ins().call(convert_ref, &[expr_val]);
-                        builder.inst_results(call)[0]
+                for (expr_val, expr) in expression_data {
+                    let string_val = match expr {
+                        // String literals and variables are already string pointers
+                        Expression::Literal(Literal::String(_, _)) => expr_val,
+                        Expression::Literal(Literal::InterpolatedString(_, _)) => expr_val,
+                        Expression::Identifier { name, .. } => {
+                            // Use the variable type information to determine conversion
+                            match variable_types.get(name) {
+                                Some(VariableType::String) => {
+                                    // String variable, use directly
+                                    expr_val
+                                }
+                                Some(VariableType::Array) => {
+                                    // Array variable, convert to string representation
+                                    let convert_sig = {
+                                        let mut sig = module.make_signature();
+                                        sig.call_conv = CallConv::SystemV;
+                                        sig.params.push(AbiParam::new(I64));
+                                        sig.returns.push(AbiParam::new(I64));
+                                        sig
+                                    };
+                                    let convert_id = module.declare_function("plat_array_to_string", Linkage::Import, &convert_sig)
+                                        .map_err(CodegenError::ModuleError)?;
+                                    let convert_ref = module.declare_func_in_func(convert_id, builder.func);
+                                    let call = builder.ins().call(convert_ref, &[expr_val]);
+                                    builder.inst_results(call)[0]
+                                }
+                                Some(VariableType::I32) | Some(VariableType::Bool) => {
+                                    // I32/boolean variable, convert to string
+                                    let convert_sig = {
+                                        let mut sig = module.make_signature();
+                                        sig.call_conv = CallConv::SystemV;
+                                        sig.params.push(AbiParam::new(I32));
+                                        sig.returns.push(AbiParam::new(I64));
+                                        sig
+                                    };
+                                    let convert_id = module.declare_function("plat_i32_to_string", Linkage::Import, &convert_sig)
+                                        .map_err(CodegenError::ModuleError)?;
+                                    let convert_ref = module.declare_func_in_func(convert_id, builder.func);
+                                    let call = builder.ins().call(convert_ref, &[expr_val]);
+                                    builder.inst_results(call)[0]
+                                }
+                                Some(VariableType::I64) => {
+                                    // I64 variable, convert to string
+                                    let convert_sig = {
+                                        let mut sig = module.make_signature();
+                                        sig.call_conv = CallConv::SystemV;
+                                        sig.params.push(AbiParam::new(I64));
+                                        sig.returns.push(AbiParam::new(I64));
+                                        sig
+                                    };
+                                    let convert_id = module.declare_function("plat_i64_to_string", Linkage::Import, &convert_sig)
+                                        .map_err(CodegenError::ModuleError)?;
+                                    let convert_ref = module.declare_func_in_func(convert_id, builder.func);
+                                    let call = builder.ins().call(convert_ref, &[expr_val]);
+                                    builder.inst_results(call)[0]
+                                }
+                                None => {
+                                    // Unknown variable type, fall back to runtime type detection
+                                    let val_type = builder.func.dfg.value_type(expr_val);
+                                    if val_type == I64 {
+                                        // Assume it's a string pointer
+                                        expr_val
+                                    } else {
+                                        // I32 value, convert to string
+                                        let convert_sig = {
+                                            let mut sig = module.make_signature();
+                                            sig.call_conv = CallConv::SystemV;
+                                            sig.params.push(AbiParam::new(I32));
+                                            sig.returns.push(AbiParam::new(I64));
+                                            sig
+                                        };
+                                        let convert_id = module.declare_function("plat_i32_to_string", Linkage::Import, &convert_sig)
+                                            .map_err(CodegenError::ModuleError)?;
+                                        let convert_ref = module.declare_func_in_func(convert_id, builder.func);
+                                        let call = builder.ins().call(convert_ref, &[expr_val]);
+                                        builder.inst_results(call)[0]
+                                    }
+                                }
+                            }
+                        }
+                        // Array expressions need to be converted to strings
+                        Expression::Literal(Literal::Array(_, _)) |
+                        Expression::Index { .. } => {
+                            // Arrays and indexing results - convert arrays to strings, but indexing gives i32
+                            let val_type = builder.func.dfg.value_type(expr_val);
+                            if val_type == I64 {
+                                // This is an array pointer, convert to string
+                                let convert_sig = {
+                                    let mut sig = module.make_signature();
+                                    sig.call_conv = CallConv::SystemV;
+                                    sig.params.push(AbiParam::new(I64));
+                                    sig.returns.push(AbiParam::new(I64));
+                                    sig
+                                };
+                                let convert_id = module.declare_function("plat_array_to_string", Linkage::Import, &convert_sig)
+                                    .map_err(CodegenError::ModuleError)?;
+                                let convert_ref = module.declare_func_in_func(convert_id, builder.func);
+                                let call = builder.ins().call(convert_ref, &[expr_val]);
+                                builder.inst_results(call)[0]
+                            } else {
+                                // This is an i32 (from indexing), convert to string
+                                let convert_sig = {
+                                    let mut sig = module.make_signature();
+                                    sig.call_conv = CallConv::SystemV;
+                                    sig.params.push(AbiParam::new(I32));
+                                    sig.returns.push(AbiParam::new(I64));
+                                    sig
+                                };
+                                let convert_id = module.declare_function("plat_i32_to_string", Linkage::Import, &convert_sig)
+                                    .map_err(CodegenError::ModuleError)?;
+                                let convert_ref = module.declare_func_in_func(convert_id, builder.func);
+                                let call = builder.ins().call(convert_ref, &[expr_val]);
+                                builder.inst_results(call)[0]
+                            }
+                        }
+                        _ => {
+                            // For other expressions, check the runtime type
+                            let val_type = builder.func.dfg.value_type(expr_val);
+                            if val_type == I64 {
+                                // Assume it's a string pointer
+                                expr_val
+                            } else {
+                                // I32 value, convert to string
+                                let convert_sig = {
+                                    let mut sig = module.make_signature();
+                                    sig.call_conv = CallConv::SystemV;
+                                    sig.params.push(AbiParam::new(I32));
+                                    sig.returns.push(AbiParam::new(I64));
+                                    sig
+                                };
+                                let convert_id = module.declare_function("plat_i32_to_string", Linkage::Import, &convert_sig)
+                                    .map_err(CodegenError::ModuleError)?;
+                                let convert_ref = module.declare_func_in_func(convert_id, builder.func);
+                                let call = builder.ins().call(convert_ref, &[expr_val]);
+                                builder.inst_results(call)[0]
+                            }
+                        }
                     };
                     string_values.push(string_val);
                 }
@@ -743,7 +883,7 @@ impl CodeGenerator {
                 // First, evaluate all elements
                 let mut element_values = Vec::new();
                 for element in elements {
-                    let element_val = Self::generate_expression_helper(builder, element, variables, functions, module, string_counter)?;
+                    let element_val = Self::generate_expression_helper(builder, element, variables, variable_types, functions, module, string_counter)?;
                     element_values.push(element_val);
                 }
 

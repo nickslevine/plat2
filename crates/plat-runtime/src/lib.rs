@@ -379,8 +379,12 @@ pub extern "C" fn plat_print(str_ptr: *const c_char) {
 
     unsafe {
         match CStr::from_ptr(str_ptr).to_str() {
-            Ok(s) => println!("{}", s),
-            Err(_) => println!("<invalid UTF-8>"),
+            Ok(s) => {
+                println!("{}", s);
+            }
+            Err(_) => {
+                println!("<invalid UTF-8>");
+            }
         }
     }
 }
@@ -391,11 +395,16 @@ pub extern "C" fn plat_print(str_ptr: *const c_char) {
 /// This function is unsafe because it returns raw pointers to GC memory
 #[no_mangle]
 pub extern "C" fn plat_gc_alloc(size: usize) -> *mut u8 {
-    let vec = vec![0u8; size];
-    let gc_vec = Gc::new(vec);
-    // For the gc crate, we need to use a different approach
-    // This is a simplified version - real implementation would need more care
-    Box::into_raw(Box::new(gc_vec.clone())) as *mut Vec<u8> as *mut u8
+    // Temporary fix: use simple heap allocation instead of GC
+    // TODO: Replace with proper GC allocation once the issue is resolved
+    let layout = std::alloc::Layout::from_size_align(size, 1).unwrap();
+    let ptr = unsafe { std::alloc::alloc_zeroed(layout) };
+
+    if ptr.is_null() {
+        return std::ptr::null_mut();
+    }
+
+    ptr
 }
 
 /// C-compatible GC collection function that can be called from generated code
@@ -506,7 +515,9 @@ pub extern "C" fn plat_string_interpolate(
     let template = unsafe {
         match CStr::from_ptr(template_ptr).to_str() {
             Ok(s) => s,
-            Err(_) => return std::ptr::null(),
+            Err(_) => {
+                return std::ptr::null();
+            }
         }
     };
 
@@ -518,6 +529,7 @@ pub extern "C" fn plat_string_interpolate(
 
         if !values_ptr.is_null() {
             let value_ptr = unsafe { *values_ptr.add(i) };
+
             if !value_ptr.is_null() {
                 let value_str = unsafe {
                     match CStr::from_ptr(value_ptr).to_str() {
@@ -525,6 +537,7 @@ pub extern "C" fn plat_string_interpolate(
                         Err(_) => "<invalid>",
                     }
                 };
+
                 result = result.replace(&placeholder, value_str);
             }
         }
@@ -652,6 +665,7 @@ pub extern "C" fn plat_array_to_string(array_ptr: *const RuntimeArray) -> *const
 
     unsafe {
         let array = &*array_ptr;
+
         let mut result = String::from("[");
 
         for i in 0..array.length {
