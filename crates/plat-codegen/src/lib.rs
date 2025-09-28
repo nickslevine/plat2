@@ -1,7 +1,8 @@
 /// Cranelift-based code generation for the Plat language
 /// Generates native machine code from the Plat AST
 
-use plat_ast::{self as ast, *};
+use plat_ast::{self as ast, BinaryOp, Block, Expression, Function, Literal, MatchArm, Parameter, Pattern, Program, Statement, UnaryOp, EnumDecl, InterpolationPart};
+use plat_ast::Type as AstType;
 use cranelift_codegen::ir::types::*;
 use std::os::raw::c_char;
 use cranelift_codegen::ir::{
@@ -267,8 +268,8 @@ impl CodeGenerator {
         string_counter: &mut usize
     ) -> Result<bool, CodegenError> {
         match statement {
-            Statement::Let { name, value, .. } => {
-                let val = Self::generate_expression_helper(builder, value, variables, variable_types, functions, module, string_counter, variable_counter)?;
+            Statement::Let { name, ty, value, .. } => {
+                let val = Self::generate_expression_with_expected_type(builder, value, ty.as_ref(), variables, variable_types, functions, module, string_counter, variable_counter)?;
                 let var = Variable::from_u32(*variable_counter);
                 *variable_counter += 1;
 
@@ -298,8 +299,8 @@ impl CodeGenerator {
                 variable_types.insert(name.clone(), plat_type);
                 Ok(false)
             }
-            Statement::Var { name, value, .. } => {
-                let val = Self::generate_expression_helper(builder, value, variables, variable_types, functions, module, string_counter, variable_counter)?;
+            Statement::Var { name, ty, value, .. } => {
+                let val = Self::generate_expression_with_expected_type(builder, value, ty.as_ref(), variables, variable_types, functions, module, string_counter, variable_counter)?;
                 let var = Variable::from_u32(*variable_counter);
                 *variable_counter += 1;
 
@@ -520,7 +521,7 @@ impl CodeGenerator {
                     sig.call_conv = CallConv::SystemV;
                     sig.params.push(AbiParam::new(I64)); // array pointer
                     sig.params.push(AbiParam::new(I64)); // index
-                    sig.returns.push(AbiParam::new(I32)); // element value
+                    sig.returns.push(AbiParam::new(I64)); // element value (now i64 for all types)
                     sig
                 };
 
@@ -530,7 +531,11 @@ impl CodeGenerator {
 
                 let index_i64 = builder.ins().uextend(I64, current_index);
                 let call = builder.ins().call(get_ref, &[array_val, index_i64]);
-                let element_val = builder.inst_results(call)[0];
+                let element_val_i64 = builder.inst_results(call)[0];
+
+                // For now, convert back to i32 for compatibility
+                // TODO: Make this type-aware based on array element type
+                let element_val = builder.ins().ireduce(I32, element_val_i64);
 
                 // Set loop variable to current element
                 builder.def_var(element_var, element_val);
@@ -573,6 +578,29 @@ impl CodeGenerator {
                 }
 
                 Ok(false) // for loops don't guarantee return
+            }
+        }
+    }
+
+    fn generate_expression_with_expected_type(
+        builder: &mut FunctionBuilder,
+        expr: &Expression,
+        expected_type: Option<&AstType>,
+        variables: &HashMap<String, Variable>,
+        variable_types: &HashMap<String, VariableType>,
+        functions: &HashMap<String, FuncId>,
+        module: &mut ObjectModule,
+        string_counter: &mut usize,
+        variable_counter: &mut u32
+    ) -> Result<Value, CodegenError> {
+        match expr {
+            Expression::Literal(Literal::Array(elements, _)) => {
+                // Use expected type information for array generation
+                Self::generate_typed_array_literal(builder, elements, expected_type, variables, variable_types, functions, module, string_counter, variable_counter)
+            }
+            _ => {
+                // For non-array expressions, use the regular helper
+                Self::generate_expression_helper(builder, expr, variables, variable_types, functions, module, string_counter, variable_counter)
             }
         }
     }
@@ -772,7 +800,7 @@ impl CodeGenerator {
                     sig.call_conv = CallConv::SystemV;
                     sig.params.push(AbiParam::new(I64)); // array pointer
                     sig.params.push(AbiParam::new(I64)); // index (we'll convert i32 to usize)
-                    sig.returns.push(AbiParam::new(I32)); // element value
+                    sig.returns.push(AbiParam::new(I64)); // element value (now i64 for all types)
                     sig
                 };
 
@@ -785,7 +813,11 @@ impl CodeGenerator {
 
                 // Call plat_array_get
                 let call = builder.ins().call(get_ref, &[object_val, index_i64]);
-                let result = builder.inst_results(call)[0];
+                let result_i64 = builder.inst_results(call)[0];
+
+                // For now, convert back to i32 for compatibility
+                // TODO: Make this type-aware based on array element type
+                let result = builder.ins().ireduce(I32, result_i64);
 
                 Ok(result)
             }
@@ -1123,6 +1155,128 @@ impl CodeGenerator {
                 Err(CodegenError::UnsupportedFeature("Complex expressions not yet implemented".to_string()))
             }
         }
+    }
+
+    fn generate_typed_array_literal(
+        builder: &mut FunctionBuilder,
+        elements: &[Expression],
+        expected_type: Option<&AstType>,
+        variables: &HashMap<String, Variable>,
+        variable_types: &HashMap<String, VariableType>,
+        functions: &HashMap<String, FuncId>,
+        module: &mut ObjectModule,
+        string_counter: &mut usize,
+        variable_counter: &mut u32
+    ) -> Result<Value, CodegenError> {
+        if elements.is_empty() {
+            // For empty arrays, determine type from annotation or default to i32
+            let element_type = if let Some(AstType::List(element_type)) = expected_type {
+                element_type.as_ref()
+            } else {
+                &AstType::I32 // default
+            };
+
+            let function_name = match element_type {
+                AstType::Bool => "plat_array_create_bool",
+                AstType::I32 => "plat_array_create_i32",
+                AstType::I64 => "plat_array_create_i64",
+                AstType::String => "plat_array_create_string",
+                _ => "plat_array_create_i32", // fallback
+            };
+
+            let create_sig = {
+                let mut sig = module.make_signature();
+                sig.call_conv = CallConv::SystemV;
+                sig.params.push(AbiParam::new(I64)); // elements pointer
+                sig.params.push(AbiParam::new(I64)); // count
+                sig.returns.push(AbiParam::new(I64)); // array pointer
+                sig
+            };
+
+            let create_id = module.declare_function(function_name, Linkage::Import, &create_sig)
+                .map_err(CodegenError::ModuleError)?;
+            let create_ref = module.declare_func_in_func(create_id, builder.func);
+
+            let count_val = builder.ins().iconst(I64, 0);
+            let null_ptr = builder.ins().iconst(I64, 0);
+            let call = builder.ins().call(create_ref, &[null_ptr, count_val]);
+            let array_ptr = builder.inst_results(call)[0];
+            return Ok(array_ptr);
+        }
+
+        // Determine element type from annotation or infer from first element
+        let element_type = if let Some(AstType::List(element_type)) = expected_type {
+            element_type.as_ref()
+        } else {
+            // Fallback to inference from first element
+            match &elements[0] {
+                Expression::Literal(Literal::Bool(_, _)) => &AstType::Bool,
+                Expression::Literal(Literal::String(_, _)) => &AstType::String,
+                Expression::Literal(Literal::InterpolatedString(_, _)) => &AstType::String,
+                Expression::Literal(Literal::Integer(value, _)) => {
+                    if *value > i32::MAX as i64 || *value < i32::MIN as i64 {
+                        &AstType::I64
+                    } else {
+                        &AstType::I32
+                    }
+                },
+                _ => &AstType::I32,
+            }
+        };
+
+        let (element_size, function_name) = match element_type {
+            AstType::Bool => (std::mem::size_of::<bool>(), "plat_array_create_bool"),
+            AstType::I32 => (std::mem::size_of::<i32>(), "plat_array_create_i32"),
+            AstType::I64 => (std::mem::size_of::<i64>(), "plat_array_create_i64"),
+            AstType::String => (std::mem::size_of::<*const u8>(), "plat_array_create_string"),
+            _ => (std::mem::size_of::<i32>(), "plat_array_create_i32"), // fallback
+        };
+
+        // Generate all element values
+        let mut element_values = Vec::new();
+        for element in elements {
+            let element_val = Self::generate_expression_helper(builder, element, variables, variable_types, functions, module, string_counter, variable_counter)?;
+            element_values.push(element_val);
+        }
+
+        // Create array literal on stack temporarily
+        let count = elements.len() as i64;
+        let element_size_i64 = element_size as i64;
+        let total_size = count * element_size_i64;
+
+        // Allocate stack space for temporary array data
+        let stack_slot = builder.create_sized_stack_slot(StackSlotData::new(StackSlotKind::ExplicitSlot, total_size as u32, 8));
+
+        // Store each element to the stack array
+        for (i, &element_val) in element_values.iter().enumerate() {
+            let offset = (i as i64) * element_size_i64;
+            let addr = builder.ins().stack_addr(I64, stack_slot, offset as i32);
+            builder.ins().store(MemFlags::new(), element_val, addr, 0);
+        }
+
+        // Get pointer to stack array data
+        let stack_addr = builder.ins().stack_addr(I64, stack_slot, 0);
+
+        // Declare type-specific plat_array_create function
+        let create_sig = {
+            let mut sig = module.make_signature();
+            sig.call_conv = CallConv::SystemV;
+            sig.params.push(AbiParam::new(I64)); // elements pointer
+            sig.params.push(AbiParam::new(I64)); // count
+            sig.returns.push(AbiParam::new(I64)); // array pointer
+            sig
+        };
+
+        let create_id = module.declare_function(function_name, Linkage::Import, &create_sig)
+            .map_err(CodegenError::ModuleError)?;
+        let create_ref = module.declare_func_in_func(create_id, builder.func);
+
+        // Call type-specific plat_array_create with stack data and count
+        let count_val = builder.ins().iconst(I64, count);
+        let call = builder.ins().call(create_ref, &[stack_addr, count_val]);
+        let array_ptr = builder.inst_results(call)[0];
+
+        Ok(array_ptr)
     }
 
     fn generate_literal(

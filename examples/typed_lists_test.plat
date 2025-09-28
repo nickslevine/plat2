@@ -1,0 +1,37 @@
+fn main() {
+  // Test with explicit type annotations
+
+  // bool list with explicit type
+  let flags: List[bool] = [true, false, true, false];
+  print("bool list: ${flags}");
+  print("First flag: ${flags[0]}");
+  print("Flags length: ${flags.len()}");
+
+  // string list with explicit type
+  let words: List[string] = ["hello", "world", "plat"];
+  print("string list: ${words}");
+  print("First word: ${words[0]}");
+  print("Words length: ${words.len()}");
+
+  // i32 list with explicit type
+  let numbers: List[i32] = [10, 20, 30];
+  print("i32 list: ${numbers}");
+  print("First number: ${numbers[0]}");
+  print("Numbers length: ${numbers.len()}");
+
+  // Test iterations
+  print("Iterating flags:");
+  for (flag in flags) {
+    print("Flag: ${flag}");
+  }
+
+  print("Iterating words:");
+  for (word in words) {
+    print("Word: ${word}");
+  }
+
+  print("Iterating numbers:");
+  for (num in numbers) {
+    print("Number: ${num}");
+  }
+}

@@ -562,20 +562,49 @@ pub extern "C" fn plat_string_interpolate(
     gc_ptr as *const c_char
 }
 
+// Array element type constants
+pub const ARRAY_TYPE_I32: u8 = 0;
+pub const ARRAY_TYPE_I64: u8 = 1;
+pub const ARRAY_TYPE_BOOL: u8 = 2;
+pub const ARRAY_TYPE_STRING: u8 = 3;
+
 /// Array structure for runtime (C-compatible)
+/// Generic data pointer that can hold any type
 #[repr(C)]
 pub struct RuntimeArray {
-    data: *mut i32,
+    data: *mut u8, // Generic byte pointer for any type
     length: usize,
     capacity: usize,
+    element_size: usize, // Size of each element in bytes
+    element_type: u8, // Type discriminant: 0=i32, 1=i64, 2=bool, 3=string
 }
 
-/// Create a new array on the GC heap
-///
-/// # Safety
-/// This function allocates GC memory and returns raw pointers
+/// Create a new i32 array on the GC heap
 #[no_mangle]
-pub extern "C" fn plat_array_create(elements: *const i32, count: usize) -> *mut RuntimeArray {
+pub extern "C" fn plat_array_create_i32(elements: *const i32, count: usize) -> *mut RuntimeArray {
+    create_typed_array(elements as *const u8, count, std::mem::size_of::<i32>(), ARRAY_TYPE_I32)
+}
+
+/// Create a new i64 array on the GC heap
+#[no_mangle]
+pub extern "C" fn plat_array_create_i64(elements: *const i64, count: usize) -> *mut RuntimeArray {
+    create_typed_array(elements as *const u8, count, std::mem::size_of::<i64>(), ARRAY_TYPE_I64)
+}
+
+/// Create a new bool array on the GC heap
+#[no_mangle]
+pub extern "C" fn plat_array_create_bool(elements: *const bool, count: usize) -> *mut RuntimeArray {
+    create_typed_array(elements as *const u8, count, std::mem::size_of::<bool>(), ARRAY_TYPE_BOOL)
+}
+
+/// Create a new string array on the GC heap
+#[no_mangle]
+pub extern "C" fn plat_array_create_string(elements: *const *const c_char, count: usize) -> *mut RuntimeArray {
+    create_typed_array(elements as *const u8, count, std::mem::size_of::<*const c_char>(), ARRAY_TYPE_STRING)
+}
+
+/// Generic array creation helper
+fn create_typed_array(elements: *const u8, count: usize, element_size: usize, element_type: u8) -> *mut RuntimeArray {
     if elements.is_null() && count > 0 {
         return std::ptr::null_mut();
     }
@@ -589,9 +618,9 @@ pub extern "C" fn plat_array_create(elements: *const i32, count: usize) -> *mut 
     }
 
     // Allocate space for the data
-    let data_size = count * std::mem::size_of::<i32>();
+    let data_size = count * element_size;
     let data_ptr = if count > 0 {
-        plat_gc_alloc(data_size) as *mut i32
+        plat_gc_alloc(data_size)
     } else {
         std::ptr::null_mut()
     };
@@ -603,7 +632,7 @@ pub extern "C" fn plat_array_create(elements: *const i32, count: usize) -> *mut 
     // Copy elements to the data array
     if count > 0 {
         unsafe {
-            std::ptr::copy_nonoverlapping(elements, data_ptr, count);
+            std::ptr::copy_nonoverlapping(elements, data_ptr, data_size);
         }
     }
 
@@ -613,28 +642,53 @@ pub extern "C" fn plat_array_create(elements: *const i32, count: usize) -> *mut 
             data: data_ptr,
             length: count,
             capacity: count,
+            element_size,
+            element_type,
         };
     }
 
     array_ptr
 }
 
-/// Get an element from an array by index
-///
-/// # Safety
-/// This function works with raw pointers from generated code
+/// Legacy function for backward compatibility
 #[no_mangle]
-pub extern "C" fn plat_array_get(array_ptr: *const RuntimeArray, index: usize) -> i32 {
+pub extern "C" fn plat_array_create(elements: *const i32, count: usize) -> *mut RuntimeArray {
+    plat_array_create_i32(elements, count)
+}
+
+/// Legacy function that returns the appropriate type based on array discriminant
+/// Returns as i64 to handle all types uniformly (bool fits in i32, strings return pointer)
+#[no_mangle]
+pub extern "C" fn plat_array_get(array_ptr: *const RuntimeArray, index: usize) -> i64 {
     if array_ptr.is_null() {
-        return 0; // Default value for error case
+        return 0;
     }
 
     unsafe {
         let array = &*array_ptr;
         if index >= array.length || array.data.is_null() {
-            return 0; // Out of bounds, return default
+            return 0;
         }
-        *array.data.add(index)
+
+        match array.element_type {
+            ARRAY_TYPE_I32 => {
+                let data_ptr = array.data as *const i32;
+                *data_ptr.add(index) as i64
+            },
+            ARRAY_TYPE_I64 => {
+                let data_ptr = array.data as *const i64;
+                *data_ptr.add(index)
+            },
+            ARRAY_TYPE_BOOL => {
+                let data_ptr = array.data as *const bool;
+                if *data_ptr.add(index) { 1 } else { 0 }
+            },
+            ARRAY_TYPE_STRING => {
+                let data_ptr = array.data as *const *const c_char;
+                *data_ptr.add(index) as i64
+            },
+            _ => 0,
+        }
     }
 }
 
@@ -673,8 +727,42 @@ pub extern "C" fn plat_array_to_string(array_ptr: *const RuntimeArray) -> *const
                 result.push_str(", ");
             }
             if !array.data.is_null() {
-                let value = *array.data.add(i);
-                result.push_str(&value.to_string());
+                match array.element_type {
+                    ARRAY_TYPE_I32 => {
+                        let data_ptr = array.data as *const i32;
+                        let value = *data_ptr.add(i);
+                        result.push_str(&value.to_string());
+                    },
+                    ARRAY_TYPE_I64 => {
+                        let data_ptr = array.data as *const i64;
+                        let value = *data_ptr.add(i);
+                        result.push_str(&value.to_string());
+                    },
+                    ARRAY_TYPE_BOOL => {
+                        let data_ptr = array.data as *const bool;
+                        let value = *data_ptr.add(i);
+                        result.push_str(if value { "true" } else { "false" });
+                    },
+                    ARRAY_TYPE_STRING => {
+                        let data_ptr = array.data as *const *const c_char;
+                        let string_ptr = *data_ptr.add(i);
+                        if !string_ptr.is_null() {
+                            let c_str = std::ffi::CStr::from_ptr(string_ptr);
+                            if let Ok(str_slice) = c_str.to_str() {
+                                result.push('"');
+                                result.push_str(str_slice);
+                                result.push('"');
+                            } else {
+                                result.push_str("\"<invalid>\"");
+                            }
+                        } else {
+                            result.push_str("\"<null>\"");
+                        }
+                    },
+                    _ => {
+                        result.push_str("<unknown>");
+                    }
+                }
             }
         }
 
