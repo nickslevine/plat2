@@ -8,6 +8,7 @@ use std::collections::HashMap;
 pub struct TypeChecker {
     scopes: Vec<HashMap<String, HirType>>,
     functions: HashMap<String, FunctionSignature>,
+    enums: HashMap<String, EnumInfo>,
     current_function_return_type: Option<HirType>,
 }
 
@@ -18,6 +19,7 @@ pub enum HirType {
     I64,
     String,
     List(Box<HirType>),
+    Enum(String, Vec<HirType>), // name, type parameters
     Unit, // For functions that don't return anything
 }
 
@@ -25,6 +27,22 @@ pub enum HirType {
 pub struct FunctionSignature {
     pub params: Vec<HirType>,
     pub return_type: HirType,
+    pub is_mutable: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct EnumInfo {
+    pub name: String,
+    pub type_params: Vec<String>,
+    pub variants: HashMap<String, Vec<HirType>>, // variant name -> field types
+    pub methods: HashMap<String, FunctionSignature>,
+}
+
+#[derive(Debug, Clone)]
+pub struct VariantInfo {
+    pub enum_name: String,
+    pub variant_name: String,
+    pub field_types: Vec<HirType>,
 }
 
 impl TypeChecker {
@@ -32,14 +50,28 @@ impl TypeChecker {
         Self {
             scopes: vec![HashMap::new()], // Global scope
             functions: HashMap::new(),
+            enums: HashMap::new(),
             current_function_return_type: None,
         }
     }
 
     pub fn check_program(mut self, program: &Program) -> Result<(), DiagnosticError> {
-        // First pass: collect all function signatures
+        // First pass: collect all enum definitions
+        for enum_decl in &program.enums {
+            self.collect_enum_info(enum_decl)?;
+        }
+
+        // Second pass: collect all function signatures (including enum methods)
         for function in &program.functions {
             self.collect_function_signature(function)?;
+        }
+
+        // Collect enum method signatures
+        for enum_decl in &program.enums {
+            for method in &enum_decl.methods {
+                let method_name = format!("{}::{}", enum_decl.name, method.name);
+                self.collect_function_signature_with_name(&method_name, method)?;
+            }
         }
 
         // Check that main function exists
@@ -63,15 +95,77 @@ impl TypeChecker {
             ));
         }
 
-        // Second pass: type check all functions
+        // Third pass: type check all functions
         for function in &program.functions {
             self.check_function(function)?;
+        }
+
+        // Type check enum methods
+        for enum_decl in &program.enums {
+            for method in &enum_decl.methods {
+                self.check_enum_method(enum_decl, method)?;
+            }
+        }
+
+        Ok(())
+    }
+
+    fn collect_enum_info(&mut self, enum_decl: &EnumDecl) -> Result<(), DiagnosticError> {
+        let mut variants = HashMap::new();
+        let mut methods = HashMap::new();
+
+        // Collect variant information
+        for variant in &enum_decl.variants {
+            let field_types: Result<Vec<HirType>, DiagnosticError> = variant.fields
+                .iter()
+                .map(|field_type| self.ast_type_to_hir_type(field_type))
+                .collect();
+
+            variants.insert(variant.name.clone(), field_types?);
+        }
+
+        // Collect method signatures
+        for method in &enum_decl.methods {
+            let param_types: Result<Vec<HirType>, DiagnosticError> = method.params
+                .iter()
+                .map(|param| self.ast_type_to_hir_type(&param.ty))
+                .collect();
+
+            let return_type = match &method.return_type {
+                Some(ty) => self.ast_type_to_hir_type(ty)?,
+                None => HirType::Unit,
+            };
+
+            let signature = FunctionSignature {
+                params: param_types?,
+                return_type,
+                is_mutable: method.is_mutable,
+            };
+
+            methods.insert(method.name.clone(), signature);
+        }
+
+        let enum_info = EnumInfo {
+            name: enum_decl.name.clone(),
+            type_params: enum_decl.type_params.clone(),
+            variants,
+            methods,
+        };
+
+        if self.enums.insert(enum_decl.name.clone(), enum_info).is_some() {
+            return Err(DiagnosticError::Type(
+                format!("Enum '{}' is defined multiple times", enum_decl.name)
+            ));
         }
 
         Ok(())
     }
 
     fn collect_function_signature(&mut self, function: &Function) -> Result<(), DiagnosticError> {
+        self.collect_function_signature_with_name(&function.name, function)
+    }
+
+    fn collect_function_signature_with_name(&mut self, name: &str, function: &Function) -> Result<(), DiagnosticError> {
         let param_types: Result<Vec<HirType>, DiagnosticError> = function.params
             .iter()
             .map(|param| self.ast_type_to_hir_type(&param.ty))
@@ -85,11 +179,12 @@ impl TypeChecker {
         let signature = FunctionSignature {
             params: param_types?,
             return_type,
+            is_mutable: function.is_mutable,
         };
 
-        if self.functions.insert(function.name.clone(), signature).is_some() {
+        if self.functions.insert(name.to_string(), signature).is_some() {
             return Err(DiagnosticError::Type(
-                format!("Function '{}' is defined multiple times", function.name)
+                format!("Function '{}' is defined multiple times", name)
             ));
         }
 
@@ -351,6 +446,100 @@ impl TypeChecker {
                 self.pop_scope();
                 Ok(HirType::Unit)
             }
+            Expression::EnumConstructor { enum_name, variant, args, .. } => {
+                // Check if enum exists and get variant fields
+                let variant_fields = {
+                    let enum_info = self.enums.get(enum_name)
+                        .ok_or_else(|| DiagnosticError::Type(
+                            format!("Unknown enum '{}'", enum_name)
+                        ))?;
+
+                    // Check if variant exists
+                    enum_info.variants.get(variant)
+                        .ok_or_else(|| DiagnosticError::Type(
+                            format!("Enum '{}' has no variant '{}'", enum_name, variant)
+                        ))?.clone()
+                };
+
+                // Check argument count
+                if args.len() != variant_fields.len() {
+                    return Err(DiagnosticError::Type(
+                        format!("Variant '{}::{}' expects {} arguments, got {}",
+                            enum_name, variant, variant_fields.len(), args.len())
+                    ));
+                }
+
+                // Check argument types
+                for (i, (arg, expected_type)) in args.iter().zip(variant_fields.iter()).enumerate() {
+                    let arg_type = self.check_expression(arg)?;
+                    if arg_type != *expected_type {
+                        return Err(DiagnosticError::Type(
+                            format!("Argument {} of variant '{}::{}' has type {:?}, expected {:?}",
+                                i + 1, enum_name, variant, arg_type, expected_type)
+                        ));
+                    }
+                }
+
+                // Return the enum type (for now without type parameters)
+                Ok(HirType::Enum(enum_name.clone(), vec![]))
+            }
+            Expression::Match { value, arms, .. } => {
+                let value_type = self.check_expression(value)?;
+
+                // Ensure match value is an enum
+                let (enum_name, _type_params) = match &value_type {
+                    HirType::Enum(name, params) => (name.clone(), params.clone()),
+                    _ => return Err(DiagnosticError::Type(
+                        format!("Match expressions can only be used with enums, got {:?}", value_type)
+                    ))
+                };
+
+                if arms.is_empty() {
+                    return Err(DiagnosticError::Type(
+                        "Match expression must have at least one arm".to_string()
+                    ));
+                }
+
+                // Check all arms have consistent return type
+                let mut result_type = None;
+                let mut covered_variants = std::collections::HashSet::new();
+
+                for arm in arms {
+                    // Type check the pattern
+                    self.check_pattern(&arm.pattern, &value_type)?;
+
+                    // Track covered variants for exhaustiveness checking
+                    if let Pattern::EnumVariant { variant, .. } = &arm.pattern {
+                        covered_variants.insert(variant.clone());
+                    }
+
+                    // Type check the arm body
+                    let arm_type = self.check_expression(&arm.body)?;
+
+                    match &result_type {
+                        None => result_type = Some(arm_type),
+                        Some(expected) => {
+                            if arm_type != *expected {
+                                return Err(DiagnosticError::Type(
+                                    format!("Match arm returns type {:?}, expected {:?}", arm_type, expected)
+                                ));
+                            }
+                        }
+                    }
+                }
+
+                // Check exhaustiveness
+                let enum_variants: Vec<String> = self.enums[&enum_name].variants.keys().cloned().collect();
+                for variant_name in &enum_variants {
+                    if !covered_variants.contains(variant_name) {
+                        return Err(DiagnosticError::Type(
+                            format!("Match expression is not exhaustive: missing variant '{}'", variant_name)
+                        ));
+                    }
+                }
+
+                Ok(result_type.unwrap())
+            }
         }
     }
 
@@ -457,6 +646,20 @@ impl TypeChecker {
                 let element_hir_type = self.ast_type_to_hir_type(element_type)?;
                 Ok(HirType::List(Box::new(element_hir_type)))
             }
+            Type::Named(name, type_params) => {
+                // Check if this is a known enum
+                if self.enums.contains_key(name) {
+                    let type_args: Result<Vec<HirType>, DiagnosticError> = type_params
+                        .iter()
+                        .map(|param| self.ast_type_to_hir_type(param))
+                        .collect();
+                    Ok(HirType::Enum(name.clone(), type_args?))
+                } else {
+                    Err(DiagnosticError::Type(
+                        format!("Unknown type '{}'", name)
+                    ))
+                }
+            }
         }
     }
 
@@ -477,5 +680,108 @@ impl TypeChecker {
 
     fn pop_scope(&mut self) {
         self.scopes.pop();
+    }
+
+    fn check_pattern(&mut self, pattern: &Pattern, expected_type: &HirType) -> Result<(), DiagnosticError> {
+        match pattern {
+            Pattern::EnumVariant { enum_name, variant, bindings, .. } => {
+                // Get expected enum name
+                let expected_enum = match expected_type {
+                    HirType::Enum(name, _) => name,
+                    _ => return Err(DiagnosticError::Type(
+                        format!("Pattern expects enum type, got {:?}", expected_type)
+                    ))
+                };
+
+                // Check enum name matches (if specified)
+                if let Some(pattern_enum) = enum_name {
+                    if pattern_enum != expected_enum {
+                        return Err(DiagnosticError::Type(
+                            format!("Pattern expects enum '{}', got '{}'", expected_enum, pattern_enum)
+                        ));
+                    }
+                }
+
+                // Check variant exists and get field types
+                let variant_fields = {
+                    let enum_info = &self.enums[expected_enum];
+                    enum_info.variants.get(variant)
+                        .ok_or_else(|| DiagnosticError::Type(
+                            format!("Enum '{}' has no variant '{}'", expected_enum, variant)
+                        ))?.clone()
+                };
+
+                // Check binding count matches field count
+                if bindings.len() != variant_fields.len() {
+                    return Err(DiagnosticError::Type(
+                        format!("Variant '{}::{}' has {} fields, but pattern has {} bindings",
+                            expected_enum, variant, variant_fields.len(), bindings.len())
+                    ));
+                }
+
+                // Add bindings to current scope
+                for (binding, field_type) in bindings.iter().zip(variant_fields.iter()) {
+                    if self.scopes.last().unwrap().contains_key(binding) {
+                        return Err(DiagnosticError::Type(
+                            format!("Variable '{}' is already bound in this pattern", binding)
+                        ));
+                    }
+                    self.scopes.last_mut().unwrap().insert(binding.clone(), field_type.clone());
+                }
+
+                Ok(())
+            }
+            Pattern::Identifier { name, .. } => {
+                // Simple binding pattern
+                self.scopes.last_mut().unwrap().insert(name.clone(), expected_type.clone());
+                Ok(())
+            }
+            Pattern::Literal(literal) => {
+                // Check literal type matches expected type
+                let literal_type = self.check_literal(literal)?;
+                if literal_type != *expected_type {
+                    return Err(DiagnosticError::Type(
+                        format!("Literal pattern has type {:?}, expected {:?}", literal_type, expected_type)
+                    ));
+                }
+                Ok(())
+            }
+        }
+    }
+
+    fn check_enum_method(&mut self, enum_decl: &EnumDecl, method: &Function) -> Result<(), DiagnosticError> {
+        // Set up method scope with implicit self parameter
+        self.push_scope();
+
+        // Add self parameter of enum type
+        let self_type = HirType::Enum(enum_decl.name.clone(), vec![]); // For now, no generics
+        self.scopes.last_mut().unwrap().insert("self".to_string(), self_type);
+
+        // Add method parameters
+        for param in &method.params {
+            let param_type = self.ast_type_to_hir_type(&param.ty)?;
+            if self.scopes.last().unwrap().contains_key(&param.name) {
+                return Err(DiagnosticError::Type(
+                    format!("Parameter '{}' shadows another variable", param.name)
+                ));
+            }
+            self.scopes.last_mut().unwrap().insert(param.name.clone(), param_type);
+        }
+
+        // Set current function return type
+        let old_return_type = self.current_function_return_type.clone();
+        self.current_function_return_type = match &method.return_type {
+            Some(ty) => Some(self.ast_type_to_hir_type(ty)?),
+            None => Some(HirType::Unit),
+        };
+
+        // Check method body
+        self.check_block(&method.body)?;
+
+        // Restore previous return type
+        self.current_function_return_type = old_return_type;
+
+        self.pop_scope();
+        Ok(())
     }
 }

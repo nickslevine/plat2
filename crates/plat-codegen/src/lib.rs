@@ -24,6 +24,7 @@ pub enum VariableType {
     I64,
     String,
     Array,
+    Enum(String), // enum name
 }
 
 pub struct CodeGenerator {
@@ -62,14 +63,30 @@ impl CodeGenerator {
     }
 
     pub fn generate_code(mut self, program: &Program) -> Result<Vec<u8>, CodegenError> {
-        // First pass: declare all functions
+        // First pass: declare all functions (including enum methods)
         for function in &program.functions {
             self.declare_function(function)?;
+        }
+
+        // Declare enum methods
+        for enum_decl in &program.enums {
+            for method in &enum_decl.methods {
+                let method_name = format!("{}::{}", enum_decl.name, method.name);
+                self.declare_function_with_name(&method_name, method)?;
+            }
         }
 
         // Second pass: generate code for all functions
         for function in &program.functions {
             self.generate_function(function)?;
+        }
+
+        // Generate code for enum methods
+        for enum_decl in &program.enums {
+            for method in &enum_decl.methods {
+                let method_name = format!("{}::{}", enum_decl.name, method.name);
+                self.generate_function_with_name(&method_name, method)?;
+            }
         }
 
         // Finalize the module and return object code
@@ -78,10 +95,20 @@ impl CodeGenerator {
     }
 
     fn declare_function(&mut self, function: &ast::Function) -> Result<(), CodegenError> {
+        self.declare_function_with_name(&function.name, function)
+    }
+
+    fn declare_function_with_name(&mut self, name: &str, function: &ast::Function) -> Result<(), CodegenError> {
         let mut sig = self.module.make_signature();
 
         // Set calling convention
         sig.call_conv = CallConv::SystemV;
+
+        // Add implicit self parameter for enum methods
+        if name.contains("::") {
+            // This is an enum method, add self parameter (represented as i64 for enum value)
+            sig.params.push(AbiParam::new(I64));
+        }
 
         // Add parameters
         for _param in &function.params {
@@ -93,21 +120,25 @@ impl CodeGenerator {
         if let Some(_return_type) = &function.return_type {
             // For now, treat all returns as i32
             sig.returns.push(AbiParam::new(I32));
-        } else if function.name == "main" {
+        } else if function.name == "main" || name == "main" {
             // Main function always returns i32 (exit code) even if not specified
             sig.returns.push(AbiParam::new(I32));
         }
 
-        let func_id = self.module.declare_function(&function.name, Linkage::Export, &sig)
+        let func_id = self.module.declare_function(name, Linkage::Export, &sig)
             .map_err(CodegenError::ModuleError)?;
 
-        self.functions.insert(function.name.clone(), func_id);
+        self.functions.insert(name.to_string(), func_id);
 
         Ok(())
     }
 
     fn generate_function(&mut self, function: &ast::Function) -> Result<(), CodegenError> {
-        let func_id = self.functions[&function.name];
+        self.generate_function_with_name(&function.name, function)
+    }
+
+    fn generate_function_with_name(&mut self, name: &str, function: &ast::Function) -> Result<(), CodegenError> {
+        let func_id = self.functions[name];
 
         // Get function signature
         let sig = self.module.declarations().get_function_decl(func_id).signature.clone();
@@ -209,6 +240,8 @@ impl CodeGenerator {
                     Expression::Index { .. } => (I32, VariableType::I32), // Array indexing returns i32 elements
                     Expression::MethodCall { method, .. } if method == "len" => (I32, VariableType::I32), // len() returns i32
                     Expression::Literal(Literal::Bool(_, _)) => (I32, VariableType::Bool),
+                    Expression::EnumConstructor { enum_name, .. } => (I64, VariableType::Enum(enum_name.clone())),
+                    Expression::Match { .. } => (I32, VariableType::I32), // Match returns i32 for now
                     _ => (I32, VariableType::I32),
                 };
 
@@ -231,6 +264,8 @@ impl CodeGenerator {
                     Expression::Index { .. } => (I32, VariableType::I32), // Array indexing returns i32 elements
                     Expression::MethodCall { method, .. } if method == "len" => (I32, VariableType::I32), // len() returns i32
                     Expression::Literal(Literal::Bool(_, _)) => (I32, VariableType::Bool),
+                    Expression::EnumConstructor { enum_name, .. } => (I64, VariableType::Enum(enum_name.clone())),
+                    Expression::Match { .. } => (I32, VariableType::I32), // Match returns i32 for now
                     _ => (I32, VariableType::I32),
                 };
 
@@ -733,6 +768,93 @@ impl CodeGenerator {
                     _ => Err(CodegenError::UnsupportedFeature(format!("Method '{}' not implemented", method)))
                 }
             }
+            Expression::EnumConstructor { enum_name, variant, args, .. } => {
+                // For simplicity, represent enums as i64 values
+                // Discriminant in high 32 bits, payload in low 32 bits (if single i32)
+                // For multiple fields, we'd need more complex encoding
+
+                // TODO: Proper enum variant tracking and discriminant assignment
+                // For now, use a simple hash of variant name as discriminant
+                let discriminant = Self::variant_discriminant(enum_name, variant);
+
+                if args.is_empty() {
+                    // Unit variant - just the discriminant
+                    let disc_val = builder.ins().iconst(I64, discriminant as i64);
+                    Ok(disc_val)
+                } else if args.len() == 1 {
+                    // Single field variant - pack discriminant and value
+                    let arg_val = Self::generate_expression_helper(builder, &args[0], variables, variable_types, functions, module, string_counter)?;
+                    let disc_val = builder.ins().iconst(I64, discriminant as i64);
+                    let disc_shifted = builder.ins().ishl_imm(disc_val, 32);
+                    let arg_extended = builder.ins().uextend(I64, arg_val);
+                    let packed = builder.ins().bor(disc_shifted, arg_extended);
+                    Ok(packed)
+                } else {
+                    // Multiple fields - for now, not supported
+                    Err(CodegenError::UnsupportedFeature(
+                        "Enum variants with multiple fields not yet supported".to_string()
+                    ))
+                }
+            }
+            Expression::Match { value, arms, .. } => {
+                let value_val = Self::generate_expression_helper(builder, value, variables, variable_types, functions, module, string_counter)?;
+
+                // Extract discriminant from high 32 bits
+                let disc_val = builder.ins().ushr_imm(value_val, 32);
+                let disc_i32 = builder.ins().ireduce(I32, disc_val);
+
+                // Create blocks for each arm plus a continuation block
+                let mut arm_blocks = Vec::new();
+                let cont_block = builder.create_block();
+
+                for _ in arms {
+                    arm_blocks.push(builder.create_block());
+                }
+
+                // For now, use simple conditional jumps instead of br_table
+                // TODO: Implement proper jump table for efficiency
+                let mut current_block = builder.current_block().unwrap();
+
+                for (i, arm) in arms.iter().enumerate() {
+                    if let Pattern::EnumVariant { variant, .. } = &arm.pattern {
+                        let disc = Self::variant_discriminant("", variant);
+                        let expected_disc = builder.ins().iconst(I32, disc as i64);
+                        let cmp = builder.ins().icmp(cranelift_codegen::ir::condcodes::IntCC::Equal, disc_i32, expected_disc);
+
+                        let next_check_block = if i + 1 < arms.len() {
+                            builder.create_block()
+                        } else {
+                            cont_block // Last case, jump to continuation
+                        };
+
+                        builder.ins().brif(cmp, arm_blocks[i], &[], next_check_block, &[]);
+
+                        if i + 1 < arms.len() {
+                            builder.switch_to_block(next_check_block);
+                            current_block = next_check_block;
+                        }
+                    }
+                }
+
+                // Generate code for each arm
+                let mut result_values = Vec::new();
+                for (i, arm) in arms.iter().enumerate() {
+                    builder.switch_to_block(arm_blocks[i]);
+
+                    // TODO: Handle pattern bindings by extracting payload from value_val
+
+                    let arm_result = Self::generate_expression_helper(builder, &arm.body, variables, variable_types, functions, module, string_counter)?;
+                    result_values.push(arm_result);
+                    builder.ins().jump(cont_block, &[arm_result]);
+                }
+
+                // Continuation block
+                builder.switch_to_block(cont_block);
+                builder.append_block_param(cont_block, I32);
+                let result = builder.block_params(cont_block)[0];
+
+                Ok(result)
+            }
             _ => {
                 // TODO: Implement blocks, etc.
                 Err(CodegenError::UnsupportedFeature("Complex expressions not yet implemented".to_string()))
@@ -943,6 +1065,21 @@ impl CodeGenerator {
                                     let call = builder.ins().call(convert_ref, &[expr_val]);
                                     builder.inst_results(call)[0]
                                 }
+                                Some(VariableType::Enum(_)) => {
+                                    // Enum variable, convert to string representation
+                                    let convert_sig = {
+                                        let mut sig = module.make_signature();
+                                        sig.call_conv = CallConv::SystemV;
+                                        sig.params.push(AbiParam::new(I64));
+                                        sig.returns.push(AbiParam::new(I64));
+                                        sig
+                                    };
+                                    let convert_id = module.declare_function("plat_enum_to_string", Linkage::Import, &convert_sig)
+                                        .map_err(CodegenError::ModuleError)?;
+                                    let convert_ref = module.declare_func_in_func(convert_id, builder.func);
+                                    let call = builder.ins().call(convert_ref, &[expr_val]);
+                                    builder.inst_results(call)[0]
+                                }
                                 None => {
                                     // Unknown variable type, fall back to runtime type detection
                                     let val_type = builder.func.dfg.value_type(expr_val);
@@ -1128,6 +1265,17 @@ impl CodeGenerator {
                 Ok(array_ptr)
             }
         }
+    }
+
+    fn variant_discriminant(_enum_name: &str, variant_name: &str) -> u32 {
+        // Simple hash function for variant discriminants
+        // In a real implementation, this would be tracked per enum
+        let mut hash = 0u32;
+        for byte in variant_name.bytes() {
+            hash = hash.wrapping_mul(31).wrapping_add(byte as u32);
+        }
+        // Ensure we use only the high 32 bits for discriminant
+        hash
     }
 }
 

@@ -57,7 +57,14 @@ impl Lexer {
                 ']' => self.add_token(Token::RightBracket, start),
                 ';' => self.add_token(Token::Semicolon, start),
                 ',' => self.add_token(Token::Comma, start),
-                ':' => self.add_token(Token::Colon, start),
+                ':' => {
+                    if self.peek() == Some(':') {
+                        self.advance();
+                        self.add_token(Token::DoubleColon, start);
+                    } else {
+                        self.add_token(Token::Colon, start);
+                    }
+                }
                 '.' => self.add_token(Token::Dot, start),
                 '=' => {
                     if self.peek() == Some('=') {

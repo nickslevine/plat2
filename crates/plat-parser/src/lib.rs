@@ -19,16 +19,23 @@ impl Parser {
 
     pub fn parse(mut self) -> Result<Program, DiagnosticError> {
         let mut functions = Vec::new();
+        let mut enums = Vec::new();
 
         while !self.is_at_end() {
-            functions.push(self.parse_function()?);
+            if self.check(&Token::Enum) {
+                enums.push(self.parse_enum()?);
+            } else {
+                functions.push(self.parse_function()?);
+            }
         }
 
-        Ok(Program { functions })
+        Ok(Program { functions, enums })
     }
 
     fn parse_function(&mut self) -> Result<Function, DiagnosticError> {
         let start = self.current_span().start;
+
+        let is_mutable = self.match_token(&Token::Mut);
 
         self.consume(Token::Fn, "Expected 'fn'")?;
 
@@ -54,6 +61,7 @@ impl Parser {
             params,
             return_type,
             body,
+            is_mutable,
             span: Span::new(start, end),
         })
     }
@@ -94,14 +102,25 @@ impl Parser {
 
         let type_name = self.consume_identifier("Expected type name")?;
 
+        // Check for generic type parameters
+        if self.match_token(&Token::Less) {
+            let mut type_params = Vec::new();
+            loop {
+                type_params.push(self.parse_type()?);
+                if !self.match_token(&Token::Comma) {
+                    break;
+                }
+            }
+            self.consume(Token::Greater, "Expected '>' after type parameters")?;
+            return Ok(Type::Named(type_name, type_params));
+        }
+
         match type_name.as_str() {
             "bool" => Ok(Type::Bool),
             "i32" => Ok(Type::I32),
             "i64" => Ok(Type::I64),
             "string" => Ok(Type::String),
-            _ => Err(DiagnosticError::Syntax(
-                format!("Unknown type: {}", type_name)
-            )),
+            _ => Ok(Type::Named(type_name, vec![])),
         }
     }
 
@@ -336,6 +355,8 @@ impl Parser {
                     Expression::Index { span, .. } => span.start,
                     Expression::MethodCall { span, .. } => span.start,
                     Expression::Block(b) => b.span.start,
+                    Expression::EnumConstructor { span, .. } => span.start,
+                    Expression::Match { span, .. } => span.start,
                 },
                 self.previous_span().end,
             );
@@ -553,6 +574,10 @@ impl Parser {
     }
 
     fn parse_primary(&mut self) -> Result<Expression, DiagnosticError> {
+        if self.match_token(&Token::Match) {
+            return self.parse_match_expression();
+        }
+
         if self.match_token(&Token::True) {
             let span = self.previous_span();
             return Ok(Expression::Literal(Literal::Bool(true, span)));
@@ -581,6 +606,22 @@ impl Parser {
 
         if let Some(Token::Ident(name)) = self.match_if(|t| matches!(t, Token::Ident(_))) {
             let span = self.previous_span();
+            // Check for enum constructor (EnumName::Variant)
+            if self.match_token(&Token::DoubleColon) {
+                let variant = self.consume_identifier("Expected variant name after ':'")?;
+                let mut args = Vec::new();
+                if self.match_token(&Token::LeftParen) {
+                    args = self.parse_arguments()?;
+                    self.consume(Token::RightParen, "Expected ')' after enum constructor arguments")?;
+                }
+                let end = self.previous_span().end;
+                return Ok(Expression::EnumConstructor {
+                    enum_name: name,
+                    variant,
+                    args,
+                    span: Span::new(span.start, end),
+                });
+            }
             return Ok(Expression::Identifier { name, span });
         }
 
@@ -653,8 +694,211 @@ impl Parser {
             Expression::Index { span, .. } => span.start,
             Expression::MethodCall { span, .. } => span.start,
             Expression::Block(b) => b.span.start,
+            Expression::EnumConstructor { span, .. } => span.start,
+            Expression::Match { span, .. } => span.start,
         };
         Span::new(start, end)
+    }
+
+    fn parse_enum(&mut self) -> Result<EnumDecl, DiagnosticError> {
+        let start = self.current_span().start;
+        self.consume(Token::Enum, "Expected 'enum'")?;
+
+        let name = self.consume_identifier("Expected enum name")?;
+
+        // Parse optional generic parameters
+        let mut type_params = Vec::new();
+        if self.match_token(&Token::Less) {
+            loop {
+                type_params.push(self.consume_identifier("Expected type parameter name")?);
+                if !self.match_token(&Token::Comma) {
+                    break;
+                }
+            }
+            self.consume(Token::Greater, "Expected '>' after type parameters")?;
+        }
+
+        self.consume(Token::LeftBrace, "Expected '{' after enum name")?;
+
+        let mut variants = Vec::new();
+        let mut methods = Vec::new();
+
+        while !self.check(&Token::RightBrace) && !self.is_at_end() {
+            // Check if it's a method (fn or mut fn)
+            if self.check(&Token::Fn) || (self.check(&Token::Mut) && self.peek_next() == Some(&Token::Fn)) {
+                methods.push(self.parse_function()?);
+            } else {
+                // It's a variant
+                let variant_start = self.current_span().start;
+                let variant_name = self.consume_identifier("Expected variant name")?;
+
+                let mut fields = Vec::new();
+                if self.match_token(&Token::LeftParen) {
+                    if !self.check(&Token::RightParen) {
+                        loop {
+                            fields.push(self.parse_type()?);
+                            if !self.match_token(&Token::Comma) {
+                                break;
+                            }
+                        }
+                    }
+                    self.consume(Token::RightParen, "Expected ')' after variant fields")?;
+                }
+
+                let variant_end = self.previous_span().end;
+                variants.push(EnumVariant {
+                    name: variant_name,
+                    fields,
+                    span: Span::new(variant_start, variant_end),
+                });
+
+                // Consume optional comma
+                self.match_token(&Token::Comma);
+            }
+        }
+
+        self.consume(Token::RightBrace, "Expected '}' after enum body")?;
+        let end = self.previous_span().end;
+
+        Ok(EnumDecl {
+            name,
+            type_params,
+            variants,
+            methods,
+            span: Span::new(start, end),
+        })
+    }
+
+    fn parse_match_expression(&mut self) -> Result<Expression, DiagnosticError> {
+        let start = self.previous_span().start;
+
+        let value = Box::new(self.parse_assignment()?);
+
+        self.consume(Token::LeftBrace, "Expected '{' after match value")?;
+
+        let mut arms = Vec::new();
+
+        while !self.check(&Token::RightBrace) && !self.is_at_end() {
+            let arm_start = self.current_span().start;
+            let pattern = self.parse_pattern()?;
+
+            self.consume(Token::Arrow, "Expected '=>' after pattern")?;
+
+            let body = self.parse_expression()?;
+
+            let arm_end = self.previous_span().end;
+            arms.push(MatchArm {
+                pattern,
+                body,
+                span: Span::new(arm_start, arm_end),
+            });
+
+            // Consume optional comma
+            self.match_token(&Token::Comma);
+        }
+
+        self.consume(Token::RightBrace, "Expected '}' after match arms")?;
+        let end = self.previous_span().end;
+
+        Ok(Expression::Match {
+            value,
+            arms,
+            span: Span::new(start, end),
+        })
+    }
+
+    fn parse_pattern(&mut self) -> Result<Pattern, DiagnosticError> {
+        let start = self.current_span().start;
+
+        // Check for literal patterns
+        if self.check(&Token::True) || self.check(&Token::False) {
+            let is_true = self.match_token(&Token::True);
+            if !is_true {
+                self.consume(Token::False, "Expected 'false'")?;
+            }
+            let span = self.previous_span();
+            return Ok(Pattern::Literal(Literal::Bool(is_true, span)));
+        }
+
+        if let Some(Token::IntLiteral(n)) = self.match_if(|t| matches!(t, Token::IntLiteral(_))) {
+            let span = self.previous_span();
+            return Ok(Pattern::Literal(Literal::Integer(n, span)));
+        }
+
+        if let Some(Token::StringLiteral(s)) = self.match_if(|t| matches!(t, Token::StringLiteral(_))) {
+            let span = self.previous_span();
+            return Ok(Pattern::Literal(Literal::String(s, span)));
+        }
+
+        // Check for identifier/enum variant pattern
+        if let Some(Token::Ident(name)) = self.match_if(|t| matches!(t, Token::Ident(_))) {
+            // Check if it's an enum variant pattern
+            if self.match_token(&Token::DoubleColon) {
+                let variant = self.consume_identifier("Expected variant name after ':'")?;
+                let mut bindings = Vec::new();
+
+                if self.match_token(&Token::LeftParen) {
+                    if !self.check(&Token::RightParen) {
+                        loop {
+                            bindings.push(self.consume_identifier("Expected binding name")?);
+                            if !self.match_token(&Token::Comma) {
+                                break;
+                            }
+                        }
+                    }
+                    self.consume(Token::RightParen, "Expected ')' after pattern bindings")?;
+                }
+
+                let end = self.previous_span().end;
+                return Ok(Pattern::EnumVariant {
+                    enum_name: Some(name),
+                    variant,
+                    bindings,
+                    span: Span::new(start, end),
+                });
+            }
+
+            // Otherwise, could be a simple identifier pattern or a variant without enum prefix
+            // Check if next token is '(' which means it's a variant with fields
+            if self.match_token(&Token::LeftParen) {
+                let mut bindings = Vec::new();
+
+                if !self.check(&Token::RightParen) {
+                    loop {
+                        bindings.push(self.consume_identifier("Expected binding name")?);
+                        if !self.match_token(&Token::Comma) {
+                            break;
+                        }
+                    }
+                }
+                self.consume(Token::RightParen, "Expected ')' after pattern bindings")?;
+
+                let end = self.previous_span().end;
+                return Ok(Pattern::EnumVariant {
+                    enum_name: None,
+                    variant: name,
+                    bindings,
+                    span: Span::new(start, end),
+                });
+            }
+
+            // Just an identifier pattern (binding)
+            let end = self.previous_span().end;
+            return Ok(Pattern::Identifier {
+                name,
+                span: Span::new(start, end),
+            });
+        }
+
+        Err(DiagnosticError::Syntax("Expected pattern".to_string()))
+    }
+
+    fn peek_next(&self) -> Option<&Token> {
+        if self.current + 1 < self.tokens.len() {
+            Some(&self.tokens[self.current + 1].token)
+        } else {
+            None
+        }
     }
 
     // Helper methods

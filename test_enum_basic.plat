@@ -1,0 +1,9 @@
+enum Status {
+    Success,
+    Error
+}
+
+fn main() {
+    let status = Status::Success;
+    print("Status created successfully");
+}

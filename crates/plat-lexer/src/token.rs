@@ -14,6 +14,9 @@ pub enum Token {
     False,
     Print,
     List,
+    Enum,
+    Match,
+    Mut,
 
     // Identifiers and literals
     Ident(String),
@@ -50,6 +53,7 @@ pub enum Token {
     Arrow,
     Colon,
     Dot,
+    DoubleColon,
 
     // Special
     Eof,
@@ -77,6 +81,9 @@ impl Token {
             "false" => Some(Token::False),
             "print" => Some(Token::Print),
             "List" => Some(Token::List),
+            "enum" => Some(Token::Enum),
+            "match" => Some(Token::Match),
+            "mut" => Some(Token::Mut),
             "and" => Some(Token::And),
             "or" => Some(Token::Or),
             "not" => Some(Token::Not),

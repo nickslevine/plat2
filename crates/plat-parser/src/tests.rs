@@ -18,6 +18,7 @@ mod tests {
         assert_eq!(program.functions[0].name, "main");
         assert_eq!(program.functions[0].params.len(), 0);
         assert_eq!(program.functions[0].return_type, None);
+        assert_eq!(program.functions[0].is_mutable, false);
     }
 
     #[test]
@@ -432,6 +433,201 @@ mod tests {
 
         let parser = Parser::new(input).unwrap();
         let result = parser.parse();
-        assert!(result.is_err());
+        // Now that we support custom types/enums, this should actually succeed
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_parse_enum_declaration() {
+        let input = r#"
+            enum Message {
+                Quit,
+                Move(i32, i32),
+                Write(string)
+            }
+        "#;
+
+        let parser = Parser::new(input).unwrap();
+        let program = parser.parse().unwrap();
+
+        assert_eq!(program.enums.len(), 1);
+        let enum_decl = &program.enums[0];
+        assert_eq!(enum_decl.name, "Message");
+        assert_eq!(enum_decl.variants.len(), 3);
+
+        assert_eq!(enum_decl.variants[0].name, "Quit");
+        assert_eq!(enum_decl.variants[0].fields.len(), 0);
+
+        assert_eq!(enum_decl.variants[1].name, "Move");
+        assert_eq!(enum_decl.variants[1].fields.len(), 2);
+        assert_eq!(enum_decl.variants[1].fields[0], Type::I32);
+        assert_eq!(enum_decl.variants[1].fields[1], Type::I32);
+
+        assert_eq!(enum_decl.variants[2].name, "Write");
+        assert_eq!(enum_decl.variants[2].fields.len(), 1);
+        assert_eq!(enum_decl.variants[2].fields[0], Type::String);
+    }
+
+    #[test]
+    fn test_parse_generic_enum() {
+        let input = r#"
+            enum Option<T> {
+                Some(T),
+                None
+            }
+        "#;
+
+        let parser = Parser::new(input).unwrap();
+        let program = parser.parse().unwrap();
+
+        assert_eq!(program.enums.len(), 1);
+        let enum_decl = &program.enums[0];
+        assert_eq!(enum_decl.name, "Option");
+        assert_eq!(enum_decl.type_params.len(), 1);
+        assert_eq!(enum_decl.type_params[0], "T");
+        assert_eq!(enum_decl.variants.len(), 2);
+    }
+
+    #[test]
+    fn test_parse_enum_with_methods() {
+        let input = r#"
+            enum Message {
+                Quit,
+                Move(i32, i32),
+
+                fn is_quit() -> bool {
+                    return true;
+                }
+
+                mut fn process() {
+                    print("Processing message");
+                }
+            }
+        "#;
+
+        let parser = Parser::new(input).unwrap();
+        let program = parser.parse().unwrap();
+
+        assert_eq!(program.enums.len(), 1);
+        let enum_decl = &program.enums[0];
+        assert_eq!(enum_decl.name, "Message");
+        assert_eq!(enum_decl.methods.len(), 2);
+
+        assert_eq!(enum_decl.methods[0].name, "is_quit");
+        assert_eq!(enum_decl.methods[0].is_mutable, false);
+        assert_eq!(enum_decl.methods[0].return_type, Some(Type::Bool));
+
+        assert_eq!(enum_decl.methods[1].name, "process");
+        assert_eq!(enum_decl.methods[1].is_mutable, true);
+    }
+
+    #[test]
+    fn test_parse_enum_constructor() {
+        let input = r#"
+            fn main() {
+                let msg1 = Message::Quit;
+                let msg2 = Message::Move(10, 20);
+                let msg3 = Message::Write("Hello");
+            }
+        "#;
+
+        let parser = Parser::new(input).unwrap();
+        let program = parser.parse().unwrap();
+
+        let statements = &program.functions[0].body.statements;
+        assert_eq!(statements.len(), 3);
+
+        match &statements[0] {
+            Statement::Let { value, .. } => {
+                match value {
+                    Expression::EnumConstructor { enum_name, variant, args, .. } => {
+                        assert_eq!(enum_name, "Message");
+                        assert_eq!(variant, "Quit");
+                        assert_eq!(args.len(), 0);
+                    }
+                    _ => panic!("Expected enum constructor"),
+                }
+            }
+            _ => panic!("Expected let statement"),
+        }
+
+        match &statements[1] {
+            Statement::Let { value, .. } => {
+                match value {
+                    Expression::EnumConstructor { enum_name, variant, args, .. } => {
+                        assert_eq!(enum_name, "Message");
+                        assert_eq!(variant, "Move");
+                        assert_eq!(args.len(), 2);
+                    }
+                    _ => panic!("Expected enum constructor"),
+                }
+            }
+            _ => panic!("Expected let statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_match_expression() {
+        let input = r#"
+            fn main() {
+                let result = match msg {
+                    Message::Quit -> 0,
+                    Message::Move(x, y) -> x + y,
+                    Message::Write(s) -> 100
+                };
+            }
+        "#;
+
+        let parser = Parser::new(input).unwrap();
+        let program = parser.parse().unwrap();
+
+        let statements = &program.functions[0].body.statements;
+        assert_eq!(statements.len(), 1);
+
+        match &statements[0] {
+            Statement::Let { value, .. } => {
+                match value {
+                    Expression::Match { arms, .. } => {
+                        assert_eq!(arms.len(), 3);
+
+                        match &arms[0].pattern {
+                            Pattern::EnumVariant { variant, bindings, .. } => {
+                                assert_eq!(variant, "Quit");
+                                assert_eq!(bindings.len(), 0);
+                            }
+                            _ => panic!("Expected enum variant pattern"),
+                        }
+
+                        match &arms[1].pattern {
+                            Pattern::EnumVariant { variant, bindings, .. } => {
+                                assert_eq!(variant, "Move");
+                                assert_eq!(bindings.len(), 2);
+                                assert_eq!(bindings[0], "x");
+                                assert_eq!(bindings[1], "y");
+                            }
+                            _ => panic!("Expected enum variant pattern"),
+                        }
+                    }
+                    _ => panic!("Expected match expression"),
+                }
+            }
+            _ => panic!("Expected let statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_mutable_function() {
+        let input = r#"
+            mut fn update(value: i32) {
+                let x = value;
+            }
+        "#;
+
+        let parser = Parser::new(input).unwrap();
+        let program = parser.parse().unwrap();
+
+        assert_eq!(program.functions.len(), 1);
+        assert_eq!(program.functions[0].name, "update");
+        assert_eq!(program.functions[0].is_mutable, true);
     }
 }

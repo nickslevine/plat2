@@ -25,8 +25,19 @@ impl Formatter {
     }
 
     fn format_program(&mut self, program: &Program) {
-        for (i, function) in program.functions.iter().enumerate() {
+        // Format enums first
+        for (i, enum_decl) in program.enums.iter().enumerate() {
             if i > 0 {
+                self.write_line("");
+            }
+            self.format_enum(enum_decl);
+            self.write_line("");
+        }
+
+        // Then format functions
+        let start_idx = if program.enums.is_empty() { 0 } else { program.enums.len() };
+        for (i, function) in program.functions.iter().enumerate() {
+            if i > 0 || start_idx > 0 {
                 self.write_line("");
             }
             self.format_function(function);
@@ -34,7 +45,83 @@ impl Formatter {
         }
     }
 
+    fn format_enum(&mut self, enum_decl: &EnumDecl) {
+        self.write("enum ");
+        self.write(&enum_decl.name);
+
+        if !enum_decl.type_params.is_empty() {
+            self.write("<");
+            for (i, param) in enum_decl.type_params.iter().enumerate() {
+                if i > 0 {
+                    self.write(", ");
+                }
+                self.write(param);
+            }
+            self.write(">");
+        }
+
+        self.write_line(" {");
+        self.indent += 1;
+
+        // Format variants
+        for variant in &enum_decl.variants {
+            self.write_indent();
+            self.write(&variant.name);
+            if !variant.fields.is_empty() {
+                self.write("(");
+                for (i, field) in variant.fields.iter().enumerate() {
+                    if i > 0 {
+                        self.write(", ");
+                    }
+                    self.format_type(field);
+                }
+                self.write(")");
+            }
+            self.write_line(",");
+        }
+
+        // Add blank line before methods if both variants and methods exist
+        if !enum_decl.variants.is_empty() && !enum_decl.methods.is_empty() {
+            self.write_line("");
+        }
+
+        // Format methods
+        for method in &enum_decl.methods {
+            self.write_indent();
+            if method.is_mutable {
+                self.write("mut ");
+            }
+            self.write("fn ");
+            self.write(&method.name);
+            self.write("(");
+
+            for (i, param) in method.params.iter().enumerate() {
+                if i > 0 {
+                    self.write(", ");
+                }
+                self.format_parameter(param);
+            }
+
+            self.write(")");
+
+            if let Some(return_type) = &method.return_type {
+                self.write(" -> ");
+                self.format_type(return_type);
+            }
+
+            self.write(" ");
+            self.format_function_block(&method.body);
+            self.write_line("");
+        }
+
+        self.indent -= 1;
+        self.write("}");
+    }
+
     fn format_function(&mut self, function: &Function) {
+        if function.is_mutable {
+            self.write("mut ");
+        }
         self.write("fn ");
         self.write(&function.name);
         self.write("(");
@@ -73,6 +160,19 @@ impl Formatter {
                 self.write("List[");
                 self.format_type(element_type);
                 self.write("]");
+            }
+            Type::Named(name, type_params) => {
+                self.write(name);
+                if !type_params.is_empty() {
+                    self.write("<");
+                    for (i, param) in type_params.iter().enumerate() {
+                        if i > 0 {
+                            self.write(", ");
+                        }
+                        self.format_type(param);
+                    }
+                    self.write(">");
+                }
             }
         }
     }
@@ -228,6 +328,37 @@ impl Formatter {
             Expression::Block(block) => {
                 self.format_function_block(block);
             }
+            Expression::EnumConstructor { enum_name, variant, args, .. } => {
+                self.write(enum_name);
+                self.write("::");
+                self.write(variant);
+                if !args.is_empty() {
+                    self.write("(");
+                    for (i, arg) in args.iter().enumerate() {
+                        if i > 0 {
+                            self.write(", ");
+                        }
+                        self.format_expression(arg);
+                    }
+                    self.write(")");
+                }
+            }
+            Expression::Match { value, arms, .. } => {
+                self.write("match ");
+                self.format_expression(value);
+                self.write_line(" {");
+                self.indent += 1;
+                for arm in arms {
+                    self.write_indent();
+                    self.format_pattern(&arm.pattern);
+                    self.write(" -> ");
+                    self.format_expression(&arm.body);
+                    self.write_line(",");
+                }
+                self.indent -= 1;
+                self.write_indent();
+                self.write("}");
+            }
         }
     }
 
@@ -328,6 +459,34 @@ impl Formatter {
     fn write_indent(&mut self) {
         for _ in 0..(self.indent * 2) {
             self.buffer.push(' ');
+        }
+    }
+
+    fn format_pattern(&mut self, pattern: &Pattern) {
+        match pattern {
+            Pattern::EnumVariant { enum_name, variant, bindings, .. } => {
+                if let Some(enum_name) = enum_name {
+                    self.write(enum_name);
+                    self.write("::");
+                }
+                self.write(variant);
+                if !bindings.is_empty() {
+                    self.write("(");
+                    for (i, binding) in bindings.iter().enumerate() {
+                        if i > 0 {
+                            self.write(", ");
+                        }
+                        self.write(binding);
+                    }
+                    self.write(")");
+                }
+            }
+            Pattern::Identifier { name, .. } => {
+                self.write(name);
+            }
+            Pattern::Literal(literal) => {
+                self.format_literal(literal);
+            }
         }
     }
 }

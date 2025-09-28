@@ -13,7 +13,7 @@ mod tests {
 
     #[test]
     fn test_keywords() {
-        let input = "fn let var if else while for return true false print and or not";
+        let input = "fn let var if else while for return true false print and or not enum match mut";
         let tokens = tokenize(input);
 
         assert_eq!(tokens, vec![
@@ -31,6 +31,9 @@ mod tests {
             Token::And,
             Token::Or,
             Token::Not,
+            Token::Enum,
+            Token::Match,
+            Token::Mut,
             Token::Eof,
         ]);
     }
@@ -128,7 +131,7 @@ mod tests {
 
     #[test]
     fn test_punctuation() {
-        let input = "( ) { } ; , -> :";
+        let input = "( ) { } ; , -> : ::";
         let tokens = tokenize(input);
 
         assert_eq!(tokens, vec![
@@ -140,6 +143,7 @@ mod tests {
             Token::Comma,
             Token::Arrow,
             Token::Colon,
+            Token::DoubleColon,
             Token::Eof,
         ]);
     }

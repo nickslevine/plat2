@@ -630,4 +630,243 @@ mod tests {
 
         assert!(type_check(input).is_ok());
     }
+
+    #[test]
+    fn test_enum_declaration() {
+        let input = r#"
+            enum Message {
+                Quit,
+                Move(i32, i32),
+                Write(string)
+            }
+
+            fn main() {
+            }
+        "#;
+
+        assert!(type_check(input).is_ok());
+    }
+
+    #[test]
+    fn test_enum_constructor() {
+        let input = r#"
+            enum Message {
+                Quit,
+                Move(i32, i32),
+                Write(string)
+            }
+
+            fn main() {
+                let msg1 = Message::Quit;
+                let msg2 = Message::Move(10, 20);
+                let msg3 = Message::Write("Hello");
+            }
+        "#;
+
+        assert!(type_check(input).is_ok());
+    }
+
+    #[test]
+    fn test_enum_constructor_wrong_args() {
+        let input = r#"
+            enum Message {
+                Quit,
+                Move(i32, i32),
+                Write(string)
+            }
+
+            fn main() {
+                let msg = Message::Move(10);
+            }
+        "#;
+
+        let result = type_check(input);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("expects 2 arguments"));
+    }
+
+    #[test]
+    fn test_enum_constructor_wrong_arg_types() {
+        let input = r#"
+            enum Message {
+                Quit,
+                Move(i32, i32),
+                Write(string)
+            }
+
+            fn main() {
+                let msg = Message::Move("hello", 20);
+            }
+        "#;
+
+        let result = type_check(input);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("has type"));
+    }
+
+    #[test]
+    fn test_enum_unknown_variant() {
+        let input = r#"
+            enum Message {
+                Quit,
+                Move(i32, i32)
+            }
+
+            fn main() {
+                let msg = Message::Unknown;
+            }
+        "#;
+
+        let result = type_check(input);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("has no variant"));
+    }
+
+    #[test]
+    fn test_match_expression() {
+        let input = r#"
+            enum Message {
+                Quit,
+                Move(i32, i32),
+                Write(string)
+            }
+
+            fn main() {
+                let msg = Message::Move(10, 20);
+                let result = match msg {
+                    Message::Quit -> 0,
+                    Message::Move(x, y) -> x + y,
+                    Message::Write(s) -> 100
+                };
+            }
+        "#;
+
+        assert!(type_check(input).is_ok());
+    }
+
+    #[test]
+    fn test_match_expression_non_exhaustive() {
+        let input = r#"
+            enum Message {
+                Quit,
+                Move(i32, i32),
+                Write(string)
+            }
+
+            fn main() {
+                let msg = Message::Move(10, 20);
+                let result = match msg {
+                    Message::Quit -> 0,
+                    Message::Move(x, y) -> x + y
+                };
+            }
+        "#;
+
+        let result = type_check(input);
+        assert!(result.is_err());
+        let error_msg = result.unwrap_err().to_string();
+        assert!(error_msg.contains("not exhaustive"));
+        assert!(error_msg.contains("Write"));
+    }
+
+    #[test]
+    fn test_match_expression_inconsistent_types() {
+        let input = r#"
+            enum Message {
+                Quit,
+                Move(i32, i32)
+            }
+
+            fn main() {
+                let msg = Message::Move(10, 20);
+                let result = match msg {
+                    Message::Quit -> 0,
+                    Message::Move(x, y) -> "hello"
+                };
+            }
+        "#;
+
+        let result = type_check(input);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("returns type"));
+    }
+
+    #[test]
+    fn test_match_with_pattern_bindings() {
+        let input = r#"
+            enum Message {
+                Move(i32, i32),
+                Write(string)
+            }
+
+            fn main() {
+                let msg = Message::Write("hello");
+                let result = match msg {
+                    Message::Move(x, y) -> x + y,
+                    Message::Write(text) -> text
+                };
+            }
+        "#;
+
+        let result = type_check(input);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("returns type"));
+    }
+
+    #[test]
+    fn test_enum_duplicate_definition() {
+        let input = r#"
+            enum Message {
+                Quit
+            }
+
+            enum Message {
+                Move(i32, i32)
+            }
+
+            fn main() {
+            }
+        "#;
+
+        let result = type_check(input);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("defined multiple times"));
+    }
+
+    // TODO: Generic enum support - requires more complex type inference
+    // #[test]
+    // fn test_generic_enum() {
+    //     let input = r#"
+    //         enum Option<T> {
+    //             Some(T),
+    //             None
+    //         }
+
+    //         fn main() {
+    //             let some_int = Option::Some(42);
+    //             let none_int = Option::None;
+    //         }
+    //     "#;
+
+    //     assert!(type_check(input).is_ok());
+    // }
+
+    #[test]
+    fn test_enum_with_methods() {
+        let input = r#"
+            enum Message {
+                Quit,
+                Move(i32, i32),
+
+                fn is_quit() -> bool {
+                    return true;
+                }
+            }
+
+            fn main() {
+            }
+        "#;
+
+        assert!(type_check(input).is_ok());
+    }
 }

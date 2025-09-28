@@ -3,6 +3,7 @@ use plat_lexer::Span;
 #[derive(Debug, Clone, PartialEq)]
 pub struct Program {
     pub functions: Vec<Function>,
+    pub enums: Vec<EnumDecl>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -11,6 +12,7 @@ pub struct Function {
     pub params: Vec<Parameter>,
     pub return_type: Option<Type>,
     pub body: Block,
+    pub is_mutable: bool,
     pub span: Span,
 }
 
@@ -28,6 +30,7 @@ pub enum Type {
     I64,
     String,
     List(Box<Type>),
+    Named(String, Vec<Type>), // e.g., Option<T>, Message
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -118,6 +121,17 @@ pub enum Expression {
         span: Span,
     },
     Block(Block),
+    EnumConstructor {
+        enum_name: String,
+        variant: String,
+        args: Vec<Expression>,
+        span: Span,
+    },
+    Match {
+        value: Box<Expression>,
+        arms: Vec<MatchArm>,
+        span: Span,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -156,4 +170,42 @@ pub enum BinaryOp {
 pub enum UnaryOp {
     Not,
     Negate,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct EnumDecl {
+    pub name: String,
+    pub type_params: Vec<String>,
+    pub variants: Vec<EnumVariant>,
+    pub methods: Vec<Function>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct EnumVariant {
+    pub name: String,
+    pub fields: Vec<Type>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MatchArm {
+    pub pattern: Pattern,
+    pub body: Expression,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Pattern {
+    EnumVariant {
+        enum_name: Option<String>,
+        variant: String,
+        bindings: Vec<String>,
+        span: Span,
+    },
+    Identifier {
+        name: String,
+        span: Span,
+    },
+    Literal(Literal),
 }
