@@ -987,6 +987,161 @@ impl TypeChecker {
                         }
                         Ok((**value_type).clone())
                     }
+                    // Set methods
+                    (HirType::Set(element_type), "add") => {
+                        if args.len() != 1 {
+                            return Err(DiagnosticError::Type(
+                                "add() method takes exactly one argument".to_string()
+                            ));
+                        }
+                        let value_type = self.check_expression(&args[0])?;
+                        if value_type != **element_type {
+                            return Err(DiagnosticError::Type(
+                                format!("add() method expects value of type {:?}, got {:?}", element_type, value_type)
+                            ));
+                        }
+                        Ok(HirType::Bool)
+                    }
+                    (HirType::Set(element_type), "remove") => {
+                        if args.len() != 1 {
+                            return Err(DiagnosticError::Type(
+                                "remove() method takes exactly one argument".to_string()
+                            ));
+                        }
+                        let value_type = self.check_expression(&args[0])?;
+                        if value_type != **element_type {
+                            return Err(DiagnosticError::Type(
+                                format!("remove() method expects value of type {:?}, got {:?}", element_type, value_type)
+                            ));
+                        }
+                        Ok(HirType::Bool)
+                    }
+                    (HirType::Set(_), "clear") => {
+                        if !args.is_empty() {
+                            return Err(DiagnosticError::Type(
+                                "clear() method takes no arguments".to_string()
+                            ));
+                        }
+                        Ok(HirType::Unit)
+                    }
+                    (HirType::Set(_), "length") => {
+                        if !args.is_empty() {
+                            return Err(DiagnosticError::Type(
+                                "length() method takes no arguments".to_string()
+                            ));
+                        }
+                        Ok(HirType::I32)
+                    }
+                    (HirType::Set(element_type), "contains") => {
+                        if args.len() != 1 {
+                            return Err(DiagnosticError::Type(
+                                "contains() method takes exactly one argument".to_string()
+                            ));
+                        }
+                        let value_type = self.check_expression(&args[0])?;
+                        if value_type != **element_type {
+                            return Err(DiagnosticError::Type(
+                                format!("contains() method expects value of type {:?}, got {:?}", element_type, value_type)
+                            ));
+                        }
+                        Ok(HirType::Bool)
+                    }
+                    (HirType::Set(element_type), "union") => {
+                        if args.len() != 1 {
+                            return Err(DiagnosticError::Type(
+                                "union() method takes exactly one argument".to_string()
+                            ));
+                        }
+                        let other_type = self.check_expression(&args[0])?;
+                        match other_type {
+                            HirType::Set(other_element_type) if *other_element_type == **element_type => {
+                                Ok(HirType::Set(element_type.clone()))
+                            }
+                            _ => Err(DiagnosticError::Type(
+                                format!("union() method expects Set<{:?}>, got {:?}", element_type, other_type)
+                            ))
+                        }
+                    }
+                    (HirType::Set(element_type), "intersection") => {
+                        if args.len() != 1 {
+                            return Err(DiagnosticError::Type(
+                                "intersection() method takes exactly one argument".to_string()
+                            ));
+                        }
+                        let other_type = self.check_expression(&args[0])?;
+                        match other_type {
+                            HirType::Set(other_element_type) if *other_element_type == **element_type => {
+                                Ok(HirType::Set(element_type.clone()))
+                            }
+                            _ => Err(DiagnosticError::Type(
+                                format!("intersection() method expects Set<{:?}>, got {:?}", element_type, other_type)
+                            ))
+                        }
+                    }
+                    (HirType::Set(element_type), "difference") => {
+                        if args.len() != 1 {
+                            return Err(DiagnosticError::Type(
+                                "difference() method takes exactly one argument".to_string()
+                            ));
+                        }
+                        let other_type = self.check_expression(&args[0])?;
+                        match other_type {
+                            HirType::Set(other_element_type) if *other_element_type == **element_type => {
+                                Ok(HirType::Set(element_type.clone()))
+                            }
+                            _ => Err(DiagnosticError::Type(
+                                format!("difference() method expects Set<{:?}>, got {:?}", element_type, other_type)
+                            ))
+                        }
+                    }
+                    (HirType::Set(element_type), "is_subset_of") => {
+                        if args.len() != 1 {
+                            return Err(DiagnosticError::Type(
+                                "is_subset_of() method takes exactly one argument".to_string()
+                            ));
+                        }
+                        let other_type = self.check_expression(&args[0])?;
+                        match other_type {
+                            HirType::Set(other_element_type) if *other_element_type == **element_type => {
+                                Ok(HirType::Bool)
+                            }
+                            _ => Err(DiagnosticError::Type(
+                                format!("is_subset_of() method expects Set<{:?}>, got {:?}", element_type, other_type)
+                            ))
+                        }
+                    }
+                    (HirType::Set(element_type), "is_superset_of") => {
+                        if args.len() != 1 {
+                            return Err(DiagnosticError::Type(
+                                "is_superset_of() method takes exactly one argument".to_string()
+                            ));
+                        }
+                        let other_type = self.check_expression(&args[0])?;
+                        match other_type {
+                            HirType::Set(other_element_type) if *other_element_type == **element_type => {
+                                Ok(HirType::Bool)
+                            }
+                            _ => Err(DiagnosticError::Type(
+                                format!("is_superset_of() method expects Set<{:?}>, got {:?}", element_type, other_type)
+                            ))
+                        }
+                    }
+                    (HirType::Set(element_type), "is_disjoint_from") => {
+                        if args.len() != 1 {
+                            return Err(DiagnosticError::Type(
+                                "is_disjoint_from() method takes exactly one argument".to_string()
+                            ));
+                        }
+                        let other_type = self.check_expression(&args[0])?;
+                        match other_type {
+                            HirType::Set(other_element_type) if *other_element_type == **element_type => {
+                                Ok(HirType::Bool)
+                            }
+                            _ => Err(DiagnosticError::Type(
+                                format!("is_disjoint_from() method expects Set<{:?}>, got {:?}", element_type, other_type)
+                            ))
+                        }
+                    }
                     _ => Err(DiagnosticError::Type(
                         format!("Type {:?} has no method '{}'", object_type, method)
                     ))
