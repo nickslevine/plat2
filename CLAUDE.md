@@ -182,28 +182,37 @@ Deliver a working `plat` CLI binary that:
 
 ### 🎯 **Enum Feature Status**
 - ✅ **Core Implementation**: Full compiler pipeline support
-- ✅ **Unit & Tuple Variants**: `Quit`, `Move(i32)` syntax
-- ✅ **Pattern Matching**: `match` expressions with exhaustiveness
+- ✅ **Unit Variants**: `Success`, `Quit` working perfectly
+- ✅ **Pattern Matching**: Basic `match` expressions with exhaustiveness
 - ✅ **N-Arm Pattern Matching**: Support for any number of match arms (2+)
-- ✅ **Pattern Binding Extraction**: Extract payloads in match arms (`Move(x) -> x`)
-- ✅ **Multi-field Variants**: Support `Move(i32, i32)` with proper memory layout
+- ✅ **Memory Safety**: Fixed segmentation faults and runtime crashes
+- ✅ **Discriminant Extraction**: Safe runtime format detection
+- ⚠️ **Data Variant Pattern Binding**: Works for creation, verifier issues in pattern extraction
+- ⚠️ **Multi-field Variants**: Infrastructure ready, needs debugging
 - ✅ **Type Safety**: Prevents invalid enum usage
 - ✅ **Integration**: Works with existing Plat features
 
-### ✅ **Built-in Generic Types**
-- ✅ **Option<T>**: Core optional type with Some(T) and None variants
-- ✅ **Result<T, E>**: Error handling type with Ok(T) and Err(E) variants
+### 🔧 **Built-in Generic Types**
+- 🔧 **Option<T>**: Parser support complete, runtime needs debugging
+- 🔧 **Result<T, E>**: Parser support complete, runtime needs debugging
 - ✅ **Type Inference**: Automatic type parameter inference from constructor arguments
-- ✅ **Pattern Matching**: Working support for Option<i32> and Result<i32, i32>
-- ✅ **Code Generation**: Proper handling of packed vs heap-allocated variants
-- ✅ **Exhaustiveness**: Compiler enforces handling of all Option/Result variants
+- ⚠️ **Pattern Matching**: Basic infrastructure works, complex cases need fixes
+- ✅ **Code Generation**: Hybrid packed/heap allocation strategy implemented
+- ✅ **Exhaustiveness**: Compiler enforces handling of all variants
 
-### 🚧 **Next Steps for Language Features**
-- [ ] **String Support**: Option<String> and Result<String, String> pattern matching
-- [ ] **Full Type Unification**: Complete type inference with type variables
+### 🚧 **Current Status & Next Steps**
+- ✅ **Unit Enums Production Ready**: `Status::Success` fully functional
+- 🔧 **Data Variants Partially Working**: Creation works, pattern binding has verifier errors
+- 🔧 **Runtime Safety**: Significantly improved, no more segfaults
+- 🚧 **Pattern Binding**: Needs Cranelift IR fixes for data extraction
+- 🚧 **Built-in Types**: Option/Result need completion of pattern binding work
+
+### 🎯 **Immediate Priorities**
+- [ ] **Fix Cranelift Verifier Errors**: Complete pattern binding extraction
+- [ ] **Debug Option/Result**: Enable built-in generic types
+- [ ] **Pattern Binding Types**: Proper I32/I64 conversion in match arms
+- [ ] **Advanced Pattern Support**: Nested patterns and complex destructuring
 - [ ] **Syntactic Sugar**: `?` operator, `if let`, `while let` expressions
-- [ ] **Advanced Patterns**: Nested patterns, guards, and wildcard patterns
-- [ ] **Optimization**: Jump tables for efficient pattern matching
 
 ## 12. Stretch Goals (post-MVP)
 - [ ] Imports & modules
@@ -216,50 +225,64 @@ Deliver a working `plat` CLI binary that:
 ### 🚀 Status Update
 - [x] **COMPLETE**: Working Plat compiler with native code generation
 - [x] **COMPLETE**: String interpolation with runtime expression evaluation
-- [x] **COMPLETE**: Enums with pattern matching and exhaustiveness checking
-- [x] **COMPLETE**: N-arm pattern matching with any number of enum variants
-- [x] **COMPLETE**: Built-in Option<T> and Result<T, E> types with type inference
-- [x] **COMPLETE**: Pattern matching for Option and Result with binding extraction
-- [x] **EXAMPLE**: `print("Result: ${x + y}")` → `"Result: 42"`
-- [x] **EXAMPLE**: `enum Status { Success, Error }` with full compiler support
-- [x] **EXAMPLE**: `enum Priority { Low, Medium, High, Critical(i32), Emergency(i32) }` with 5-arm matching
-- [x] **EXAMPLE**: `Option::Some(42)` → `match` → `Some(x) -> x * 2` → `84`
-- [x] **EXAMPLE**: `Result::Err(404)` → `match` → `Err(e) -> e` → `404`
-- [x] **ACHIEVEMENT**: Full end-to-end compilation from `.plat` → native executable
+- [x] **COMPLETE**: Basic enum support with unit variants and pattern matching
+- [x] **COMPLETE**: N-arm pattern matching with exhaustiveness checking
+- [x] **COMPLETE**: Memory-safe enum implementation (no more segfaults!)
+- 🔧 **IN PROGRESS**: Data variant pattern binding (creation works, extraction needs fixes)
+- 🔧 **IN PROGRESS**: Built-in Option<T> and Result<T, E> types (parser complete, runtime debugging)
+- [x] **WORKING**: `print("Result: ${x + y}")` → `"Result: 42"`
+- [x] **WORKING**: `enum Status { Success, Error }` → unit pattern matching
+- [x] **WORKING**: `Status::Success` → `match` → `Success -> 1` → `1` ✅
+- 🔧 **PARTIAL**: `Status::Error(404)` → creates correctly, pattern binding has verifier errors
+- 🔧 **PARTIAL**: Built-in Option/Result parsing complete, runtime needs completion
+- [x] **ACHIEVEMENT**: Safe, functional enum foundation ready for production use
 
-### 📝 Option & Result Usage Examples
+### 📝 **Working Examples (Tested & Verified)**
 
 ```plat
-// Option type for nullable values
-let some_value = Option::Some(42);
-let none_value = Option::None;
+// ✅ WORKING: Basic unit enum pattern matching
+enum Status {
+    Success,
+    Error
+}
 
-let result = match some_value {
-    Option::Some(x) -> x * 2,    // x = 42, returns 84
-    Option::None -> 0
-};
+fn main() -> i32 {
+    let status = Status::Success;
 
-// Result type for error handling
-let success = Result::Ok(100);
-let failure = Result::Err(404);
-
-let handled = match failure {
-    Result::Ok(value) -> value,
-    Result::Err(code) -> code * -1  // Returns -404
-};
-
-// Pattern matching with exhaustiveness
-fn safe_divide(a: i32, b: i32) -> i32 {
-    let result = match b {
-        0 -> Result::Err(-1),
-        _ -> Result::Ok(a / b)
+    let result = match status {
+        Status::Success -> 1,
+        Status::Error -> 0
     };
 
-    match result {
-        Result::Ok(value) -> value,
-        Result::Err(error) -> error
-    }
+    print("Result: ${result}");  // Outputs: "Result: 1"
+    return result;
 }
+```
+
+### 📝 **Partially Working Examples (In Development)**
+
+```plat
+// 🔧 PARTIAL: Data variants create correctly, pattern binding has verifier errors
+enum Status {
+    Success,
+    Error(i32)
+}
+
+fn main() {
+    let error = Status::Error(404);  // ✅ Creation works
+
+    // ⚠️ This causes Cranelift verifier errors (being fixed)
+    let code = match error {
+        Status::Success -> 0,
+        Status::Error(x) -> x  // Pattern binding extraction needs fixes
+    };
+
+    print("Error code: ${code}");
+}
+
+// 🔧 FUTURE: Option/Result types (parser complete, runtime in progress)
+// let maybe = Option::Some(42);
+// let result = Result::Ok(100);
 ```
 
 ### 🎯 Major Milestones Achieved
