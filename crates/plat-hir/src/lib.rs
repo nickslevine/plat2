@@ -19,6 +19,7 @@ pub enum HirType {
     I64,
     String,
     List(Box<HirType>),
+    Dict(Box<HirType>, Box<HirType>), // key type, value type
     Enum(String, Vec<HirType>), // name, type parameters
     Unit, // For functions that don't return anything
 }
@@ -704,6 +705,38 @@ impl TypeChecker {
 
                 Ok(HirType::List(Box::new(first_type)))
             }
+            Literal::Dict(pairs, _) => {
+                if pairs.is_empty() {
+                    return Err(DiagnosticError::Type(
+                        "Cannot infer type of empty dict literal. Use explicit type annotation.".to_string()
+                    ));
+                }
+
+                // Check first pair to determine key and value types
+                let (first_key, first_value) = &pairs[0];
+                let key_type = self.check_expression(first_key)?;
+                let value_type = self.check_expression(first_value)?;
+
+                // Check all pairs have consistent key and value types
+                for (i, (key, value)) in pairs.iter().enumerate().skip(1) {
+                    let current_key_type = self.check_expression(key)?;
+                    let current_value_type = self.check_expression(value)?;
+
+                    if current_key_type != key_type {
+                        return Err(DiagnosticError::Type(
+                            format!("Dict key {} has type {:?}, expected {:?}", i, current_key_type, key_type)
+                        ));
+                    }
+
+                    if current_value_type != value_type {
+                        return Err(DiagnosticError::Type(
+                            format!("Dict value {} has type {:?}, expected {:?}", i, current_value_type, value_type)
+                        ));
+                    }
+                }
+
+                Ok(HirType::Dict(Box::new(key_type), Box::new(value_type)))
+            }
         }
     }
 
@@ -778,6 +811,11 @@ impl TypeChecker {
             Type::List(element_type) => {
                 let element_hir_type = self.ast_type_to_hir_type(element_type)?;
                 Ok(HirType::List(Box::new(element_hir_type)))
+            }
+            Type::Dict(key_type, value_type) => {
+                let key_hir_type = self.ast_type_to_hir_type(key_type)?;
+                let value_hir_type = self.ast_type_to_hir_type(value_type)?;
+                Ok(HirType::Dict(Box::new(key_hir_type), Box::new(value_hir_type)))
             }
             Type::Named(name, type_params) => {
                 // Check if this is a known enum

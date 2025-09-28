@@ -25,6 +25,7 @@ pub enum VariableType {
     I64,
     String,
     Array,
+    Dict,
     Enum(String), // enum name
 }
 
@@ -72,6 +73,7 @@ impl CodeGenerator {
         match &arms[0].body {
             Expression::Literal(Literal::Bool(_, _)) => VariableType::Bool,
             Expression::Literal(Literal::Array(_, _)) => VariableType::Array,
+            Expression::Literal(Literal::Dict(_, _)) => VariableType::Dict,
             Expression::EnumConstructor { enum_name, .. } => VariableType::Enum(enum_name.clone()),
             _ => VariableType::I32,
         }
@@ -278,6 +280,7 @@ impl CodeGenerator {
                     Expression::Literal(Literal::String(_, _)) => (I64, VariableType::String),
                     Expression::Literal(Literal::InterpolatedString(_, _)) => (I64, VariableType::String),
                     Expression::Literal(Literal::Array(_, _)) => (I64, VariableType::Array),
+                    Expression::Literal(Literal::Dict(_, _)) => (I64, VariableType::Dict),
                     Expression::Index { .. } => (I32, VariableType::I32), // Array indexing returns i32 elements
                     Expression::MethodCall { method, .. } if method == "len" => (I32, VariableType::I32), // len() returns i32
                     Expression::Literal(Literal::Bool(_, _)) => (I32, VariableType::Bool),
@@ -309,6 +312,7 @@ impl CodeGenerator {
                     Expression::Literal(Literal::String(_, _)) => (I64, VariableType::String),
                     Expression::Literal(Literal::InterpolatedString(_, _)) => (I64, VariableType::String),
                     Expression::Literal(Literal::Array(_, _)) => (I64, VariableType::Array),
+                    Expression::Literal(Literal::Dict(_, _)) => (I64, VariableType::Dict),
                     Expression::Index { .. } => (I32, VariableType::I32), // Array indexing returns i32 elements
                     Expression::MethodCall { method, .. } if method == "len" => (I32, VariableType::I32), // len() returns i32
                     Expression::Literal(Literal::Bool(_, _)) => (I32, VariableType::Bool),
@@ -598,11 +602,137 @@ impl CodeGenerator {
                 // Use expected type information for array generation
                 Self::generate_typed_array_literal(builder, elements, expected_type, variables, variable_types, functions, module, string_counter, variable_counter)
             }
+            Expression::Literal(Literal::Dict(pairs, _)) => {
+                // Use expected type information for dict generation
+                Self::generate_typed_dict_literal(builder, pairs, expected_type, variables, variable_types, functions, module, string_counter, variable_counter)
+            }
             _ => {
                 // For non-array expressions, use the regular helper
                 Self::generate_expression_helper(builder, expr, variables, variable_types, functions, module, string_counter, variable_counter)
             }
         }
+    }
+
+    fn generate_typed_dict_literal(
+        builder: &mut FunctionBuilder,
+        pairs: &[(Expression, Expression)],
+        expected_type: Option<&AstType>,
+        variables: &HashMap<String, Variable>,
+        variable_types: &HashMap<String, VariableType>,
+        functions: &HashMap<String, FuncId>,
+        module: &mut ObjectModule,
+        string_counter: &mut usize,
+        variable_counter: &mut u32
+    ) -> Result<Value, CodegenError> {
+        if pairs.is_empty() {
+            // For empty dicts, determine type from annotation or default to string->i32
+            let (_key_type, _value_type) = if let Some(AstType::Dict(key_type, value_type)) = expected_type {
+                (key_type.as_ref(), value_type.as_ref())
+            } else {
+                (&AstType::String, &AstType::I32) // default
+            };
+
+            // Create empty dict
+            let create_sig = {
+                let mut sig = module.make_signature();
+                sig.call_conv = CallConv::SystemV;
+                sig.params.push(AbiParam::new(I64)); // keys pointer (null)
+                sig.params.push(AbiParam::new(I64)); // values pointer (null)
+                sig.params.push(AbiParam::new(I64)); // value_types pointer (null)
+                sig.params.push(AbiParam::new(I64)); // count (0)
+                sig.returns.push(AbiParam::new(I64)); // dict pointer
+                sig
+            };
+
+            let create_id = module.declare_function("plat_dict_create", Linkage::Import, &create_sig)
+                .map_err(CodegenError::ModuleError)?;
+            let create_ref = module.declare_func_in_func(create_id, builder.func);
+
+            let null_ptr = builder.ins().iconst(I64, 0);
+            let count_val = builder.ins().iconst(I64, 0);
+            let call = builder.ins().call(create_ref, &[null_ptr, null_ptr, null_ptr, count_val]);
+            return Ok(builder.inst_results(call)[0]);
+        }
+
+        // Generate arrays for keys, values, and value types
+        let mut keys = Vec::new();
+        let mut values = Vec::new();
+        let mut value_types = Vec::new();
+
+        for (key_expr, value_expr) in pairs {
+            // Evaluate key (must be string)
+            let key_val = Self::generate_expression_helper(builder, key_expr, variables, variable_types, functions, module, string_counter, variable_counter)?;
+            keys.push(key_val);
+
+            // Evaluate value
+            let value_val = Self::generate_expression_helper(builder, value_expr, variables, variable_types, functions, module, string_counter, variable_counter)?;
+            values.push(value_val);
+
+            // Determine value type
+            let type_val = match value_expr {
+                Expression::Literal(Literal::Bool(_, _)) => 2u8, // DICT_VALUE_TYPE_BOOL
+                Expression::Literal(Literal::Integer(val, _)) => {
+                    if *val > i32::MAX as i64 || *val < i32::MIN as i64 {
+                        1u8 // DICT_VALUE_TYPE_I64
+                    } else {
+                        0u8 // DICT_VALUE_TYPE_I32
+                    }
+                }
+                Expression::Literal(Literal::String(_, _)) => 3u8, // DICT_VALUE_TYPE_STRING
+                Expression::Literal(Literal::InterpolatedString(_, _)) => 3u8,
+                _ => 0u8, // default to i32
+            };
+            value_types.push(type_val);
+        }
+
+        let count = pairs.len() as i64;
+
+        // Create temporary arrays on stack for keys, values, and types
+        let keys_size = count * 8; // i64 pointers
+        let values_size = count * 8; // i64 values
+        let types_size = count * 1; // u8 types
+
+        let keys_slot = builder.create_sized_stack_slot(StackSlotData::new(StackSlotKind::ExplicitSlot, keys_size as u32, 8));
+        let values_slot = builder.create_sized_stack_slot(StackSlotData::new(StackSlotKind::ExplicitSlot, values_size as u32, 8));
+        let types_slot = builder.create_sized_stack_slot(StackSlotData::new(StackSlotKind::ExplicitSlot, types_size as u32, 1));
+
+        // Store keys, values, and types
+        for (i, ((key_val, value_val), type_val)) in keys.iter().zip(values.iter()).zip(value_types.iter()).enumerate() {
+            let offset = (i * 8) as i32;
+            builder.ins().stack_store(*key_val, keys_slot, offset);
+            builder.ins().stack_store(*value_val, values_slot, offset);
+
+            let type_offset = i as i32;
+            let type_const = builder.ins().iconst(I32, *type_val as i64);
+            builder.ins().stack_store(type_const, types_slot, type_offset);
+        }
+
+        // Get stack addresses
+        let keys_addr = builder.ins().stack_addr(I64, keys_slot, 0);
+        let values_addr = builder.ins().stack_addr(I64, values_slot, 0);
+        let types_addr = builder.ins().stack_addr(I64, types_slot, 0);
+
+        // Call plat_dict_create
+        let create_sig = {
+            let mut sig = module.make_signature();
+            sig.call_conv = CallConv::SystemV;
+            sig.params.push(AbiParam::new(I64)); // keys pointer
+            sig.params.push(AbiParam::new(I64)); // values pointer
+            sig.params.push(AbiParam::new(I64)); // value_types pointer
+            sig.params.push(AbiParam::new(I64)); // count
+            sig.returns.push(AbiParam::new(I64)); // dict pointer
+            sig
+        };
+
+        let create_id = module.declare_function("plat_dict_create", Linkage::Import, &create_sig)
+            .map_err(CodegenError::ModuleError)?;
+        let create_ref = module.declare_func_in_func(create_id, builder.func);
+
+        let count_val = builder.ins().iconst(I64, count);
+        let call = builder.ins().call(create_ref, &[keys_addr, values_addr, types_addr, count_val]);
+        let dict_ptr = builder.inst_results(call)[0];
+
+        Ok(dict_ptr)
     }
 
     fn generate_expression_helper(
@@ -873,8 +1003,9 @@ impl CodeGenerator {
                         Expression::Literal(Literal::String(_, _)) => true,
                         Expression::Literal(Literal::InterpolatedString(_, _)) => true,
                         Expression::Literal(Literal::Array(_, _)) => true,
+                        Expression::Literal(Literal::Dict(_, _)) => true,
                         Expression::Identifier { name, .. } => {
-                            matches!(variable_types.get(name), Some(VariableType::String) | Some(VariableType::Array))
+                            matches!(variable_types.get(name), Some(VariableType::String) | Some(VariableType::Array) | Some(VariableType::Dict))
                         }
                         _ => false,
                     };
@@ -1453,6 +1584,21 @@ impl CodeGenerator {
                                     let call = builder.ins().call(convert_ref, &[expr_val]);
                                     builder.inst_results(call)[0]
                                 }
+                                Some(VariableType::Dict) => {
+                                    // Dict variable, convert to string representation
+                                    let convert_sig = {
+                                        let mut sig = module.make_signature();
+                                        sig.call_conv = CallConv::SystemV;
+                                        sig.params.push(AbiParam::new(I64));
+                                        sig.returns.push(AbiParam::new(I64));
+                                        sig
+                                    };
+                                    let convert_id = module.declare_function("plat_dict_to_string", Linkage::Import, &convert_sig)
+                                        .map_err(CodegenError::ModuleError)?;
+                                    let convert_ref = module.declare_func_in_func(convert_id, builder.func);
+                                    let call = builder.ins().call(convert_ref, &[expr_val]);
+                                    builder.inst_results(call)[0]
+                                }
                                 Some(VariableType::I32) | Some(VariableType::Bool) => {
                                     // I32/boolean variable, convert to string
                                     let convert_sig = {
@@ -1522,13 +1668,14 @@ impl CodeGenerator {
                                 }
                             }
                         }
-                        // Array expressions need to be converted to strings
+                        // Array and Dict expressions need to be converted to strings
                         Expression::Literal(Literal::Array(_, _)) |
+                        Expression::Literal(Literal::Dict(_, _)) |
                         Expression::Index { .. } => {
-                            // Arrays and indexing results - convert arrays to strings, but indexing gives i32
+                            // Arrays, dicts and indexing results - convert arrays/dicts to strings, but indexing gives i32
                             let val_type = builder.func.dfg.value_type(expr_val);
                             if val_type == I64 {
-                                // This is an array pointer, convert to string
+                                // This is an array/dict pointer, convert to string
                                 let convert_sig = {
                                     let mut sig = module.make_signature();
                                     sig.call_conv = CallConv::SystemV;
@@ -1536,7 +1683,14 @@ impl CodeGenerator {
                                     sig.returns.push(AbiParam::new(I64));
                                     sig
                                 };
-                                let convert_id = module.declare_function("plat_array_to_string", Linkage::Import, &convert_sig)
+
+                                // Choose the right conversion function based on expression type
+                                let function_name = match expr {
+                                    Expression::Literal(Literal::Dict(_, _)) => "plat_dict_to_string",
+                                    _ => "plat_array_to_string", // Arrays and other expressions
+                                };
+
+                                let convert_id = module.declare_function(function_name, Linkage::Import, &convert_sig)
                                     .map_err(CodegenError::ModuleError)?;
                                 let convert_ref = module.declare_func_in_func(convert_id, builder.func);
                                 let call = builder.ins().call(convert_ref, &[expr_val]);
@@ -1681,6 +1835,111 @@ impl CodeGenerator {
                 let array_ptr = builder.inst_results(call)[0];
 
                 Ok(array_ptr)
+            }
+            Literal::Dict(pairs, _) => {
+                // Process dict literal: {"key": value, "key2": value2}
+                let count = pairs.len() as i64;
+
+                if count == 0 {
+                    // Empty dict
+                    let create_sig = {
+                        let mut sig = module.make_signature();
+                        sig.call_conv = CallConv::SystemV;
+                        sig.params.push(AbiParam::new(I64)); // keys pointer (null)
+                        sig.params.push(AbiParam::new(I64)); // values pointer (null)
+                        sig.params.push(AbiParam::new(I64)); // value_types pointer (null)
+                        sig.params.push(AbiParam::new(I64)); // count (0)
+                        sig.returns.push(AbiParam::new(I64)); // dict pointer
+                        sig
+                    };
+
+                    let create_id = module.declare_function("plat_dict_create", Linkage::Import, &create_sig)
+                        .map_err(CodegenError::ModuleError)?;
+                    let create_ref = module.declare_func_in_func(create_id, builder.func);
+
+                    let null_ptr = builder.ins().iconst(I64, 0);
+                    let count_val = builder.ins().iconst(I64, 0);
+                    let call = builder.ins().call(create_ref, &[null_ptr, null_ptr, null_ptr, count_val]);
+                    return Ok(builder.inst_results(call)[0]);
+                }
+
+                // Generate arrays for keys, values, and value types
+                let mut keys = Vec::new();
+                let mut values = Vec::new();
+                let mut value_types = Vec::new();
+
+                for (key_expr, value_expr) in pairs {
+                    // Evaluate key (must be string)
+                    let key_val = Self::generate_expression_helper(builder, key_expr, variables, variable_types, functions, module, string_counter, variable_counter)?;
+                    keys.push(key_val);
+
+                    // Evaluate value
+                    let value_val = Self::generate_expression_helper(builder, value_expr, variables, variable_types, functions, module, string_counter, variable_counter)?;
+                    values.push(value_val);
+
+                    // Determine value type (simplified - assuming i32 values for now)
+                    let type_val = match value_expr {
+                        Expression::Literal(Literal::Bool(_, _)) => 2u8, // DICT_VALUE_TYPE_BOOL
+                        Expression::Literal(Literal::Integer(val, _)) => {
+                            if *val > i32::MAX as i64 || *val < i32::MIN as i64 {
+                                1u8 // DICT_VALUE_TYPE_I64
+                            } else {
+                                0u8 // DICT_VALUE_TYPE_I32
+                            }
+                        }
+                        Expression::Literal(Literal::String(_, _)) => 3u8, // DICT_VALUE_TYPE_STRING
+                        Expression::Literal(Literal::InterpolatedString(_, _)) => 3u8,
+                        _ => 0u8, // default to i32
+                    };
+                    value_types.push(type_val);
+                }
+
+                // Create temporary arrays on stack for keys, values, and types
+                let keys_size = count * 8; // i64 pointers
+                let values_size = count * 8; // i64 values
+                let types_size = count * 1; // u8 types
+
+                let keys_slot = builder.create_sized_stack_slot(StackSlotData::new(StackSlotKind::ExplicitSlot, keys_size as u32, 8));
+                let values_slot = builder.create_sized_stack_slot(StackSlotData::new(StackSlotKind::ExplicitSlot, values_size as u32, 8));
+                let types_slot = builder.create_sized_stack_slot(StackSlotData::new(StackSlotKind::ExplicitSlot, types_size as u32, 1));
+
+                // Store keys, values, and types
+                for (i, ((key_val, value_val), type_val)) in keys.iter().zip(values.iter()).zip(value_types.iter()).enumerate() {
+                    let offset = (i * 8) as i32;
+                    builder.ins().stack_store(*key_val, keys_slot, offset);
+                    builder.ins().stack_store(*value_val, values_slot, offset);
+
+                    let type_offset = i as i32;
+                    let type_const = builder.ins().iconst(I32, *type_val as i64);
+                    builder.ins().stack_store(type_const, types_slot, type_offset);
+                }
+
+                // Get stack addresses
+                let keys_addr = builder.ins().stack_addr(I64, keys_slot, 0);
+                let values_addr = builder.ins().stack_addr(I64, values_slot, 0);
+                let types_addr = builder.ins().stack_addr(I64, types_slot, 0);
+
+                // Call plat_dict_create
+                let create_sig = {
+                    let mut sig = module.make_signature();
+                    sig.call_conv = CallConv::SystemV;
+                    sig.params.push(AbiParam::new(I64)); // keys pointer
+                    sig.params.push(AbiParam::new(I64)); // values pointer
+                    sig.params.push(AbiParam::new(I64)); // value_types pointer
+                    sig.params.push(AbiParam::new(I64)); // count
+                    sig.returns.push(AbiParam::new(I64)); // dict pointer
+                    sig
+                };
+
+                let create_id = module.declare_function("plat_dict_create", Linkage::Import, &create_sig)
+                    .map_err(CodegenError::ModuleError)?;
+                let create_ref = module.declare_func_in_func(create_id, builder.func);
+
+                let count_val = builder.ins().iconst(I64, count);
+                let call = builder.ins().call(create_ref, &[keys_addr, values_addr, types_addr, count_val]);
+                let dict_ptr = builder.inst_results(call)[0];
+
+                Ok(dict_ptr)
             }
         }
     }

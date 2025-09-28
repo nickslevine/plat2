@@ -230,6 +230,16 @@ Deliver a working `plat` CLI binary that:
   - [x] Iteration: `for (item in array)` support
   - [x] AST type annotation integration for type determination
 
+- [x] **Dict[K, V]**: Key-value dictionary collections with type safety
+  - [x] Type-safe creation: `Dict[string, i32]`, `Dict[string, string]`
+  - [x] Literal syntax: `{"key": value, "key2": value2}`
+  - [x] GC-managed allocation with vector-based storage
+  - [x] Runtime functions for creation, lookup, and string conversion
+  - [x] Dictionary interpolation and display formatting
+  - [x] Complete type checking with helpful error messages
+  - [x] Formatter support for pretty printing
+  - [x] Full compiler pipeline integration
+
 ## 13. Stretch Goals (post-MVP)
 - [ ] Imports & modules
 - [ ] Structs & user-defined types
@@ -259,7 +269,9 @@ Deliver a working `plat` CLI binary that:
 - [x] **WORKING**: `let flags: List[bool] = [true, false]` → type-safe creation ✅
 - [x] **WORKING**: `let words: List[string] = ["hello", "world"]` → generic arrays ✅
 - [x] **WORKING**: `flags[0]` → `1` (true), `numbers[0]` → `10` → typed indexing ✅
-- [x] **ACHIEVEMENT**: Complete algebraic data types + generic collections ready for production!
+- [x] **WORKING**: `let my_dict: Dict[string, i32] = {"key1": 42, "key2": 100}` → type-safe dicts ✅
+- [x] **WORKING**: `print("Dict: ${my_dict}")` → `"Dict: {"key1": 42, "key2": 100}"` ✅
+- [x] **ACHIEVEMENT**: Complete algebraic data types + generic collections + dictionaries ready for production!
 
 ### 📝 **Complete Working Examples (Production Ready!)**
 
@@ -401,6 +413,34 @@ fn main() {
 }
 ```
 
+```plat
+// ✅ COMPLETE: Dictionary collections with type safety
+fn main() {
+    // Type-safe dictionary creation with explicit annotations
+    let my_dict: Dict[string, i32] = {"key1": 42, "key2": 100};
+    let mixed_dict: Dict[string, string] = {"name": "Alice", "city": "New York"};
+
+    // Dictionary display and interpolation works perfectly
+    print("Int dict: ${my_dict}");      // {"key1": 42, "key2": 100}
+    print("String dict: ${mixed_dict}"); // {"name": "Alice", "city": "New York"}
+
+    // Consistent syntax with familiar JSON-like literals
+    let config: Dict[string, string] = {
+        "host": "localhost",
+        "port": "8080",
+        "debug": "true"
+    };
+    print("Config: ${config}");
+
+    // Memory-efficient GC-managed storage with vector-based implementation
+    // Perfect integration with existing Plat features:
+    // - String interpolation works seamlessly
+    // - Type checking prevents key/value type mismatches
+    // - Formatter provides consistent pretty printing
+    // - Full compiler pipeline support with native code generation
+}
+```
+
 ### 🎯 Major Milestones Achieved
 - [x] Scaffold Cargo workspace and commit
 - [x] Implement CLI skeleton with passing tests
@@ -408,6 +448,7 @@ fn main() {
 - [x] **NEW**: Full enum support with algebraic data types
 - [x] **NEW**: Built-in Option<T> and Result<T, E> with pattern matching
 - [x] **NEW**: Generic homogeneous List[T] with type-safe operations
+- [x] **NEW**: Dict[K, V] HashMap collections with type safety and JSON-like syntax
 - [x] All stages: tests passing, code working, plan completed
 ```
 

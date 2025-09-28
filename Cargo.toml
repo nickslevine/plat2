@@ -36,7 +36,7 @@ target-lexicon = "0.12"
 object = "0.36"
 
 # GC support - using conservative GC
-gc = "0.5"
+gc = { version = "0.5", features = ["derive"] }
 
 # Testing and utilities
 regex = "1.10"

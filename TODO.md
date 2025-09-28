@@ -1,6 +1,7 @@
 - [x] Enums (COMPLETE! unit variants, data variants, multi-field variants, pattern binding)
 - [x] Option type (COMPLETE! Some/None with pattern matching and data extraction)
 - [x] Result type (COMPLETE! Ok/Err with pattern matching and data extraction)
+- [x] Dict/HashMap (COMPLETE! Dict[K, V] with type safety and JSON-like syntax)
 
 * Classes
 * LSP
@@ -12,9 +13,8 @@
 * string methods
 
 * parallel loops
-* concurrency 
+* concurrency
 * number formatting with underscores
-* hashmap
 * set
 * exhuastive pattern matching 
 * if expressions? 

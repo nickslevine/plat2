@@ -161,6 +161,13 @@ impl Formatter {
                 self.format_type(element_type);
                 self.write("]");
             }
+            Type::Dict(key_type, value_type) => {
+                self.write("Dict[");
+                self.format_type(key_type);
+                self.write(", ");
+                self.format_type(value_type);
+                self.write("]");
+            }
             Type::Named(name, type_params) => {
                 self.write(name);
                 if !type_params.is_empty() {
@@ -420,6 +427,18 @@ impl Formatter {
                     self.format_expression(element);
                 }
                 self.write("]");
+            }
+            Literal::Dict(pairs, _) => {
+                self.write("{");
+                for (i, (key, value)) in pairs.iter().enumerate() {
+                    if i > 0 {
+                        self.write(", ");
+                    }
+                    self.format_expression(key);
+                    self.write(": ");
+                    self.format_expression(value);
+                }
+                self.write("}");
             }
         }
     }

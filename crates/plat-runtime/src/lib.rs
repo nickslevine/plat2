@@ -4,21 +4,22 @@ mod tests;
 use std::fmt;
 use std::ffi::CStr;
 use std::os::raw::c_char;
-use gc::Gc;
+use gc::{Gc, Trace, Finalize};
 
 /// Runtime value types for the Plat language
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Trace, Finalize)]
 pub enum PlatValue {
     Bool(bool),
     I32(i32),
     I64(i64),
     String(PlatString),
     Array(PlatArray),
+    Dict(PlatDict),
     Unit,
 }
 
 /// GC-managed string type using gc crate
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Trace, Finalize)]
 pub struct PlatString {
     data: Gc<String>,
 }
@@ -63,7 +64,7 @@ impl fmt::Display for PlatString {
 }
 
 /// GC-managed homogeneous array type
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Trace, Finalize)]
 pub struct PlatArray {
     data: Gc<Vec<i32>>, // For now, only support i32 arrays (we can extend later)
     length: usize,
@@ -101,6 +102,75 @@ impl PlatArray {
     }
 }
 
+/// GC-managed dictionary type (using vector of key-value pairs for simplicity)
+#[derive(Debug, Clone, Trace, Finalize)]
+pub struct PlatDict {
+    data: Gc<Vec<(String, PlatValue)>>,
+}
+
+impl PartialEq for PlatDict {
+    fn eq(&self, other: &Self) -> bool {
+        self.data.as_ref() == other.data.as_ref()
+    }
+}
+
+impl PlatDict {
+    pub fn new() -> Self {
+        Self {
+            data: Gc::new(Vec::new()),
+        }
+    }
+
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            data: Gc::new(Vec::with_capacity(capacity)),
+        }
+    }
+
+    pub fn from_pairs(pairs: Vec<(String, PlatValue)>) -> Self {
+        Self {
+            data: Gc::new(pairs),
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.data.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.data.is_empty()
+    }
+
+    pub fn get(&self, key: &str) -> Option<&PlatValue> {
+        self.data.iter().find(|(k, _)| k == key).map(|(_, v)| v)
+    }
+
+    pub fn keys(&self) -> impl Iterator<Item = &String> {
+        self.data.iter().map(|(k, _)| k)
+    }
+
+    pub fn values(&self) -> impl Iterator<Item = &PlatValue> {
+        self.data.iter().map(|(_, v)| v)
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = (&String, &PlatValue)> {
+        self.data.iter().map(|(k, v)| (k, v))
+    }
+}
+
+impl fmt::Display for PlatDict {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{{")?;
+        for (i, (key, value)) in self.data.iter().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            write!(f, "\"{}\": {}", key, value)?;
+        }
+        write!(f, "}}")
+    }
+}
+
 impl fmt::Display for PlatValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -118,6 +188,7 @@ impl fmt::Display for PlatValue {
                 }
                 write!(f, "]")
             }
+            PlatValue::Dict(dict) => write!(f, "{}", dict),
             PlatValue::Unit => write!(f, "()"),
         }
     }
@@ -162,6 +233,12 @@ impl From<&str> for PlatValue {
 impl From<PlatString> for PlatValue {
     fn from(s: PlatString) -> Self {
         PlatValue::String(s)
+    }
+}
+
+impl From<PlatDict> for PlatValue {
+    fn from(dict: PlatDict) -> Self {
+        PlatValue::Dict(dict)
     }
 }
 
@@ -767,6 +844,225 @@ pub extern "C" fn plat_array_to_string(array_ptr: *const RuntimeArray) -> *const
         }
 
         result.push(']');
+
+        // Allocate result on GC heap
+        let mut result_bytes = result.into_bytes();
+        result_bytes.push(0); // null terminator
+
+        let size = result_bytes.len();
+        let gc_ptr = plat_gc_alloc(size);
+
+        if gc_ptr.is_null() {
+            return std::ptr::null();
+        }
+
+        // Copy result to GC memory
+        std::ptr::copy_nonoverlapping(result_bytes.as_ptr(), gc_ptr, size);
+
+        gc_ptr as *const c_char
+    }
+}
+
+// Dict type constants
+pub const DICT_KEY_TYPE_STRING: u8 = 0;
+pub const DICT_VALUE_TYPE_I32: u8 = 0;
+pub const DICT_VALUE_TYPE_I64: u8 = 1;
+pub const DICT_VALUE_TYPE_BOOL: u8 = 2;
+pub const DICT_VALUE_TYPE_STRING: u8 = 3;
+
+/// Dict structure for runtime (C-compatible)
+/// For simplicity, using string keys and generic values
+#[repr(C)]
+pub struct RuntimeDict {
+    keys: *mut *const c_char,    // Array of string keys (null-terminated)
+    values: *mut i64,            // Array of values (all as i64 for simplicity)
+    value_types: *mut u8,        // Array indicating the type of each value
+    length: usize,
+    capacity: usize,
+}
+
+/// Create a new dict on the GC heap
+#[no_mangle]
+pub extern "C" fn plat_dict_create(
+    keys: *const *const c_char,
+    values: *const i64,
+    value_types: *const u8,
+    count: usize
+) -> *mut RuntimeDict {
+    if (keys.is_null() || values.is_null() || value_types.is_null()) && count > 0 {
+        return std::ptr::null_mut();
+    }
+
+    // Allocate the dict struct
+    let dict_size = std::mem::size_of::<RuntimeDict>();
+    let dict_ptr = plat_gc_alloc(dict_size) as *mut RuntimeDict;
+
+    if dict_ptr.is_null() {
+        return std::ptr::null_mut();
+    }
+
+    // Allocate space for keys, values, and types arrays
+    let keys_size = count * std::mem::size_of::<*const c_char>();
+    let values_size = count * std::mem::size_of::<i64>();
+    let types_size = count * std::mem::size_of::<u8>();
+
+    let keys_ptr = if count > 0 {
+        plat_gc_alloc(keys_size) as *mut *const c_char
+    } else {
+        std::ptr::null_mut()
+    };
+
+    let values_ptr = if count > 0 {
+        plat_gc_alloc(values_size) as *mut i64
+    } else {
+        std::ptr::null_mut()
+    };
+
+    let types_ptr = if count > 0 {
+        plat_gc_alloc(types_size) as *mut u8
+    } else {
+        std::ptr::null_mut()
+    };
+
+    if count > 0 && (keys_ptr.is_null() || values_ptr.is_null() || types_ptr.is_null()) {
+        return std::ptr::null_mut();
+    }
+
+    // Copy data
+    if count > 0 {
+        unsafe {
+            std::ptr::copy_nonoverlapping(keys, keys_ptr, count);
+            std::ptr::copy_nonoverlapping(values, values_ptr, count);
+            std::ptr::copy_nonoverlapping(value_types, types_ptr, count);
+        }
+    }
+
+    // Initialize the dict struct
+    unsafe {
+        (*dict_ptr) = RuntimeDict {
+            keys: keys_ptr,
+            values: values_ptr,
+            value_types: types_ptr,
+            length: count,
+            capacity: count,
+        };
+    }
+
+    dict_ptr
+}
+
+/// Get a value from the dict by key
+#[no_mangle]
+pub extern "C" fn plat_dict_get(dict_ptr: *const RuntimeDict, key: *const c_char) -> i64 {
+    if dict_ptr.is_null() || key.is_null() {
+        return 0;
+    }
+
+    unsafe {
+        let dict = &*dict_ptr;
+        if dict.keys.is_null() || dict.values.is_null() {
+            return 0;
+        }
+
+        let key_str = match CStr::from_ptr(key).to_str() {
+            Ok(s) => s,
+            Err(_) => return 0,
+        };
+
+        // Linear search for the key (simple implementation)
+        for i in 0..dict.length {
+            let dict_key_ptr = *dict.keys.add(i);
+            if !dict_key_ptr.is_null() {
+                if let Ok(dict_key_str) = CStr::from_ptr(dict_key_ptr).to_str() {
+                    if dict_key_str == key_str {
+                        return *dict.values.add(i);
+                    }
+                }
+            }
+        }
+
+        0 // Not found
+    }
+}
+
+/// Get the length of a dict
+#[no_mangle]
+pub extern "C" fn plat_dict_len(dict_ptr: *const RuntimeDict) -> usize {
+    if dict_ptr.is_null() {
+        return 0;
+    }
+
+    unsafe {
+        (*dict_ptr).length
+    }
+}
+
+/// Convert a dict to a string for interpolation
+#[no_mangle]
+pub extern "C" fn plat_dict_to_string(dict_ptr: *const RuntimeDict) -> *const c_char {
+    if dict_ptr.is_null() {
+        return std::ptr::null();
+    }
+
+    unsafe {
+        let dict = &*dict_ptr;
+
+        let mut result = String::from("{");
+
+        for i in 0..dict.length {
+            if i > 0 {
+                result.push_str(", ");
+            }
+
+            // Get key
+            if !dict.keys.is_null() {
+                let key_ptr = *dict.keys.add(i);
+                if !key_ptr.is_null() {
+                    if let Ok(key_str) = CStr::from_ptr(key_ptr).to_str() {
+                        result.push('"');
+                        result.push_str(key_str);
+                        result.push_str("\": ");
+                    }
+                }
+            }
+
+            // Get value based on type
+            if !dict.values.is_null() && !dict.value_types.is_null() {
+                let value = *dict.values.add(i);
+                let value_type = *dict.value_types.add(i);
+
+                match value_type {
+                    DICT_VALUE_TYPE_I32 => {
+                        result.push_str(&(value as i32).to_string());
+                    },
+                    DICT_VALUE_TYPE_I64 => {
+                        result.push_str(&value.to_string());
+                    },
+                    DICT_VALUE_TYPE_BOOL => {
+                        result.push_str(if value != 0 { "true" } else { "false" });
+                    },
+                    DICT_VALUE_TYPE_STRING => {
+                        let string_ptr = value as *const c_char;
+                        if !string_ptr.is_null() {
+                            if let Ok(string_val) = CStr::from_ptr(string_ptr).to_str() {
+                                result.push('"');
+                                result.push_str(string_val);
+                                result.push('"');
+                            } else {
+                                result.push_str("\"<invalid>\"");
+                            }
+                        } else {
+                            result.push_str("\"<null>\"");
+                        }
+                    },
+                    _ => {
+                        result.push_str("<unknown>");
+                    }
+                }
+            }
+        }
+
+        result.push('}');
 
         // Allocate result on GC heap
         let mut result_bytes = result.into_bytes();

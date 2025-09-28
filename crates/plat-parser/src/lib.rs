@@ -100,6 +100,15 @@ impl Parser {
             return Ok(Type::List(Box::new(element_type)));
         }
 
+        if self.match_token(&Token::Dict) {
+            self.consume(Token::LeftBracket, "Expected '[' after 'Dict'")?;
+            let key_type = self.parse_type()?;
+            self.consume(Token::Comma, "Expected ',' after key type")?;
+            let value_type = self.parse_type()?;
+            self.consume(Token::RightBracket, "Expected ']' after value type")?;
+            return Ok(Type::Dict(Box::new(key_type), Box::new(value_type)));
+        }
+
         let type_name = self.consume_identifier("Expected type name")?;
 
         // Check for generic type parameters
@@ -347,7 +356,7 @@ impl Parser {
                     Expression::Literal(lit) => match lit {
                         Literal::Bool(_, s) | Literal::Integer(_, s) |
                         Literal::String(_, s) | Literal::InterpolatedString(_, s) |
-                        Literal::Array(_, s) => s.start,
+                        Literal::Array(_, s) | Literal::Dict(_, s) => s.start,
                     },
                     Expression::Identifier { span, .. } => span.start,
                     Expression::Call { span, .. } => span.start,
@@ -640,9 +649,15 @@ impl Parser {
         }
 
         if self.match_token(&Token::LeftBrace) {
-            self.current -= 1; // Back up to re-parse the block
-            let block = self.parse_block()?;
-            return Ok(Expression::Block(block));
+            // Lookahead to determine if this is a dict literal or a block
+            if self.is_dict_literal() {
+                self.current -= 1; // Back up to re-parse the dict
+                return self.parse_dict_literal();
+            } else {
+                self.current -= 1; // Back up to re-parse the block
+                let block = self.parse_block()?;
+                return Ok(Expression::Block(block));
+            }
         }
 
         if self.match_token(&Token::LeftBracket) {
@@ -694,7 +709,7 @@ impl Parser {
             Expression::Literal(lit) => match lit {
                 Literal::Bool(_, s) | Literal::Integer(_, s) |
                 Literal::String(_, s) | Literal::InterpolatedString(_, s) |
-                Literal::Array(_, s) => s.start,
+                Literal::Array(_, s) | Literal::Dict(_, s) => s.start,
             },
             Expression::Identifier { span, .. } => span.start,
             Expression::Call { span, .. } => span.start,
@@ -1005,5 +1020,73 @@ impl Parser {
                 self.current_span().start
             )))
         }
+    }
+
+    fn is_dict_literal(&mut self) -> bool {
+        // Look ahead to see if this looks like a dict literal
+        // Pattern: { "key": value, ... } or { key: value, ... }
+        // Save current position for restoration
+        let saved_current = self.current;
+
+        // Skip the opening brace (we've already consumed it)
+        // Look for pattern: (string|ident) : expr
+        if self.is_at_end() || self.check(&Token::RightBrace) {
+            // Empty braces could be either, assume it's a block
+            self.current = saved_current;
+            return false;
+        }
+
+        // Check if we have a key-like token followed by ':'
+        let looks_like_dict = match &self.peek().token {
+            Token::StringLiteral(_) => {
+                self.advance();
+                self.check(&Token::Colon)
+            }
+            Token::Ident(_) => {
+                self.advance();
+                self.check(&Token::Colon)
+            }
+            _ => false,
+        };
+
+        // Restore position
+        self.current = saved_current;
+        looks_like_dict
+    }
+
+    fn parse_dict_literal(&mut self) -> Result<Expression, DiagnosticError> {
+        let start = self.current_span().start;
+        self.consume(Token::LeftBrace, "Expected '{'")?;
+
+        let mut pairs = Vec::new();
+
+        if !self.check(&Token::RightBrace) {
+            loop {
+                // Parse key (can be string literal or identifier)
+                let key = match &self.peek().token {
+                    Token::StringLiteral(_) => self.parse_primary()?,
+                    Token::Ident(_) => {
+                        let name = self.consume_identifier("Expected key")?;
+                        let span = self.previous_span();
+                        Expression::Literal(Literal::String(name, span))
+                    }
+                    _ => return Err(DiagnosticError::Syntax("Expected string or identifier as dict key".to_string())),
+                };
+
+                self.consume(Token::Colon, "Expected ':' after dict key")?;
+                let value = self.parse_expression()?;
+
+                pairs.push((key, value));
+
+                if !self.match_token(&Token::Comma) {
+                    break;
+                }
+            }
+        }
+
+        self.consume(Token::RightBrace, "Expected '}' after dict elements")?;
+        let end = self.previous_span().end;
+
+        Ok(Expression::Literal(Literal::Dict(pairs, Span::new(start, end))))
     }
 }
