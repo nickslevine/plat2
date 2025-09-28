@@ -48,7 +48,7 @@ impl CodeGenerator {
             Expression::Literal(Literal::Bool(_, _)) => VariableType::Bool,
             Expression::Literal(Literal::Integer(_, _)) => VariableType::I32,
             Expression::Literal(Literal::Array(_, _)) => VariableType::Array,
-            Expression::Identifier { .. } => VariableType::I32, // For now, assume pattern bindings are I32
+            Expression::Identifier { .. } => VariableType::String, // Pattern bindings use unified I64 handling
             Expression::EnumConstructor { enum_name, .. } => VariableType::Enum(enum_name.clone()),
             _ => VariableType::I32,
         }
@@ -911,17 +911,9 @@ impl CodeGenerator {
                     ));
                 }
 
-                // Determine the format based on the patterns in this match
-                // If any pattern has >1 binding, we need to handle pointer format
-                let has_multi_field = arms.iter().any(|arm| {
-                    if let Pattern::EnumVariant { bindings, .. } = &arm.pattern {
-                        bindings.len() > 1
-                    } else {
-                        false
-                    }
-                });
-
-                let disc_i32 = if has_multi_field {
+                // Always use runtime format detection since we can't determine statically
+                // whether the enum value uses packed or heap format
+                let disc_i32 = {
                     // Mixed format: some variants use packed, some use pointer
                     // Need runtime detection
                     let threshold = builder.ins().iconst(I64, 0x100000000); // 2^32
@@ -954,10 +946,6 @@ impl CodeGenerator {
                     builder.seal_block(disc_done);
 
                     builder.block_params(disc_done)[0]
-                } else {
-                    // All variants use packed format (0 or 1 field)
-                    let disc_val = builder.ins().ushr_imm(value_val, 32);
-                    builder.ins().ireduce(I32, disc_val)
                 };
 
                 // Create blocks for each arm and continuation
@@ -1012,17 +1000,29 @@ impl CodeGenerator {
                     if let Pattern::EnumVariant { enum_name, variant, bindings, .. } = &arm.pattern {
                         for (binding_idx, binding_name) in bindings.iter().enumerate() {
                             if !binding_name.is_empty() {
-                                // For single field, check if it's packed or heap allocated
+                                // Runtime format detection for pattern binding extraction
                                 let (field_val, var_type, cranelift_type) = if bindings.len() == 1 {
-                                    // For now, simplified approach: always assume packed format for integers
-                                    // and handle strings separately when we support them in patterns
+                                    // Detect format at runtime and extract appropriately
+                                    let threshold = builder.ins().iconst(I64, 0x100000000); // 2^32
+                                    let is_heap = builder.ins().icmp(cranelift_codegen::ir::condcodes::IntCC::UnsignedGreaterThanOrEqual, value_val, threshold);
+
+                                    // For heap format: load I64 pointer from offset 4
+                                    let heap_val = builder.ins().load(I64, MemFlags::new(), value_val, 4);
+
+                                    // For packed format: extract I32 from low bits and extend to I64
                                     let packed_val = builder.ins().ireduce(I32, value_val);
-                                    (packed_val, VariableType::I32, I32)
+                                    let extended_val = builder.ins().uextend(I64, packed_val);
+
+                                    // Select appropriate value based on format
+                                    let selected_val = builder.ins().select(is_heap, heap_val, extended_val);
+
+                                    // Use I64 for unified handling (works for both integers and pointers)
+                                    (selected_val, VariableType::String, I64)
                                 } else {
-                                    // Multi-field: assume pointer format and load from offset
-                                    let offset = 4 + (binding_idx * 4) as i32;
-                                    let loaded = builder.ins().load(I32, MemFlags::new(), value_val, offset);
-                                    (loaded, VariableType::I32, I32)
+                                    // Multi-field: assume heap format and load from offset
+                                    let offset = 4 + (binding_idx * 8) as i32; // 8-byte alignment for I64
+                                    let loaded = builder.ins().load(I64, MemFlags::new(), value_val, offset);
+                                    (loaded, VariableType::String, I64)
                                 };
 
                                 let var = Variable::from_u32(*variable_counter);
