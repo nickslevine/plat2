@@ -1,6 +1,6 @@
-- [x] Enums (unit variants complete, data variants ~80% done)
-- [~] Option type (parser complete, runtime needs pattern binding fixes)
-- [~] Result type (parser complete, runtime needs pattern binding fixes)
+- [x] Enums (COMPLETE! unit variants, data variants, multi-field variants, pattern binding)
+- [x] Option type (COMPLETE! Some/None with pattern matching and data extraction)
+- [x] Result type (COMPLETE! Ok/Err with pattern matching and data extraction)
 
 * Classes
 * LSP
