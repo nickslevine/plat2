@@ -1,5 +1,0 @@
-fn main() -> i32 {
-    let empty_set: Set[i32] = Set{};
-    print("Empty set: ${empty_set}");
-    return 0;
-}

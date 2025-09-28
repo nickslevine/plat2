@@ -1,5 +1,0 @@
-fn main() -> i32 {
-    let string_set: Set[string] = Set{"hello", "world", "hello"};
-    print("String set: ${string_set}");
-    return 0;
-}

@@ -4,29 +4,27 @@
 - [x] Dict/HashMap (COMPLETE! Dict[K, V] with type safety and JSON-like syntax)
 
 * Classes
-* LSP
-* syntax highlighting
 * enforce type annotations everywhere
-
 * for in
 * collection methods
 * string methods
-
-* parallel loops
-* concurrency
-* number formatting with underscores
-* set
-* exhuastive pattern matching 
 * if expressions? 
 * for ranges
 * error handling
 * safe vs unsafe arithmetic 
-
 * testing
 * benchmarking
-* config 
-
 * type alias
 * newtype
 * modules
 * visibility 
+
+* parallel loops
+* concurrency
+* number formatting with underscores
+
+
+* LSP
+* syntax highlighting
+* config 
+

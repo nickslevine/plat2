@@ -285,7 +285,15 @@ impl CodeGenerator {
                     Expression::Literal(Literal::Dict(_, _)) => (I64, VariableType::Dict),
                     Expression::Literal(Literal::Set(_, _)) => (I64, VariableType::Set),
                     Expression::Index { .. } => (I32, VariableType::I32), // Array indexing returns i32 elements
-                    Expression::MethodCall { method, .. } if method == "len" => (I32, VariableType::I32), // len() returns i32
+                    Expression::MethodCall { method, .. } => {
+                        match method.as_str() {
+                            "len" | "length" => (I32, VariableType::I32),
+                            "concat" | "trim" | "trim_left" | "trim_right" | "replace" | "replace_all" => (I64, VariableType::String),
+                            "split" => (I64, VariableType::Array),
+                            "contains" | "starts_with" | "ends_with" | "is_alpha" | "is_numeric" | "is_alphanumeric" => (I32, VariableType::Bool),
+                            _ => (I32, VariableType::I32), // default fallback
+                        }
+                    }
                     Expression::Literal(Literal::Bool(_, _)) => (I32, VariableType::Bool),
                     Expression::EnumConstructor { enum_name, .. } => (I64, VariableType::Enum(enum_name.clone())),
                     Expression::Match { arms, .. } => {
@@ -318,7 +326,15 @@ impl CodeGenerator {
                     Expression::Literal(Literal::Dict(_, _)) => (I64, VariableType::Dict),
                     Expression::Literal(Literal::Set(_, _)) => (I64, VariableType::Set),
                     Expression::Index { .. } => (I32, VariableType::I32), // Array indexing returns i32 elements
-                    Expression::MethodCall { method, .. } if method == "len" => (I32, VariableType::I32), // len() returns i32
+                    Expression::MethodCall { method, .. } => {
+                        match method.as_str() {
+                            "len" | "length" => (I32, VariableType::I32),
+                            "concat" | "trim" | "trim_left" | "trim_right" | "replace" | "replace_all" => (I64, VariableType::String),
+                            "split" => (I64, VariableType::Array),
+                            "contains" | "starts_with" | "ends_with" | "is_alpha" | "is_numeric" | "is_alphanumeric" => (I32, VariableType::Bool),
+                            _ => (I32, VariableType::I32), // default fallback
+                        }
+                    }
                     Expression::Literal(Literal::Bool(_, _)) => (I32, VariableType::Bool),
                     Expression::EnumConstructor { enum_name, .. } => (I64, VariableType::Enum(enum_name.clone())),
                     Expression::Match { arms, .. } => {
@@ -1100,6 +1116,176 @@ impl CodeGenerator {
                         let len_i32 = builder.ins().ireduce(I32, len_i64);
 
                         Ok(len_i32)
+                    }
+                    // String methods
+                    "length" => {
+                        if !args.is_empty() {
+                            return Err(CodegenError::UnsupportedFeature("length() method takes no arguments".to_string()));
+                        }
+
+                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter)?;
+
+                        // Declare plat_string_length function
+                        let func_sig = {
+                            let mut sig = module.make_signature();
+                            sig.call_conv = CallConv::SystemV;
+                            sig.params.push(AbiParam::new(I64)); // string pointer
+                            sig.returns.push(AbiParam::new(I32)); // character count as i32
+                            sig
+                        };
+
+                        let func_id = module.declare_function("plat_string_length", Linkage::Import, &func_sig)
+                            .map_err(CodegenError::ModuleError)?;
+                        let func_ref = module.declare_func_in_func(func_id, builder.func);
+
+                        let call = builder.ins().call(func_ref, &[object_val]);
+                        Ok(builder.inst_results(call)[0])
+                    }
+                    "concat" => {
+                        if args.len() != 1 {
+                            return Err(CodegenError::UnsupportedFeature("concat() method takes exactly one argument".to_string()));
+                        }
+
+                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter)?;
+                        let arg_val = Self::generate_expression_helper(builder, &args[0], variables, variable_types, functions, module, string_counter, variable_counter)?;
+
+                        let func_sig = {
+                            let mut sig = module.make_signature();
+                            sig.call_conv = CallConv::SystemV;
+                            sig.params.push(AbiParam::new(I64)); // string1 pointer
+                            sig.params.push(AbiParam::new(I64)); // string2 pointer
+                            sig.returns.push(AbiParam::new(I64)); // result string pointer
+                            sig
+                        };
+
+                        let func_id = module.declare_function("plat_string_concat", Linkage::Import, &func_sig)
+                            .map_err(CodegenError::ModuleError)?;
+                        let func_ref = module.declare_func_in_func(func_id, builder.func);
+
+                        let call = builder.ins().call(func_ref, &[object_val, arg_val]);
+                        Ok(builder.inst_results(call)[0])
+                    }
+                    "contains" | "starts_with" | "ends_with" => {
+                        if args.len() != 1 {
+                            return Err(CodegenError::UnsupportedFeature(format!("{}() method takes exactly one argument", method)));
+                        }
+
+                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter)?;
+                        let arg_val = Self::generate_expression_helper(builder, &args[0], variables, variable_types, functions, module, string_counter, variable_counter)?;
+
+                        let func_sig = {
+                            let mut sig = module.make_signature();
+                            sig.call_conv = CallConv::SystemV;
+                            sig.params.push(AbiParam::new(I64)); // string pointer
+                            sig.params.push(AbiParam::new(I64)); // substring pointer
+                            sig.returns.push(AbiParam::new(I32)); // bool as i32
+                            sig
+                        };
+
+                        let func_name = format!("plat_string_{}", method);
+                        let func_id = module.declare_function(&func_name, Linkage::Import, &func_sig)
+                            .map_err(CodegenError::ModuleError)?;
+                        let func_ref = module.declare_func_in_func(func_id, builder.func);
+
+                        let call = builder.ins().call(func_ref, &[object_val, arg_val]);
+                        Ok(builder.inst_results(call)[0])
+                    }
+                    "trim" | "trim_left" | "trim_right" => {
+                        if !args.is_empty() {
+                            return Err(CodegenError::UnsupportedFeature(format!("{}() method takes no arguments", method)));
+                        }
+
+                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter)?;
+
+                        let func_sig = {
+                            let mut sig = module.make_signature();
+                            sig.call_conv = CallConv::SystemV;
+                            sig.params.push(AbiParam::new(I64)); // string pointer
+                            sig.returns.push(AbiParam::new(I64)); // result string pointer
+                            sig
+                        };
+
+                        let func_name = format!("plat_string_{}", method);
+                        let func_id = module.declare_function(&func_name, Linkage::Import, &func_sig)
+                            .map_err(CodegenError::ModuleError)?;
+                        let func_ref = module.declare_func_in_func(func_id, builder.func);
+
+                        let call = builder.ins().call(func_ref, &[object_val]);
+                        Ok(builder.inst_results(call)[0])
+                    }
+                    "replace" | "replace_all" => {
+                        if args.len() != 2 {
+                            return Err(CodegenError::UnsupportedFeature(format!("{}() method takes exactly two arguments", method)));
+                        }
+
+                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter)?;
+                        let from_val = Self::generate_expression_helper(builder, &args[0], variables, variable_types, functions, module, string_counter, variable_counter)?;
+                        let to_val = Self::generate_expression_helper(builder, &args[1], variables, variable_types, functions, module, string_counter, variable_counter)?;
+
+                        let func_sig = {
+                            let mut sig = module.make_signature();
+                            sig.call_conv = CallConv::SystemV;
+                            sig.params.push(AbiParam::new(I64)); // string pointer
+                            sig.params.push(AbiParam::new(I64)); // from string pointer
+                            sig.params.push(AbiParam::new(I64)); // to string pointer
+                            sig.returns.push(AbiParam::new(I64)); // result string pointer
+                            sig
+                        };
+
+                        let func_name = format!("plat_string_{}", method);
+                        let func_id = module.declare_function(&func_name, Linkage::Import, &func_sig)
+                            .map_err(CodegenError::ModuleError)?;
+                        let func_ref = module.declare_func_in_func(func_id, builder.func);
+
+                        let call = builder.ins().call(func_ref, &[object_val, from_val, to_val]);
+                        Ok(builder.inst_results(call)[0])
+                    }
+                    "split" => {
+                        if args.len() != 1 {
+                            return Err(CodegenError::UnsupportedFeature("split() method takes exactly one argument".to_string()));
+                        }
+
+                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter)?;
+                        let delimiter_val = Self::generate_expression_helper(builder, &args[0], variables, variable_types, functions, module, string_counter, variable_counter)?;
+
+                        let func_sig = {
+                            let mut sig = module.make_signature();
+                            sig.call_conv = CallConv::SystemV;
+                            sig.params.push(AbiParam::new(I64)); // string pointer
+                            sig.params.push(AbiParam::new(I64)); // delimiter string pointer
+                            sig.returns.push(AbiParam::new(I64)); // result array pointer
+                            sig
+                        };
+
+                        let func_id = module.declare_function("plat_string_split", Linkage::Import, &func_sig)
+                            .map_err(CodegenError::ModuleError)?;
+                        let func_ref = module.declare_func_in_func(func_id, builder.func);
+
+                        let call = builder.ins().call(func_ref, &[object_val, delimiter_val]);
+                        Ok(builder.inst_results(call)[0])
+                    }
+                    "is_alpha" | "is_numeric" | "is_alphanumeric" => {
+                        if !args.is_empty() {
+                            return Err(CodegenError::UnsupportedFeature(format!("{}() method takes no arguments", method)));
+                        }
+
+                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter)?;
+
+                        let func_sig = {
+                            let mut sig = module.make_signature();
+                            sig.call_conv = CallConv::SystemV;
+                            sig.params.push(AbiParam::new(I64)); // string pointer
+                            sig.returns.push(AbiParam::new(I32)); // bool as i32
+                            sig
+                        };
+
+                        let func_name = format!("plat_string_{}", method);
+                        let func_id = module.declare_function(&func_name, Linkage::Import, &func_sig)
+                            .map_err(CodegenError::ModuleError)?;
+                        let func_ref = module.declare_func_in_func(func_id, builder.func);
+
+                        let call = builder.ins().call(func_ref, &[object_val]);
+                        Ok(builder.inst_results(call)[0])
                     }
                     _ => Err(CodegenError::UnsupportedFeature(format!("Method '{}' not implemented", method)))
                 }

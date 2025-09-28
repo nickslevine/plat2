@@ -473,6 +473,7 @@ impl TypeChecker {
                 let object_type = self.check_expression(object)?;
 
                 match (&object_type, method.as_str()) {
+                    // Array methods
                     (HirType::List(_), "len") => {
                         if !args.is_empty() {
                             return Err(DiagnosticError::Type(
@@ -480,6 +481,163 @@ impl TypeChecker {
                             ));
                         }
                         Ok(HirType::I32)
+                    }
+                    // String methods
+                    (HirType::String, "length") => {
+                        if !args.is_empty() {
+                            return Err(DiagnosticError::Type(
+                                "length() method takes no arguments".to_string()
+                            ));
+                        }
+                        Ok(HirType::I32)
+                    }
+                    (HirType::String, "concat") => {
+                        if args.len() != 1 {
+                            return Err(DiagnosticError::Type(
+                                "concat() method takes exactly one argument".to_string()
+                            ));
+                        }
+                        let arg_type = self.check_expression(&args[0])?;
+                        if arg_type != HirType::String {
+                            return Err(DiagnosticError::Type(
+                                format!("concat() method expects string argument, got {:?}", arg_type)
+                            ));
+                        }
+                        Ok(HirType::String)
+                    }
+                    (HirType::String, "contains") => {
+                        if args.len() != 1 {
+                            return Err(DiagnosticError::Type(
+                                "contains() method takes exactly one argument".to_string()
+                            ));
+                        }
+                        let arg_type = self.check_expression(&args[0])?;
+                        if arg_type != HirType::String {
+                            return Err(DiagnosticError::Type(
+                                format!("contains() method expects string argument, got {:?}", arg_type)
+                            ));
+                        }
+                        Ok(HirType::Bool)
+                    }
+                    (HirType::String, "starts_with") => {
+                        if args.len() != 1 {
+                            return Err(DiagnosticError::Type(
+                                "starts_with() method takes exactly one argument".to_string()
+                            ));
+                        }
+                        let arg_type = self.check_expression(&args[0])?;
+                        if arg_type != HirType::String {
+                            return Err(DiagnosticError::Type(
+                                format!("starts_with() method expects string argument, got {:?}", arg_type)
+                            ));
+                        }
+                        Ok(HirType::Bool)
+                    }
+                    (HirType::String, "ends_with") => {
+                        if args.len() != 1 {
+                            return Err(DiagnosticError::Type(
+                                "ends_with() method takes exactly one argument".to_string()
+                            ));
+                        }
+                        let arg_type = self.check_expression(&args[0])?;
+                        if arg_type != HirType::String {
+                            return Err(DiagnosticError::Type(
+                                format!("ends_with() method expects string argument, got {:?}", arg_type)
+                            ));
+                        }
+                        Ok(HirType::Bool)
+                    }
+                    (HirType::String, "trim") => {
+                        if !args.is_empty() {
+                            return Err(DiagnosticError::Type(
+                                "trim() method takes no arguments".to_string()
+                            ));
+                        }
+                        Ok(HirType::String)
+                    }
+                    (HirType::String, "trim_left") => {
+                        if !args.is_empty() {
+                            return Err(DiagnosticError::Type(
+                                "trim_left() method takes no arguments".to_string()
+                            ));
+                        }
+                        Ok(HirType::String)
+                    }
+                    (HirType::String, "trim_right") => {
+                        if !args.is_empty() {
+                            return Err(DiagnosticError::Type(
+                                "trim_right() method takes no arguments".to_string()
+                            ));
+                        }
+                        Ok(HirType::String)
+                    }
+                    (HirType::String, "replace") => {
+                        if args.len() != 2 {
+                            return Err(DiagnosticError::Type(
+                                "replace() method takes exactly two arguments".to_string()
+                            ));
+                        }
+                        let from_type = self.check_expression(&args[0])?;
+                        let to_type = self.check_expression(&args[1])?;
+                        if from_type != HirType::String || to_type != HirType::String {
+                            return Err(DiagnosticError::Type(
+                                format!("replace() method expects two string arguments, got {:?} and {:?}", from_type, to_type)
+                            ));
+                        }
+                        Ok(HirType::String)
+                    }
+                    (HirType::String, "replace_all") => {
+                        if args.len() != 2 {
+                            return Err(DiagnosticError::Type(
+                                "replace_all() method takes exactly two arguments".to_string()
+                            ));
+                        }
+                        let from_type = self.check_expression(&args[0])?;
+                        let to_type = self.check_expression(&args[1])?;
+                        if from_type != HirType::String || to_type != HirType::String {
+                            return Err(DiagnosticError::Type(
+                                format!("replace_all() method expects two string arguments, got {:?} and {:?}", from_type, to_type)
+                            ));
+                        }
+                        Ok(HirType::String)
+                    }
+                    (HirType::String, "split") => {
+                        if args.len() != 1 {
+                            return Err(DiagnosticError::Type(
+                                "split() method takes exactly one argument".to_string()
+                            ));
+                        }
+                        let arg_type = self.check_expression(&args[0])?;
+                        if arg_type != HirType::String {
+                            return Err(DiagnosticError::Type(
+                                format!("split() method expects string argument, got {:?}", arg_type)
+                            ));
+                        }
+                        Ok(HirType::List(Box::new(HirType::String)))
+                    }
+                    (HirType::String, "is_alpha") => {
+                        if !args.is_empty() {
+                            return Err(DiagnosticError::Type(
+                                "is_alpha() method takes no arguments".to_string()
+                            ));
+                        }
+                        Ok(HirType::Bool)
+                    }
+                    (HirType::String, "is_numeric") => {
+                        if !args.is_empty() {
+                            return Err(DiagnosticError::Type(
+                                "is_numeric() method takes no arguments".to_string()
+                            ));
+                        }
+                        Ok(HirType::Bool)
+                    }
+                    (HirType::String, "is_alphanumeric") => {
+                        if !args.is_empty() {
+                            return Err(DiagnosticError::Type(
+                                "is_alphanumeric() method takes no arguments".to_string()
+                            ));
+                        }
+                        Ok(HirType::Bool)
                     }
                     _ => Err(DiagnosticError::Type(
                         format!("Type {:?} has no method '{}'", object_type, method)
