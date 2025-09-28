@@ -514,4 +514,120 @@ mod tests {
         assert!(result.is_err());
         assert!(result.unwrap_err().to_string().contains("Cannot apply 'not'"));
     }
+
+    #[test]
+    fn test_for_loop_type_checking() {
+        let input = r#"
+            fn main() {
+                let numbers = [1, 2, 3, 4, 5];
+                for (num in numbers) {
+                    print(num);
+                }
+            }
+        "#;
+
+        assert!(type_check(input).is_ok());
+    }
+
+    #[test]
+    fn test_for_loop_non_array_iterable() {
+        let input = r#"
+            fn main() {
+                let x = 42;
+                for (item in x) {
+                    print(item);
+                }
+            }
+        "#;
+
+        let result = type_check(input);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("can only iterate over List types"));
+    }
+
+    #[test]
+    fn test_for_loop_variable_scoping() {
+        let input = r#"
+            fn main() {
+                let numbers = [1, 2, 3];
+                for (num in numbers) {
+                    let doubled = num * 2;
+                    print(doubled);
+                }
+                // num should not be visible here
+            }
+        "#;
+
+        assert!(type_check(input).is_ok());
+    }
+
+    #[test]
+    fn test_for_loop_variable_shadowing() {
+        let input = r#"
+            fn main() {
+                let num = 42;
+                let numbers = [1, 2, 3];
+                for (num in numbers) {
+                    print(num); // This shadows the outer 'num'
+                }
+                print(num); // This refers to the original 'num'
+            }
+        "#;
+
+        // For loops create a new scope, so the loop variable doesn't conflict with outer scope
+        // This is actually valid behavior - the loop variable shadows the outer one temporarily
+        assert!(type_check(input).is_ok());
+    }
+
+    #[test]
+    fn test_nested_control_flow_scoping() {
+        let input = r#"
+            fn main() {
+                let arr = [1, 2, 3];
+                for (x in arr) {
+                    if (x > 1) {
+                        let y = x * 2;
+                        while (y > 0) {
+                            y = y - 1;
+                            if (y == 1) {
+                                print("found one");
+                            }
+                        }
+                    }
+                }
+            }
+        "#;
+
+        assert!(type_check(input).is_ok());
+    }
+
+    #[test]
+    fn test_loop_variable_access_in_body() {
+        let input = r#"
+            fn main() {
+                let items = [10, 20, 30];
+                for (item in items) {
+                    let result = item + 5;
+                    print(result);
+                }
+            }
+        "#;
+
+        assert!(type_check(input).is_ok());
+    }
+
+    #[test]
+    fn test_for_loop_with_complex_expressions() {
+        let input = r#"
+            fn main() {
+                let arrays = [[1, 2], [3, 4]];
+                for (subarray in arrays) {
+                    let length = subarray.len();
+                    print(length);
+                }
+            }
+        "#;
+
+        assert!(type_check(input).is_ok());
+    }
 }

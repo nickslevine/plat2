@@ -221,6 +221,31 @@ impl TypeChecker {
                 self.check_block(body)?;
                 self.pop_scope();
             }
+            Statement::For { variable, iterable, body, .. } => {
+                let iterable_type = self.check_expression(iterable)?;
+
+                // Extract element type from List
+                let element_type = match iterable_type {
+                    HirType::List(element_type) => *element_type,
+                    _ => return Err(DiagnosticError::Type(
+                        format!("For loop can only iterate over List types, found {:?}", iterable_type)
+                    )),
+                };
+
+                // Create new scope for loop body and add loop variable
+                self.push_scope();
+
+                // Check if variable already exists in current scope
+                if self.scopes.last().unwrap().contains_key(variable) {
+                    return Err(DiagnosticError::Type(
+                        format!("Loop variable '{}' is already defined in this scope", variable)
+                    ));
+                }
+
+                self.scopes.last_mut().unwrap().insert(variable.clone(), element_type);
+                self.check_block(body)?;
+                self.pop_scope();
+            }
             Statement::Print { value, .. } => {
                 let value_type = self.check_expression(value)?;
                 // Print accepts any type (will be converted to string)

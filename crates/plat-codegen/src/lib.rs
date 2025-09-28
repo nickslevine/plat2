@@ -280,9 +280,210 @@ impl CodeGenerator {
 
                 Ok(false)
             }
-            _ => {
-                // TODO: Implement other statements (if, while, etc.)
-                Err(CodegenError::UnsupportedFeature("Complex control flow not yet implemented".to_string()))
+            Statement::If { condition, then_branch, else_branch, .. } => {
+                // Evaluate condition
+                let condition_val = Self::generate_expression_helper(builder, condition, variables, variable_types, functions, module, string_counter)?;
+
+                // Convert condition to boolean (non-zero = true)
+                let _zero = builder.ins().iconst(I32, 0);
+                let condition_bool = builder.ins().icmp_imm(IntCC::NotEqual, condition_val, 0);
+
+                // Create blocks
+                let then_block = builder.create_block();
+                let else_block = builder.create_block();
+                let merge_block = builder.create_block();
+
+                // Branch based on condition
+                builder.ins().brif(condition_bool, then_block, &[], else_block, &[]);
+
+                // Generate then branch
+                builder.switch_to_block(then_block);
+                builder.seal_block(then_block);
+                let mut then_has_return = false;
+                for stmt in &then_branch.statements {
+                    then_has_return |= Self::generate_statement_helper(
+                        builder, stmt, variables, variable_types, variable_counter,
+                        functions, module, string_counter
+                    )?;
+                }
+                if !then_has_return {
+                    builder.ins().jump(merge_block, &[]);
+                }
+
+                // Generate else branch
+                builder.switch_to_block(else_block);
+                builder.seal_block(else_block);
+                let mut else_has_return = false;
+                if let Some(else_block_ast) = else_branch {
+                    for stmt in &else_block_ast.statements {
+                        else_has_return |= Self::generate_statement_helper(
+                            builder, stmt, variables, variable_types, variable_counter,
+                            functions, module, string_counter
+                        )?;
+                    }
+                }
+                if !else_has_return {
+                    builder.ins().jump(merge_block, &[]);
+                }
+
+                // Continue with merge block
+                builder.switch_to_block(merge_block);
+                builder.seal_block(merge_block);
+
+                Ok(then_has_return && else_has_return)
+            }
+            Statement::While { condition, body, .. } => {
+                // Create blocks
+                let loop_header = builder.create_block();
+                let loop_body = builder.create_block();
+                let loop_exit = builder.create_block();
+
+                // Jump to loop header
+                builder.ins().jump(loop_header, &[]);
+
+                // Loop header: evaluate condition
+                builder.switch_to_block(loop_header);
+                let condition_val = Self::generate_expression_helper(builder, condition, variables, variable_types, functions, module, string_counter)?;
+                let _zero = builder.ins().iconst(I32, 0);
+                let condition_bool = builder.ins().icmp_imm(IntCC::NotEqual, condition_val, 0);
+                builder.ins().brif(condition_bool, loop_body, &[], loop_exit, &[]);
+
+                // Loop body
+                builder.switch_to_block(loop_body);
+                let mut body_has_return = false;
+                for stmt in &body.statements {
+                    body_has_return |= Self::generate_statement_helper(
+                        builder, stmt, variables, variable_types, variable_counter,
+                        functions, module, string_counter
+                    )?;
+                }
+                if !body_has_return {
+                    builder.ins().jump(loop_header, &[]);
+                }
+
+                // Seal blocks after all predecessors are known
+                builder.seal_block(loop_header);
+                builder.seal_block(loop_body);
+
+                // Loop exit
+                builder.switch_to_block(loop_exit);
+                builder.seal_block(loop_exit);
+
+                Ok(false) // while loops don't guarantee return
+            }
+            Statement::For { variable, iterable, body, .. } => {
+                // Evaluate iterable
+                let array_val = Self::generate_expression_helper(builder, iterable, variables, variable_types, functions, module, string_counter)?;
+
+                // Get array length
+                let len_sig = {
+                    let mut sig = module.make_signature();
+                    sig.call_conv = CallConv::SystemV;
+                    sig.params.push(AbiParam::new(I64)); // array pointer
+                    sig.returns.push(AbiParam::new(I64)); // length
+                    sig
+                };
+
+                let len_id = module.declare_function("plat_array_len", Linkage::Import, &len_sig)
+                    .map_err(CodegenError::ModuleError)?;
+                let len_ref = module.declare_func_in_func(len_id, builder.func);
+
+                let call = builder.ins().call(len_ref, &[array_val]);
+                let array_len = builder.inst_results(call)[0];
+                let array_len_i32 = builder.ins().ireduce(I32, array_len);
+
+                // Create loop variable for index
+                let index_var = Variable::from_u32(*variable_counter);
+                *variable_counter += 1;
+                builder.declare_var(index_var, I32);
+                let zero = builder.ins().iconst(I32, 0);
+                builder.def_var(index_var, zero);
+
+                // Create loop variable for element
+                let element_var = Variable::from_u32(*variable_counter);
+                *variable_counter += 1;
+                builder.declare_var(element_var, I32);
+
+                // Store in variables map
+                let old_variable = variables.insert(variable.clone(), element_var);
+                let old_type = variable_types.insert(variable.clone(), VariableType::I32);
+
+                // Create blocks
+                let loop_header = builder.create_block();
+                let loop_body = builder.create_block();
+                let loop_exit = builder.create_block();
+
+                // Jump to loop header
+                builder.ins().jump(loop_header, &[]);
+
+                // Loop header: check if index < length
+                builder.switch_to_block(loop_header);
+                let current_index = builder.use_var(index_var);
+                let condition = builder.ins().icmp(IntCC::SignedLessThan, current_index, array_len_i32);
+                builder.ins().brif(condition, loop_body, &[], loop_exit, &[]);
+
+                // Loop body: get array element and execute statements
+                builder.switch_to_block(loop_body);
+
+                // Get array element at current index
+                let get_sig = {
+                    let mut sig = module.make_signature();
+                    sig.call_conv = CallConv::SystemV;
+                    sig.params.push(AbiParam::new(I64)); // array pointer
+                    sig.params.push(AbiParam::new(I64)); // index
+                    sig.returns.push(AbiParam::new(I32)); // element value
+                    sig
+                };
+
+                let get_id = module.declare_function("plat_array_get", Linkage::Import, &get_sig)
+                    .map_err(CodegenError::ModuleError)?;
+                let get_ref = module.declare_func_in_func(get_id, builder.func);
+
+                let index_i64 = builder.ins().uextend(I64, current_index);
+                let call = builder.ins().call(get_ref, &[array_val, index_i64]);
+                let element_val = builder.inst_results(call)[0];
+
+                // Set loop variable to current element
+                builder.def_var(element_var, element_val);
+
+                // Execute loop body statements
+                let mut body_has_return = false;
+                for stmt in &body.statements {
+                    body_has_return |= Self::generate_statement_helper(
+                        builder, stmt, variables, variable_types, variable_counter,
+                        functions, module, string_counter
+                    )?;
+                }
+
+                // Increment index
+                if !body_has_return {
+                    let one = builder.ins().iconst(I32, 1);
+                    let next_index = builder.ins().iadd(current_index, one);
+                    builder.def_var(index_var, next_index);
+                    builder.ins().jump(loop_header, &[]);
+                }
+
+                // Seal blocks after all predecessors are known
+                builder.seal_block(loop_header);
+                builder.seal_block(loop_body);
+
+                // Loop exit
+                builder.switch_to_block(loop_exit);
+                builder.seal_block(loop_exit);
+
+                // Restore old variable binding if it existed
+                if let Some(old_var) = old_variable {
+                    variables.insert(variable.clone(), old_var);
+                } else {
+                    variables.remove(variable);
+                }
+                if let Some(old_typ) = old_type {
+                    variable_types.insert(variable.clone(), old_typ);
+                } else {
+                    variable_types.remove(variable);
+                }
+
+                Ok(false) // for loops don't guarantee return
             }
         }
     }

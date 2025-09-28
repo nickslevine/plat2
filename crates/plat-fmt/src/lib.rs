@@ -159,6 +159,14 @@ impl Formatter {
                 self.write(") ");
                 self.format_if_block(body);
             }
+            Statement::For { variable, iterable, body, .. } => {
+                self.write("for (");
+                self.write(variable);
+                self.write(" in ");
+                self.format_expression(iterable);
+                self.write(") ");
+                self.format_if_block(body);
+            }
             Statement::Print { value, .. } => {
                 self.write("print(");
                 self.format_expression(value);

@@ -145,6 +145,107 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_for_loop() {
+        let input = r#"
+            fn main() {
+                for (item in items) {
+                    print(item);
+                }
+            }
+        "#;
+
+        let parser = Parser::new(input).unwrap();
+        let program = parser.parse().unwrap();
+
+        let statements = &program.functions[0].body.statements;
+        assert_eq!(statements.len(), 1);
+
+        match &statements[0] {
+            Statement::For { variable, iterable, body, .. } => {
+                assert_eq!(variable, "item");
+                match iterable {
+                    Expression::Identifier { name, .. } => {
+                        assert_eq!(name, "items");
+                    }
+                    _ => panic!("Expected identifier for iterable"),
+                }
+                assert_eq!(body.statements.len(), 1);
+            }
+            _ => panic!("Expected for statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_for_loop_with_array_literal() {
+        let input = r#"
+            fn main() {
+                for (num in [1, 2, 3]) {
+                    print("Number: ${num}");
+                }
+            }
+        "#;
+
+        let parser = Parser::new(input).unwrap();
+        let program = parser.parse().unwrap();
+
+        let statements = &program.functions[0].body.statements;
+        assert_eq!(statements.len(), 1);
+
+        match &statements[0] {
+            Statement::For { variable, iterable, body, .. } => {
+                assert_eq!(variable, "num");
+                match iterable {
+                    Expression::Literal(Literal::Array(elements, _)) => {
+                        assert_eq!(elements.len(), 3);
+                    }
+                    _ => panic!("Expected array literal for iterable"),
+                }
+                assert_eq!(body.statements.len(), 1);
+            }
+            _ => panic!("Expected for statement"),
+        }
+    }
+
+    #[test]
+    fn test_parse_nested_control_flow() {
+        let input = r#"
+            fn main() {
+                if (x > 0) {
+                    for (i in items) {
+                        if (i > 5) {
+                            print("Large: ${i}");
+                        } else {
+                            while (i < 10) {
+                                i = i + 1;
+                            }
+                        }
+                    }
+                }
+            }
+        "#;
+
+        let parser = Parser::new(input).unwrap();
+        let program = parser.parse().unwrap();
+
+        let statements = &program.functions[0].body.statements;
+        assert_eq!(statements.len(), 1);
+
+        // Just verify it parses without panicking - structure is complex
+        match &statements[0] {
+            Statement::If { then_branch, .. } => {
+                assert_eq!(then_branch.statements.len(), 1);
+                match &then_branch.statements[0] {
+                    Statement::For { body, .. } => {
+                        assert_eq!(body.statements.len(), 1);
+                    }
+                    _ => panic!("Expected for statement in if body"),
+                }
+            }
+            _ => panic!("Expected if statement"),
+        }
+    }
+
+    #[test]
     fn test_parse_expressions() {
         let input = r#"
             fn main() {

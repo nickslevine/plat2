@@ -135,6 +135,8 @@ impl Parser {
             self.parse_if_statement()
         } else if self.match_token(&Token::While) {
             self.parse_while_statement()
+        } else if self.match_token(&Token::For) {
+            self.parse_for_statement()
         } else if self.match_token(&Token::Print) {
             self.parse_print_statement()
         } else {
@@ -247,6 +249,26 @@ impl Parser {
 
         Ok(Statement::While {
             condition,
+            body,
+            span: Span::new(start, end),
+        })
+    }
+
+    fn parse_for_statement(&mut self) -> Result<Statement, DiagnosticError> {
+        let start = self.previous_span().start;
+
+        self.consume(Token::LeftParen, "Expected '(' after 'for'")?;
+        let variable = self.consume_identifier("Expected variable name in for loop")?;
+        self.consume(Token::In, "Expected 'in' after for loop variable")?;
+        let iterable = self.parse_expression()?;
+        self.consume(Token::RightParen, "Expected ')' after for loop expression")?;
+
+        let body = self.parse_block()?;
+        let end = body.span.end;
+
+        Ok(Statement::For {
+            variable,
+            iterable,
             body,
             span: Span::new(start, end),
         })

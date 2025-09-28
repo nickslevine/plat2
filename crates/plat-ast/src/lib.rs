@@ -66,6 +66,12 @@ pub enum Statement {
         body: Block,
         span: Span,
     },
+    For {
+        variable: String,
+        iterable: Expression,
+        body: Block,
+        span: Span,
+    },
     Print {
         value: Expression,
         span: Span,
