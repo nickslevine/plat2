@@ -40,6 +40,7 @@ pub enum Token {
     LessEq,
     Greater,
     GreaterEq,
+    Question,
 
     // Punctuation
     LeftParen,

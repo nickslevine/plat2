@@ -1,0 +1,15 @@
+enum Status {
+    Success,
+    Error
+}
+
+fn main() {
+    let status = Status::Success;
+
+    let result = match status {
+        Status::Success -> 1,
+        Status::Error -> 0
+    };
+
+    print("Result: ${result}");
+}

@@ -1,0 +1,10 @@
+fn test_option() -> i32 {
+    let some_val = Option::Some(42);
+    let result = some_val?;
+    return result;
+}
+
+fn main() {
+    let value = test_option();
+    print("Result: ${value}");
+}

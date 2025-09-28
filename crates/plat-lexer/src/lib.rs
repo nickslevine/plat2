@@ -100,6 +100,7 @@ impl Lexer {
                         self.add_token(Token::Greater, start);
                     }
                 }
+                '?' => self.add_token(Token::Question, start),
                 '"' => self.scan_string(start)?,
                 c if c.is_ascii_digit() => self.scan_number(start)?,
                 c if c.is_ascii_alphabetic() || c == '_' => self.scan_identifier(start)?,

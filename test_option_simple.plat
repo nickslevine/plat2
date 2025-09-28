@@ -1,0 +1,4 @@
+fn main() {
+    let some_val = Option::Some(42);
+    print("Done");
+}

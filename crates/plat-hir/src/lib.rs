@@ -641,6 +641,38 @@ impl TypeChecker {
 
                 Ok(result_type.unwrap())
             }
+            Expression::Try { expression, .. } => {
+                let expr_type = self.check_expression(expression)?;
+
+                // The ? operator only works on Option<T> and Result<T, E> types
+                match &expr_type {
+                    HirType::Enum(name, type_params) if name == "Option" => {
+                        // Option::Some(T) -> T, Option::None -> early return None
+                        // Function must return Option<T> or compatible type
+                        if type_params.len() != 1 {
+                            return Err(DiagnosticError::Type(
+                                "Option type must have exactly one type parameter".to_string()
+                            ));
+                        }
+                        // Return the inner type T
+                        Ok(type_params[0].clone())
+                    }
+                    HirType::Enum(name, type_params) if name == "Result" => {
+                        // Result::Ok(T) -> T, Result::Err(E) -> early return Err(E)
+                        // Function must return Result<T, E> or compatible type
+                        if type_params.len() != 2 {
+                            return Err(DiagnosticError::Type(
+                                "Result type must have exactly two type parameters".to_string()
+                            ));
+                        }
+                        // Return the inner type T (success type)
+                        Ok(type_params[0].clone())
+                    }
+                    _ => Err(DiagnosticError::Type(
+                        format!("? operator can only be used with Option or Result types, got {:?}", expr_type)
+                    ))
+                }
+            }
         }
     }
 

@@ -357,6 +357,7 @@ impl Parser {
                     Expression::Block(b) => b.span.start,
                     Expression::EnumConstructor { span, .. } => span.start,
                     Expression::Match { span, .. } => span.start,
+                    Expression::Try { span, .. } => span.start,
                 },
                 self.previous_span().end,
             );
@@ -550,6 +551,13 @@ impl Parser {
                         "Expected '(' after method name".to_string()
                     ));
                 }
+            } else if self.match_token(&Token::Question) {
+                let end = self.previous_span().end;
+                let start = self.get_expression_span(&expr, end).start;
+                expr = Expression::Try {
+                    expression: Box::new(expr),
+                    span: Span::new(start, end),
+                };
             } else {
                 break;
             }
@@ -696,6 +704,7 @@ impl Parser {
             Expression::Block(b) => b.span.start,
             Expression::EnumConstructor { span, .. } => span.start,
             Expression::Match { span, .. } => span.start,
+            Expression::Try { span, .. } => span.start,
         };
         Span::new(start, end)
     }

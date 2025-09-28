@@ -35,6 +35,27 @@ pub struct CodeGenerator {
 }
 
 impl CodeGenerator {
+    /// Determine the variable type that a match expression returns
+    fn determine_match_return_type(arms: &[MatchArm], variable_types: &HashMap<String, VariableType>) -> VariableType {
+        if arms.is_empty() {
+            return VariableType::I32;
+        }
+
+        // Check the first arm's body to determine the return type
+        match &arms[0].body {
+            Expression::Literal(Literal::String(_, _)) => VariableType::String,
+            Expression::Literal(Literal::InterpolatedString(_, _)) => VariableType::String,
+            Expression::Literal(Literal::Bool(_, _)) => VariableType::Bool,
+            Expression::Literal(Literal::Integer(_, _)) => VariableType::I32,
+            Expression::Literal(Literal::Array(_, _)) => VariableType::Array,
+            Expression::Identifier { name, .. } => {
+                // Look up the variable type in the context
+                variable_types.get(name).cloned().unwrap_or(VariableType::I32)
+            }
+            Expression::EnumConstructor { enum_name, .. } => VariableType::Enum(enum_name.clone()),
+            _ => VariableType::I32,
+        }
+    }
     pub fn new() -> Result<Self, CodegenError> {
         // Create ISA for the target platform
         let mut flag_builder = settings::builder();
@@ -241,7 +262,14 @@ impl CodeGenerator {
                     Expression::MethodCall { method, .. } if method == "len" => (I32, VariableType::I32), // len() returns i32
                     Expression::Literal(Literal::Bool(_, _)) => (I32, VariableType::Bool),
                     Expression::EnumConstructor { enum_name, .. } => (I64, VariableType::Enum(enum_name.clone())),
-                    Expression::Match { .. } => (I32, VariableType::I32), // Match returns i32 for now
+                    Expression::Match { arms, .. } => {
+                        let match_type = Self::determine_match_return_type(arms, variable_types);
+                        let cranelift_type = match match_type {
+                            VariableType::String | VariableType::Array | VariableType::Enum(_) => I64,
+                            _ => I32,
+                        };
+                        (cranelift_type, match_type)
+                    }
                     _ => (I32, VariableType::I32),
                 };
 
@@ -265,7 +293,14 @@ impl CodeGenerator {
                     Expression::MethodCall { method, .. } if method == "len" => (I32, VariableType::I32), // len() returns i32
                     Expression::Literal(Literal::Bool(_, _)) => (I32, VariableType::Bool),
                     Expression::EnumConstructor { enum_name, .. } => (I64, VariableType::Enum(enum_name.clone())),
-                    Expression::Match { .. } => (I32, VariableType::I32), // Match returns i32 for now
+                    Expression::Match { arms, .. } => {
+                        let match_type = Self::determine_match_return_type(arms, variable_types);
+                        let cranelift_type = match match_type {
+                            VariableType::String | VariableType::Array | VariableType::Enum(_) => I64,
+                            _ => I32,
+                        };
+                        (cranelift_type, match_type)
+                    }
                     _ => (I32, VariableType::I32),
                 };
 
@@ -977,7 +1012,7 @@ impl CodeGenerator {
                     let mut arm_variable_types = variable_types.clone();
 
                     // Handle pattern bindings for this arm
-                    if let Pattern::EnumVariant { bindings, .. } = &arm.pattern {
+                    if let Pattern::EnumVariant { enum_name, variant, bindings, .. } = &arm.pattern {
                         for (binding_idx, binding_name) in bindings.iter().enumerate() {
                             if !binding_name.is_empty() {
                                 // For single field, check if it's packed or heap allocated
@@ -1004,17 +1039,19 @@ impl CodeGenerator {
                     }
 
                     let arm_result = Self::generate_expression_helper(builder, &arm.body, &arm_variables, &arm_variable_types, functions, module, string_counter, variable_counter)?;
-                    // Ensure arm_result is I64 for the continuation block
-                    // If it's already I64 (string), use it directly; if I32, extend it
-                    // We can't easily determine the type here, so we'll assume strings are already I64
-                    // and other values might need extension
-                    // This is a simplification - ideally we'd track types properly
                     builder.ins().jump(cont_block, &[arm_result]);
                 }
 
+                // Determine the return type for the continuation block
+                let match_return_type = Self::determine_match_return_type(arms, variable_types);
+                let cont_param_type = match match_return_type {
+                    VariableType::String | VariableType::Array | VariableType::Enum(_) => I64,
+                    _ => I32,
+                };
+
                 // Continuation block
                 builder.switch_to_block(cont_block);
-                builder.append_block_param(cont_block, I32);
+                builder.append_block_param(cont_block, cont_param_type);
 
                 // Seal all blocks
                 for arm_block in arm_blocks {
@@ -1029,6 +1066,29 @@ impl CodeGenerator {
 
                 let result = builder.block_params(cont_block)[0];
                 Ok(result)
+            }
+            Expression::Try { expression, .. } => {
+                // Generate code for the expression
+                let expr_val = Self::generate_expression_helper(builder, expression, variables, variable_types, functions, module, string_counter, variable_counter)?;
+
+                // The ? operator desugars to:
+                // match expr {
+                //     Option::Some(x) -> x,
+                //     Option::None -> return Option::None,
+                //     Result::Ok(x) -> x,
+                //     Result::Err(e) -> return Result::Err(e),
+                // }
+
+                // For now, implement a simplified version that assumes the happy path
+                // In a complete implementation, we would:
+                // 1. Check the discriminant
+                // 2. If it's None/Err, generate an early return
+                // 3. If it's Some/Ok, extract the value
+
+                // Simplified implementation: assume packed format and extract value
+                // This works for simple cases like Option<i32>
+                let extracted_val = builder.ins().ireduce(I32, expr_val);
+                Ok(extracted_val)
             }
             _ => {
                 // TODO: Implement blocks, etc.

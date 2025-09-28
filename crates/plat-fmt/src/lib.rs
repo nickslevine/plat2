@@ -359,6 +359,10 @@ impl Formatter {
                 self.write_indent();
                 self.write("}");
             }
+            Expression::Try { expression, .. } => {
+                self.format_expression(expression);
+                self.write("?");
+            }
         }
     }
 

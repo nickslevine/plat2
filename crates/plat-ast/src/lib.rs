@@ -132,6 +132,10 @@ pub enum Expression {
         arms: Vec<MatchArm>,
         span: Span,
     },
+    Try {
+        expression: Box<Expression>,
+        span: Span,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]

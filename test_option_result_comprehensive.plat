@@ -1,0 +1,48 @@
+fn divide(x: i32, y: i32) -> i32 {
+    if y == 0 {
+        // For now, return -1 for error case
+        // Will use Result when return types are properly inferred
+        -1
+    } else {
+        x / y
+    }
+}
+
+fn main() {
+    // Test Option::Some and None
+    let some_value = Option::Some(42);
+    let some_result = match some_value {
+        Option::Some(x) -> x * 2,
+        Option::None -> 0
+    };
+    print("Option::Some(42) * 2 = ${some_result}");
+
+    let none_value = Option::None;
+    let none_result = match none_value {
+        Option::Some(x) -> x,
+        Option::None -> -999
+    };
+    print("Option::None defaults to ${none_result}");
+
+    // Test Result::Ok and Err
+    let ok_value = Result::Ok(100);
+    let ok_result = match ok_value {
+        Result::Ok(x) -> x + 50,
+        Result::Err(e) -> e
+    };
+    print("Result::Ok(100) + 50 = ${ok_result}");
+
+    let err_value = Result::Err(404);
+    let err_result = match err_value {
+        Result::Ok(x) -> x,
+        Result::Err(e) -> e * -1
+    };
+    print("Result::Err(404) * -1 = ${err_result}");
+
+    // Test with divide function
+    let div_result = divide(10, 2);
+    print("10 / 2 = ${div_result}");
+
+    let div_by_zero = divide(10, 0);
+    print("10 / 0 = ${div_by_zero} (error case)");
+}

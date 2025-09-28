@@ -1,0 +1,22 @@
+enum Status {
+    Success,
+    Error(i32)
+}
+
+fn main() {
+    // Test unit variant construction and matching
+    let success = Status::Success;
+    let success_code = match success {
+        Status::Success -> 100,
+        Status::Error(code) -> code
+    };
+    print("Success case: ${success_code}");
+
+    // Test single-field variant construction and matching
+    let error = Status::Error(404);
+    let error_code = match error {
+        Status::Success -> 0,
+        Status::Error(code) -> code
+    };
+    print("Error case: ${error_code}");
+}

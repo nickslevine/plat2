@@ -1,0 +1,10 @@
+enum Result {
+    Success,
+    Error(i32)
+}
+
+fn main() {
+    let success = Result::Success;
+    let error = Result::Error(404);
+    print("Test successful");
+}
