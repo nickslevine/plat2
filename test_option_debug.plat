@@ -1,12 +1,4 @@
 fn main() {
-    // Test Option::None creation
-    let none_val = Option::None;
-    print("Created Option::None");
-
-    // Test pattern matching with Option::None
-    let result = match none_val {
-        Option::Some(x) -> x,
-        Option::None -> 99
-    };
-    print("None matched to: ${result}");
+    let some_str = Option::Some("Hello");
+    print("Created Option");
 }

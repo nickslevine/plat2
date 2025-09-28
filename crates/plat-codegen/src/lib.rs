@@ -36,7 +36,7 @@ pub struct CodeGenerator {
 
 impl CodeGenerator {
     /// Determine the variable type that a match expression returns
-    fn determine_match_return_type(arms: &[MatchArm], variable_types: &HashMap<String, VariableType>) -> VariableType {
+    fn determine_match_return_type(arms: &[MatchArm], _variable_types: &HashMap<String, VariableType>) -> VariableType {
         if arms.is_empty() {
             return VariableType::I32;
         }
@@ -48,10 +48,7 @@ impl CodeGenerator {
             Expression::Literal(Literal::Bool(_, _)) => VariableType::Bool,
             Expression::Literal(Literal::Integer(_, _)) => VariableType::I32,
             Expression::Literal(Literal::Array(_, _)) => VariableType::Array,
-            Expression::Identifier { name, .. } => {
-                // Look up the variable type in the context
-                variable_types.get(name).cloned().unwrap_or(VariableType::I32)
-            }
+            Expression::Identifier { .. } => VariableType::I32, // For now, assume pattern bindings are I32
             Expression::EnumConstructor { enum_name, .. } => VariableType::Enum(enum_name.clone()),
             _ => VariableType::I32,
         }
@@ -928,13 +925,13 @@ impl CodeGenerator {
                     // Mixed format: some variants use packed, some use pointer
                     // Need runtime detection
                     let threshold = builder.ins().iconst(I64, 0x100000000); // 2^32
-                    let is_packed = builder.ins().icmp(cranelift_codegen::ir::condcodes::IntCC::UnsignedGreaterThanOrEqual, value_val, threshold);
+                    let is_pointer = builder.ins().icmp(cranelift_codegen::ir::condcodes::IntCC::UnsignedGreaterThanOrEqual, value_val, threshold);
 
                     let packed_disc_block = builder.create_block();
                     let pointer_disc_block = builder.create_block();
                     let disc_done = builder.create_block();
 
-                    builder.ins().brif(is_packed, packed_disc_block, &[], pointer_disc_block, &[]);
+                    builder.ins().brif(is_pointer, pointer_disc_block, &[], packed_disc_block, &[]);
 
                     // Packed format: discriminant in high 32 bits
                     builder.switch_to_block(packed_disc_block);
