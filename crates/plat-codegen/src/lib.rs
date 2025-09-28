@@ -228,7 +228,7 @@ impl CodeGenerator {
     ) -> Result<bool, CodegenError> {
         match statement {
             Statement::Let { name, value, .. } => {
-                let val = Self::generate_expression_helper(builder, value, variables, variable_types, functions, module, string_counter)?;
+                let val = Self::generate_expression_helper(builder, value, variables, variable_types, functions, module, string_counter, variable_counter)?;
                 let var = Variable::from_u32(*variable_counter);
                 *variable_counter += 1;
 
@@ -252,7 +252,7 @@ impl CodeGenerator {
                 Ok(false)
             }
             Statement::Var { name, value, .. } => {
-                let val = Self::generate_expression_helper(builder, value, variables, variable_types, functions, module, string_counter)?;
+                let val = Self::generate_expression_helper(builder, value, variables, variable_types, functions, module, string_counter, variable_counter)?;
                 let var = Variable::from_u32(*variable_counter);
                 *variable_counter += 1;
 
@@ -277,7 +277,7 @@ impl CodeGenerator {
             }
             Statement::Return { value, .. } => {
                 if let Some(expr) = value {
-                    let val = Self::generate_expression_helper(builder, expr, variables, variable_types, functions, module, string_counter)?;
+                    let val = Self::generate_expression_helper(builder, expr, variables, variable_types, functions, module, string_counter, variable_counter)?;
                     builder.ins().return_(&[val]);
                 } else {
                     builder.ins().return_(&[]);
@@ -285,12 +285,12 @@ impl CodeGenerator {
                 Ok(true)
             }
             Statement::Expression(expr) => {
-                Self::generate_expression_helper(builder, expr, variables, variable_types, functions, module, string_counter)?;
+                Self::generate_expression_helper(builder, expr, variables, variable_types, functions, module, string_counter, variable_counter)?;
                 Ok(false)
             }
             Statement::Print { value, .. } => {
                 // Generate the value to print
-                let val = Self::generate_expression_helper(builder, value, variables, variable_types, functions, module, string_counter)?;
+                let val = Self::generate_expression_helper(builder, value, variables, variable_types, functions, module, string_counter, variable_counter)?;
 
                 // Call the print runtime function
                 // For now, we need to declare the print function if it's not already declared
@@ -317,7 +317,7 @@ impl CodeGenerator {
             }
             Statement::If { condition, then_branch, else_branch, .. } => {
                 // Evaluate condition
-                let condition_val = Self::generate_expression_helper(builder, condition, variables, variable_types, functions, module, string_counter)?;
+                let condition_val = Self::generate_expression_helper(builder, condition, variables, variable_types, functions, module, string_counter, variable_counter)?;
 
                 // Convert condition to boolean (non-zero = true)
                 let _zero = builder.ins().iconst(I32, 0);
@@ -378,7 +378,7 @@ impl CodeGenerator {
 
                 // Loop header: evaluate condition
                 builder.switch_to_block(loop_header);
-                let condition_val = Self::generate_expression_helper(builder, condition, variables, variable_types, functions, module, string_counter)?;
+                let condition_val = Self::generate_expression_helper(builder, condition, variables, variable_types, functions, module, string_counter, variable_counter)?;
                 let _zero = builder.ins().iconst(I32, 0);
                 let condition_bool = builder.ins().icmp_imm(IntCC::NotEqual, condition_val, 0);
                 builder.ins().brif(condition_bool, loop_body, &[], loop_exit, &[]);
@@ -408,7 +408,7 @@ impl CodeGenerator {
             }
             Statement::For { variable, iterable, body, .. } => {
                 // Evaluate iterable
-                let array_val = Self::generate_expression_helper(builder, iterable, variables, variable_types, functions, module, string_counter)?;
+                let array_val = Self::generate_expression_helper(builder, iterable, variables, variable_types, functions, module, string_counter, variable_counter)?;
 
                 // Get array length
                 let len_sig = {
@@ -530,11 +530,12 @@ impl CodeGenerator {
         variable_types: &HashMap<String, VariableType>,
         functions: &HashMap<String, FuncId>,
         module: &mut ObjectModule,
-        string_counter: &mut usize
+        string_counter: &mut usize,
+        variable_counter: &mut u32
     ) -> Result<Value, CodegenError> {
         match expr {
             Expression::Literal(literal) => {
-                Self::generate_literal(builder, literal, variables, variable_types, functions, module, string_counter)
+                Self::generate_literal(builder, literal, variables, variable_types, functions, module, string_counter, variable_counter)
             }
             Expression::Identifier { name, .. } => {
                 if let Some(&var) = variables.get(name) {
@@ -550,8 +551,8 @@ impl CodeGenerator {
                     BinaryOp::Divide | BinaryOp::Modulo | BinaryOp::Equal |
                     BinaryOp::NotEqual | BinaryOp::Less | BinaryOp::LessEqual |
                     BinaryOp::Greater | BinaryOp::GreaterEqual => {
-                        let left_val = Self::generate_expression_helper(builder, left, variables, variable_types, functions, module, string_counter)?;
-                        let right_val = Self::generate_expression_helper(builder, right, variables, variable_types, functions, module, string_counter)?;
+                        let left_val = Self::generate_expression_helper(builder, left, variables, variable_types, functions, module, string_counter, variable_counter)?;
+                        let right_val = Self::generate_expression_helper(builder, right, variables, variable_types, functions, module, string_counter, variable_counter)?;
 
                         match op {
                             BinaryOp::Add => Ok(builder.ins().iadd(left_val, right_val)),
@@ -588,7 +589,7 @@ impl CodeGenerator {
                     }
                     BinaryOp::And => {
                         // Short-circuit AND: evaluate left first
-                        let left_val = Self::generate_expression_helper(builder, left, variables, variable_types, functions, module, string_counter)?;
+                        let left_val = Self::generate_expression_helper(builder, left, variables, variable_types, functions, module, string_counter, variable_counter)?;
 
                         // If left is false, don't evaluate right
                         let zero = builder.ins().iconst(I32, 0);
@@ -609,7 +610,7 @@ impl CodeGenerator {
                         builder.seal_block(eval_right_block);
 
                         // Now evaluate the right operand
-                        let right_val = Self::generate_expression_helper(builder, right, variables, variable_types, functions, module, string_counter)?;
+                        let right_val = Self::generate_expression_helper(builder, right, variables, variable_types, functions, module, string_counter, variable_counter)?;
                         let right_is_true = builder.ins().icmp_imm(IntCC::NotEqual, right_val, 0);
                         let right_as_i32 = builder.ins().uextend(I32, right_is_true);
                         builder.ins().jump(merge_block, &[right_as_i32]);
@@ -622,7 +623,7 @@ impl CodeGenerator {
                     }
                     BinaryOp::Or => {
                         // Short-circuit OR: evaluate left first
-                        let left_val = Self::generate_expression_helper(builder, left, variables, variable_types, functions, module, string_counter)?;
+                        let left_val = Self::generate_expression_helper(builder, left, variables, variable_types, functions, module, string_counter, variable_counter)?;
 
                         // If left is true, don't evaluate right
                         let one = builder.ins().iconst(I32, 1);
@@ -643,7 +644,7 @@ impl CodeGenerator {
                         builder.seal_block(eval_right_block);
 
                         // Now evaluate the right operand
-                        let right_val = Self::generate_expression_helper(builder, right, variables, variable_types, functions, module, string_counter)?;
+                        let right_val = Self::generate_expression_helper(builder, right, variables, variable_types, functions, module, string_counter, variable_counter)?;
                         let right_is_true = builder.ins().icmp_imm(IntCC::NotEqual, right_val, 0);
                         let right_as_i32 = builder.ins().uextend(I32, right_is_true);
                         builder.ins().jump(merge_block, &[right_as_i32]);
@@ -657,7 +658,7 @@ impl CodeGenerator {
                 }
             }
             Expression::Unary { op, operand, .. } => {
-                let operand_val = Self::generate_expression_helper(builder, operand, variables, variable_types, functions, module, string_counter)?;
+                let operand_val = Self::generate_expression_helper(builder, operand, variables, variable_types, functions, module, string_counter, variable_counter)?;
 
                 match op {
                     UnaryOp::Negate => Ok(builder.ins().ineg(operand_val)),
@@ -670,7 +671,7 @@ impl CodeGenerator {
                 }
             }
             Expression::Assignment { name, value, .. } => {
-                let val = Self::generate_expression_helper(builder, value, variables, variable_types, functions, module, string_counter)?;
+                let val = Self::generate_expression_helper(builder, value, variables, variable_types, functions, module, string_counter, variable_counter)?;
                 if let Some(&var) = variables.get(name) {
                     builder.def_var(var, val);
                     Ok(val)
@@ -691,7 +692,7 @@ impl CodeGenerator {
                 // Evaluate arguments
                 let mut arg_values = Vec::new();
                 for arg in args {
-                    let arg_val = Self::generate_expression_helper(builder, arg, variables, variable_types, functions, module, string_counter)?;
+                    let arg_val = Self::generate_expression_helper(builder, arg, variables, variable_types, functions, module, string_counter, variable_counter)?;
                     arg_values.push(arg_val);
                 }
 
@@ -708,8 +709,8 @@ impl CodeGenerator {
                 }
             }
             Expression::Index { object, index, .. } => {
-                let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter)?;
-                let index_val = Self::generate_expression_helper(builder, index, variables, variable_types, functions, module, string_counter)?;
+                let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter)?;
+                let index_val = Self::generate_expression_helper(builder, index, variables, variable_types, functions, module, string_counter, variable_counter)?;
 
                 // Declare plat_array_get function
                 let get_sig = {
@@ -741,7 +742,7 @@ impl CodeGenerator {
                             return Err(CodegenError::UnsupportedFeature("len() method takes no arguments".to_string()));
                         }
 
-                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter)?;
+                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter)?;
 
                         // Declare plat_array_len function
                         let len_sig = {
@@ -769,90 +770,210 @@ impl CodeGenerator {
                 }
             }
             Expression::EnumConstructor { enum_name, variant, args, .. } => {
-                // For simplicity, represent enums as i64 values
-                // Discriminant in high 32 bits, payload in low 32 bits (if single i32)
-                // For multiple fields, we'd need more complex encoding
-
-                // TODO: Proper enum variant tracking and discriminant assignment
-                // For now, use a simple hash of variant name as discriminant
                 let discriminant = Self::variant_discriminant(enum_name, variant);
 
                 if args.is_empty() {
-                    // Unit variant - just the discriminant
+                    // Unit variant - just the discriminant in high 32 bits
                     let disc_val = builder.ins().iconst(I64, discriminant as i64);
-                    Ok(disc_val)
+                    let disc_shifted = builder.ins().ishl_imm(disc_val, 32);
+                    Ok(disc_shifted)
                 } else if args.len() == 1 {
                     // Single field variant - pack discriminant and value
-                    let arg_val = Self::generate_expression_helper(builder, &args[0], variables, variable_types, functions, module, string_counter)?;
+                    let arg_val = Self::generate_expression_helper(builder, &args[0], variables, variable_types, functions, module, string_counter, variable_counter)?;
                     let disc_val = builder.ins().iconst(I64, discriminant as i64);
                     let disc_shifted = builder.ins().ishl_imm(disc_val, 32);
                     let arg_extended = builder.ins().uextend(I64, arg_val);
                     let packed = builder.ins().bor(disc_shifted, arg_extended);
                     Ok(packed)
                 } else {
-                    // Multiple fields - for now, not supported
-                    Err(CodegenError::UnsupportedFeature(
-                        "Enum variants with multiple fields not yet supported".to_string()
-                    ))
+                    // Multiple fields - allocate struct on GC heap
+                    // Layout: [discriminant:i32][field1][field2]...[fieldN]
+
+                    // Declare GC allocation function
+                    let gc_alloc_name = "plat_gc_alloc";
+                    let gc_alloc_sig = {
+                        let mut sig = module.make_signature();
+                        sig.call_conv = CallConv::SystemV;
+                        sig.params.push(AbiParam::new(I64)); // size parameter
+                        sig.returns.push(AbiParam::new(I64)); // returns pointer
+                        sig
+                    };
+
+                    let gc_alloc_id = module.declare_function(gc_alloc_name, Linkage::Import, &gc_alloc_sig)
+                        .map_err(CodegenError::ModuleError)?;
+                    let gc_alloc_ref = module.declare_func_in_func(gc_alloc_id, builder.func);
+
+                    // Calculate size needed: discriminant (4 bytes) + args.len() * 4 bytes (assuming i32)
+                    let total_size = 4 + args.len() * 4;
+                    let size_val = builder.ins().iconst(I64, total_size as i64);
+
+                    // Allocate memory
+                    let call_inst = builder.ins().call(gc_alloc_ref, &[size_val]);
+                    let ptr = builder.inst_results(call_inst)[0];
+
+                    // Store discriminant at offset 0
+                    let disc_val = builder.ins().iconst(I32, discriminant as i64);
+                    builder.ins().store(MemFlags::new(), disc_val, ptr, 0);
+
+                    // Store each field
+                    for (i, arg) in args.iter().enumerate() {
+                        let arg_val = Self::generate_expression_helper(builder, arg, variables, variable_types, functions, module, string_counter, variable_counter)?;
+                        let offset = 4 + (i * 4) as i32; // discriminant + field index * field_size
+                        builder.ins().store(MemFlags::new(), arg_val, ptr, offset);
+                    }
+
+                    Ok(ptr)
                 }
             }
             Expression::Match { value, arms, .. } => {
-                let value_val = Self::generate_expression_helper(builder, value, variables, variable_types, functions, module, string_counter)?;
+                let value_val = Self::generate_expression_helper(builder, value, variables, variable_types, functions, module, string_counter, variable_counter)?;
 
-                // Extract discriminant from high 32 bits
-                let disc_val = builder.ins().ushr_imm(value_val, 32);
-                let disc_i32 = builder.ins().ireduce(I32, disc_val);
-
-                // Create blocks for each arm plus a continuation block
-                let mut arm_blocks = Vec::new();
-                let cont_block = builder.create_block();
-
-                for _ in arms {
-                    arm_blocks.push(builder.create_block());
+                if arms.is_empty() {
+                    return Err(CodegenError::UnsupportedFeature(
+                        "Empty match expressions not supported".to_string()
+                    ));
                 }
 
-                // For now, use simple conditional jumps instead of br_table
-                // TODO: Implement proper jump table for efficiency
-                let mut current_block = builder.current_block().unwrap();
+                // Determine the format based on the patterns in this match
+                // If any pattern has >1 binding, we need to handle pointer format
+                let has_multi_field = arms.iter().any(|arm| {
+                    if let Pattern::EnumVariant { bindings, .. } = &arm.pattern {
+                        bindings.len() > 1
+                    } else {
+                        false
+                    }
+                });
+
+                let disc_i32 = if has_multi_field {
+                    // Mixed format: some variants use packed, some use pointer
+                    // Need runtime detection
+                    let threshold = builder.ins().iconst(I64, 0x100000000); // 2^32
+                    let is_packed = builder.ins().icmp(cranelift_codegen::ir::condcodes::IntCC::UnsignedGreaterThanOrEqual, value_val, threshold);
+
+                    let packed_disc_block = builder.create_block();
+                    let pointer_disc_block = builder.create_block();
+                    let disc_done = builder.create_block();
+
+                    builder.ins().brif(is_packed, packed_disc_block, &[], pointer_disc_block, &[]);
+
+                    // Packed format: discriminant in high 32 bits
+                    builder.switch_to_block(packed_disc_block);
+                    let disc_packed = builder.ins().ushr_imm(value_val, 32);
+                    let disc_packed_i32 = builder.ins().ireduce(I32, disc_packed);
+                    builder.ins().jump(disc_done, &[disc_packed_i32]);
+
+                    // Pointer format: discriminant at offset 0
+                    builder.switch_to_block(pointer_disc_block);
+                    let disc_loaded = builder.ins().load(I32, MemFlags::new(), value_val, 0);
+                    builder.ins().jump(disc_done, &[disc_loaded]);
+
+                    // Continue with extracted discriminant
+                    builder.switch_to_block(disc_done);
+                    builder.append_block_param(disc_done, I32);
+
+                    // Remember to seal these blocks later
+                    builder.seal_block(packed_disc_block);
+                    builder.seal_block(pointer_disc_block);
+                    builder.seal_block(disc_done);
+
+                    builder.block_params(disc_done)[0]
+                } else {
+                    // All variants use packed format (0 or 1 field)
+                    let disc_val = builder.ins().ushr_imm(value_val, 32);
+                    builder.ins().ireduce(I32, disc_val)
+                };
+
+                // Create blocks for each arm and continuation
+                let mut arm_blocks = Vec::new();
+                for _ in 0..arms.len() {
+                    arm_blocks.push(builder.create_block());
+                }
+                let cont_block = builder.create_block();
+
+                // Generate cascade of conditional branches
+                let initial_block = builder.current_block().unwrap();
+                let mut current_block = initial_block;
+                let mut sealed_blocks = Vec::new();
 
                 for (i, arm) in arms.iter().enumerate() {
-                    if let Pattern::EnumVariant { variant, .. } = &arm.pattern {
-                        let disc = Self::variant_discriminant("", variant);
-                        let expected_disc = builder.ins().iconst(I32, disc as i64);
-                        let cmp = builder.ins().icmp(cranelift_codegen::ir::condcodes::IntCC::Equal, disc_i32, expected_disc);
+                    let arm_disc = if let Pattern::EnumVariant { variant, .. } = &arm.pattern {
+                        Self::variant_discriminant("", variant)
+                    } else {
+                        return Err(CodegenError::UnsupportedFeature("Non-enum patterns not supported".to_string()));
+                    };
 
-                        let next_check_block = if i + 1 < arms.len() {
-                            builder.create_block()
-                        } else {
-                            cont_block // Last case, jump to continuation
-                        };
+                    if i == arms.len() - 1 {
+                        // Last arm - unconditional jump (exhaustiveness guaranteed by HIR)
+                        builder.ins().jump(arm_blocks[i], &[]);
+                    } else {
+                        // Check if discriminant matches this arm
+                        let expected = builder.ins().iconst(I32, arm_disc as i64);
+                        let is_match = builder.ins().icmp(cranelift_codegen::ir::condcodes::IntCC::Equal, disc_i32, expected);
 
-                        builder.ins().brif(cmp, arm_blocks[i], &[], next_check_block, &[]);
+                        // Create next comparison block for remaining arms
+                        let next_block = builder.create_block();
+                        builder.ins().brif(is_match, arm_blocks[i], &[], next_block, &[]);
 
-                        if i + 1 < arms.len() {
-                            builder.switch_to_block(next_check_block);
-                            current_block = next_check_block;
+                        // Switch to next comparison block
+                        builder.switch_to_block(next_block);
+                        // Only seal if it's not the initial block
+                        if current_block != initial_block {
+                            builder.seal_block(current_block);
                         }
+                        sealed_blocks.push(current_block);
+                        current_block = next_block;
                     }
                 }
 
                 // Generate code for each arm
-                let mut result_values = Vec::new();
                 for (i, arm) in arms.iter().enumerate() {
                     builder.switch_to_block(arm_blocks[i]);
+                    let mut arm_variables = variables.clone();
+                    let mut arm_variable_types = variable_types.clone();
 
-                    // TODO: Handle pattern bindings by extracting payload from value_val
+                    // Handle pattern bindings for this arm
+                    if let Pattern::EnumVariant { bindings, .. } = &arm.pattern {
+                        for (binding_idx, binding_name) in bindings.iter().enumerate() {
+                            if !binding_name.is_empty() {
+                                let field_val = if bindings.len() == 1 {
+                                    // Single field: extract from low 32 bits (packed format)
+                                    builder.ins().ireduce(I32, value_val)
+                                } else {
+                                    // Multi-field: assume pointer format and load from offset
+                                    let offset = 4 + (binding_idx * 4) as i32;
+                                    builder.ins().load(I32, MemFlags::new(), value_val, offset)
+                                };
 
-                    let arm_result = Self::generate_expression_helper(builder, &arm.body, variables, variable_types, functions, module, string_counter)?;
-                    result_values.push(arm_result);
+                                let var = Variable::from_u32(*variable_counter);
+                                *variable_counter += 1;
+                                builder.declare_var(var, I32);
+                                builder.def_var(var, field_val);
+                                arm_variables.insert(binding_name.clone(), var);
+                                arm_variable_types.insert(binding_name.clone(), VariableType::I64);
+                            }
+                        }
+                    }
+
+                    let arm_result = Self::generate_expression_helper(builder, &arm.body, &arm_variables, &arm_variable_types, functions, module, string_counter, variable_counter)?;
                     builder.ins().jump(cont_block, &[arm_result]);
                 }
 
                 // Continuation block
                 builder.switch_to_block(cont_block);
                 builder.append_block_param(cont_block, I32);
-                let result = builder.block_params(cont_block)[0];
 
+                // Seal all blocks
+                for arm_block in arm_blocks {
+                    builder.seal_block(arm_block);
+                }
+                builder.seal_block(cont_block);
+                // Seal the last comparison block if it hasn't been sealed yet
+                // and if it's not the initial block (which may be sealed elsewhere)
+                if arms.len() > 1 && current_block != initial_block && !sealed_blocks.contains(&current_block) {
+                    builder.seal_block(current_block);
+                }
+
+                let result = builder.block_params(cont_block)[0];
                 Ok(result)
             }
             _ => {
@@ -869,7 +990,8 @@ impl CodeGenerator {
         variable_types: &HashMap<String, VariableType>,
         functions: &HashMap<String, FuncId>,
         module: &mut ObjectModule,
-        string_counter: &mut usize
+        string_counter: &mut usize,
+        variable_counter: &mut u32
     ) -> Result<Value, CodegenError> {
         match literal {
             Literal::Bool(b, _) => {
@@ -983,7 +1105,7 @@ impl CodeGenerator {
 
                             // Generate the expression value
                             let expr_val = Self::generate_expression_helper(
-                                builder, expr, variables, variable_types, functions, module, string_counter
+                                builder, expr, variables, variable_types, functions, module, string_counter, variable_counter
                             )?;
                             expression_data.push((expr_val, expr.as_ref()));
                         }
@@ -1221,7 +1343,7 @@ impl CodeGenerator {
                 // First, evaluate all elements
                 let mut element_values = Vec::new();
                 for element in elements {
-                    let element_val = Self::generate_expression_helper(builder, element, variables, variable_types, functions, module, string_counter)?;
+                    let element_val = Self::generate_expression_helper(builder, element, variables, variable_types, functions, module, string_counter, variable_counter)?;
                     element_values.push(element_val);
                 }
 

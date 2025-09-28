@@ -121,7 +121,9 @@ impl TypeChecker {
                 .map(|field_type| self.ast_type_to_hir_type(field_type))
                 .collect();
 
-            variants.insert(variant.name.clone(), field_types?);
+            let field_types = field_types?;
+
+            variants.insert(variant.name.clone(), field_types);
         }
 
         // Collect method signatures
@@ -505,6 +507,9 @@ impl TypeChecker {
                 let mut covered_variants = std::collections::HashSet::new();
 
                 for arm in arms {
+                    // Each arm gets its own scope for pattern bindings
+                    self.push_scope();
+
                     // Type check the pattern
                     self.check_pattern(&arm.pattern, &value_type)?;
 
@@ -515,6 +520,9 @@ impl TypeChecker {
 
                     // Type check the arm body
                     let arm_type = self.check_expression(&arm.body)?;
+
+                    // Pop the arm scope
+                    self.pop_scope();
 
                     match &result_type {
                         None => result_type = Some(arm_type),

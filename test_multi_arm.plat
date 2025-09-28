@@ -1,0 +1,61 @@
+enum Priority {
+    Low,
+    Medium,
+    High,
+    Critical(i32),
+    Emergency(i32)
+}
+
+fn main() {
+    // Test with 5 different enum variants
+    let low = Priority::Low;
+    let medium = Priority::Medium;
+    let high = Priority::High;
+    let critical = Priority::Critical(10);
+    let emergency = Priority::Emergency(99);
+
+    // Test pattern matching with 5 arms
+    let low_result = match low {
+        Priority::Low -> 1,
+        Priority::Medium -> 2,
+        Priority::High -> 3,
+        Priority::Critical(level) -> level + 100,
+        Priority::Emergency(level) -> level + 1000
+    };
+
+    let medium_result = match medium {
+        Priority::Low -> 1,
+        Priority::Medium -> 2,
+        Priority::High -> 3,
+        Priority::Critical(level) -> level + 100,
+        Priority::Emergency(level) -> level + 1000
+    };
+
+    let high_result = match high {
+        Priority::Low -> 1,
+        Priority::Medium -> 2,
+        Priority::High -> 3,
+        Priority::Critical(level) -> level + 100,
+        Priority::Emergency(level) -> level + 1000
+    };
+
+    let critical_result = match critical {
+        Priority::Low -> 1,
+        Priority::Medium -> 2,
+        Priority::High -> 3,
+        Priority::Critical(level) -> level + 100,
+        Priority::Emergency(level) -> level + 1000
+    };
+
+    let emergency_result = match emergency {
+        Priority::Low -> 1,
+        Priority::Medium -> 2,
+        Priority::High -> 3,
+        Priority::Critical(level) -> level + 100,
+        Priority::Emergency(level) -> level + 1000
+    };
+
+    // Expected results: 1, 2, 3, 110, 1099
+    let total = low_result + medium_result + high_result + critical_result + emergency_result;
+    print("Total: ${total}");
+}

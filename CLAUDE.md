@@ -184,12 +184,13 @@ Deliver a working `plat` CLI binary that:
 - ✅ **Core Implementation**: Full compiler pipeline support
 - ✅ **Unit & Tuple Variants**: `Quit`, `Move(i32)` syntax
 - ✅ **Pattern Matching**: `match` expressions with exhaustiveness
+- ✅ **N-Arm Pattern Matching**: Support for any number of match arms (2+)
+- ✅ **Pattern Binding Extraction**: Extract payloads in match arms (`Move(x) -> x`)
+- ✅ **Multi-field Variants**: Support `Move(i32, i32)` with proper memory layout
 - ✅ **Type Safety**: Prevents invalid enum usage
 - ✅ **Integration**: Works with existing Plat features
 
 ### 🚧 **Next Steps for Enums**
-- [ ] **Pattern Binding Extraction**: Extract payloads in match arms (`Move(x) -> x`)
-- [ ] **Multi-field Variants**: Support `Move(i32, i32)` with proper memory layout
 - [ ] **Generic Type Inference**: Full `Option<T>` support with type instantiation
 - [ ] **Advanced Patterns**: Nested patterns and guards
 - [ ] **Optimization**: Jump tables for efficient pattern matching
@@ -206,8 +207,10 @@ Deliver a working `plat` CLI binary that:
 - [x] **COMPLETE**: Working Plat compiler with native code generation
 - [x] **COMPLETE**: String interpolation with runtime expression evaluation
 - [x] **COMPLETE**: Enums with pattern matching and exhaustiveness checking
+- [x] **COMPLETE**: N-arm pattern matching with any number of enum variants
 - [x] **EXAMPLE**: `print("Result: ${x + y}")` → `"Result: 42"`
 - [x] **EXAMPLE**: `enum Status { Success, Error }` with full compiler support
+- [x] **EXAMPLE**: `enum Priority { Low, Medium, High, Critical(i32), Emergency(i32) }` with 5-arm matching
 - [x] **ACHIEVEMENT**: Full end-to-end compilation from `.plat` → native executable
 
 ### 🎯 Major Milestones Achieved
