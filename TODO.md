@@ -1,6 +1,7 @@
-* Enums
-* Option type
-* Result type
+- [x] Enums
+- [ ] Option type
+- [ ] Result type
+
 * Classes
 * LSP
 * syntax highlighting

@@ -41,14 +41,36 @@ impl CodeGenerator {
             return VariableType::I32;
         }
 
-        // Check the first arm's body to determine the return type
+        // Check all arms to determine if we have mixed types requiring unified handling
+        let mut has_string_literal = false;
+        let mut has_integer_literal = false;
+        let mut has_pattern_binding = false;
+
+        for arm in arms {
+            match &arm.body {
+                Expression::Literal(Literal::String(_, _)) => has_string_literal = true,
+                Expression::Literal(Literal::InterpolatedString(_, _)) => has_string_literal = true,
+                Expression::Literal(Literal::Integer(_, _)) => has_integer_literal = true,
+                Expression::Identifier { .. } => has_pattern_binding = true,
+                _ => {}
+            }
+        }
+
+        // If we have string literals OR pattern bindings mixed with other types, use String (I64)
+        // If we only have integer literals and integer pattern bindings, use I32
+        if has_string_literal || (has_pattern_binding && has_string_literal) {
+            return VariableType::String;
+        }
+
+        // For pure integer cases (integer literals + integer pattern bindings), use I32
+        if has_integer_literal || has_pattern_binding {
+            return VariableType::I32;
+        }
+
+        // Fallback to specific type detection
         match &arms[0].body {
-            Expression::Literal(Literal::String(_, _)) => VariableType::String,
-            Expression::Literal(Literal::InterpolatedString(_, _)) => VariableType::String,
             Expression::Literal(Literal::Bool(_, _)) => VariableType::Bool,
-            Expression::Literal(Literal::Integer(_, _)) => VariableType::I32,
             Expression::Literal(Literal::Array(_, _)) => VariableType::Array,
-            Expression::Identifier { .. } => VariableType::String, // Pattern bindings use unified I64 handling
             Expression::EnumConstructor { enum_name, .. } => VariableType::Enum(enum_name.clone()),
             _ => VariableType::I32,
         }
@@ -911,41 +933,53 @@ impl CodeGenerator {
                     ));
                 }
 
-                // Always use runtime format detection since we can't determine statically
-                // whether the enum value uses packed or heap format
+                // For enum values, try packed format first (works for unit and i32 data variants)
                 let disc_i32 = {
-                    // Mixed format: some variants use packed, some use pointer
-                    // Need runtime detection
-                    let threshold = builder.ins().iconst(I64, 0x100000000); // 2^32
-                    let is_pointer = builder.ins().icmp(cranelift_codegen::ir::condcodes::IntCC::UnsignedGreaterThanOrEqual, value_val, threshold);
+                    // Try packed format first - discriminant in high 32 bits
+                    let packed_disc = builder.ins().ushr_imm(value_val, 32);
+                    let packed_disc_i32 = builder.ins().ireduce(I32, packed_disc);
 
-                    let packed_disc_block = builder.create_block();
-                    let pointer_disc_block = builder.create_block();
-                    let disc_done = builder.create_block();
+                    // Only use heap format if packed discriminant is 0 AND value looks like a pointer
+                    let zero_const = builder.ins().iconst(I32, 0);
+                    let disc_is_zero = builder.ins().icmp(cranelift_codegen::ir::condcodes::IntCC::Equal, packed_disc_i32, zero_const);
 
-                    builder.ins().brif(is_pointer, pointer_disc_block, &[], packed_disc_block, &[]);
+                    let min_addr = builder.ins().iconst(I64, 0x1000);
+                    let looks_like_pointer = builder.ins().icmp(cranelift_codegen::ir::condcodes::IntCC::UnsignedGreaterThan, value_val, min_addr);
+                    let max_addr = builder.ins().iconst(I64, 0x800000000000); // Reasonable upper bound for pointers
+                    let not_too_big = builder.ins().icmp(cranelift_codegen::ir::condcodes::IntCC::UnsignedLessThan, value_val, max_addr);
+                    let pointer_range = builder.ins().band(looks_like_pointer, not_too_big);
 
-                    // Packed format: discriminant in high 32 bits
-                    builder.switch_to_block(packed_disc_block);
-                    let disc_packed = builder.ins().ushr_imm(value_val, 32);
-                    let disc_packed_i32 = builder.ins().ireduce(I32, disc_packed);
-                    builder.ins().jump(disc_done, &[disc_packed_i32]);
+                    let use_heap = builder.ins().band(disc_is_zero, pointer_range);
 
-                    // Pointer format: discriminant at offset 0
-                    builder.switch_to_block(pointer_disc_block);
-                    let disc_loaded = builder.ins().load(I32, MemFlags::new(), value_val, 0);
-                    builder.ins().jump(disc_done, &[disc_loaded]);
+                    let packed_block = builder.create_block();
+                    let heap_block = builder.create_block();
+                    let done_block = builder.create_block();
+                    builder.append_block_param(done_block, I32);
 
-                    // Continue with extracted discriminant
-                    builder.switch_to_block(disc_done);
-                    builder.append_block_param(disc_done, I32);
+                    builder.ins().brif(use_heap, heap_block, &[], packed_block, &[]);
 
-                    // Remember to seal these blocks later
-                    builder.seal_block(packed_disc_block);
-                    builder.seal_block(pointer_disc_block);
-                    builder.seal_block(disc_done);
+                    // Packed format: use extracted discriminant
+                    builder.switch_to_block(packed_block);
+                    builder.seal_block(packed_block);
+                    builder.ins().jump(done_block, &[packed_disc_i32]);
 
-                    builder.block_params(disc_done)[0]
+                    // Heap format: load discriminant from memory
+                    builder.switch_to_block(heap_block);
+                    builder.seal_block(heap_block);
+                    let heap_disc = builder.ins().load(I32, MemFlags::new(), value_val, 0);
+                    builder.ins().jump(done_block, &[heap_disc]);
+
+                    builder.switch_to_block(done_block);
+                    builder.seal_block(done_block);
+
+                    builder.block_params(done_block)[0]
+                };
+
+                // Determine the return type for the match expression early
+                let match_return_type = Self::determine_match_return_type(arms, variable_types);
+                let cont_param_type = match match_return_type {
+                    VariableType::String | VariableType::Array | VariableType::Enum(_) => I64,
+                    _ => I32,
                 };
 
                 // Create blocks for each arm and continuation
@@ -997,32 +1031,20 @@ impl CodeGenerator {
                     let mut arm_variable_types = variable_types.clone();
 
                     // Handle pattern bindings for this arm
-                    if let Pattern::EnumVariant { enum_name, variant, bindings, .. } = &arm.pattern {
+                    if let Pattern::EnumVariant { bindings, .. } = &arm.pattern {
                         for (binding_idx, binding_name) in bindings.iter().enumerate() {
                             if !binding_name.is_empty() {
-                                // Runtime format detection for pattern binding extraction
+                                // For now, assume all single-field data variants use packed format
+                                // and all multi-field variants use heap format
                                 let (field_val, var_type, cranelift_type) = if bindings.len() == 1 {
-                                    // Detect format at runtime and extract appropriately
-                                    let threshold = builder.ins().iconst(I64, 0x100000000); // 2^32
-                                    let is_heap = builder.ins().icmp(cranelift_codegen::ir::condcodes::IntCC::UnsignedGreaterThanOrEqual, value_val, threshold);
-
-                                    // For heap format: load I64 pointer from offset 4
-                                    let heap_val = builder.ins().load(I64, MemFlags::new(), value_val, 4);
-
-                                    // For packed format: extract I32 from low bits and extend to I64
+                                    // Single field: assume packed format (discriminant in high, value in low)
                                     let packed_val = builder.ins().ireduce(I32, value_val);
-                                    let extended_val = builder.ins().uextend(I64, packed_val);
-
-                                    // Select appropriate value based on format
-                                    let selected_val = builder.ins().select(is_heap, heap_val, extended_val);
-
-                                    // Use I64 for unified handling (works for both integers and pointers)
-                                    (selected_val, VariableType::String, I64)
+                                    (packed_val, VariableType::I32, I32)
                                 } else {
-                                    // Multi-field: assume heap format and load from offset
-                                    let offset = 4 + (binding_idx * 8) as i32; // 8-byte alignment for I64
-                                    let loaded = builder.ins().load(I64, MemFlags::new(), value_val, offset);
-                                    (loaded, VariableType::String, I64)
+                                    // Multi-field: assume heap format, load from offset
+                                    let offset = 4 + (binding_idx * 4) as i32; // 4-byte alignment for i32
+                                    let loaded = builder.ins().load(I32, MemFlags::new(), value_val, offset);
+                                    (loaded, VariableType::I32, I32)
                                 };
 
                                 let var = Variable::from_u32(*variable_counter);
@@ -1036,19 +1058,23 @@ impl CodeGenerator {
                     }
 
                     let arm_result = Self::generate_expression_helper(builder, &arm.body, &arm_variables, &arm_variable_types, functions, module, string_counter, variable_counter)?;
-                    builder.ins().jump(cont_block, &[arm_result]);
+
+                    // Convert arm result to match the expected continuation block type
+                    let converted_result = match (cont_param_type, &arm.body) {
+                        // If continuation expects I32 but we have I64 from pattern binding, convert down
+                        (I32, Expression::Identifier { .. }) => {
+                            builder.ins().ireduce(I32, arm_result)
+                        }
+                        // Otherwise use as-is
+                        _ => arm_result
+                    };
+
+                    builder.ins().jump(cont_block, &[converted_result]);
                 }
 
-                // Determine the return type for the continuation block
-                let match_return_type = Self::determine_match_return_type(arms, variable_types);
-                let cont_param_type = match match_return_type {
-                    VariableType::String | VariableType::Array | VariableType::Enum(_) => I64,
-                    _ => I32,
-                };
-
                 // Continuation block
-                builder.switch_to_block(cont_block);
                 builder.append_block_param(cont_block, cont_param_type);
+                builder.switch_to_block(cont_block);
 
                 // Seal all blocks
                 for arm_block in arm_blocks {
