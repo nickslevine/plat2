@@ -190,8 +190,16 @@ Deliver a working `plat` CLI binary that:
 - ✅ **Type Safety**: Prevents invalid enum usage
 - ✅ **Integration**: Works with existing Plat features
 
+### ✅ **Built-in Generic Types**
+- ✅ **Option<T>**: Core optional type with Some(T) and None variants
+- ✅ **Result<T, E>**: Error handling type with Ok(T) and Err(E) variants
+- ✅ **Type Inference**: Automatic type parameter inference from context
+- ✅ **Pattern Matching**: Full support for matching Option and Result types
+
 ### 🚧 **Next Steps for Enums**
-- [ ] **Generic Type Inference**: Full `Option<T>` support with type instantiation
+- [ ] **Full Generic Type Unification**: Complete type inference with type variables
+- [ ] **Pattern Matching Codegen**: Fix code generation for Option/Result patterns
+- [ ] **Syntactic Sugar**: `?` operator, `if let`, `while let` expressions
 - [ ] **Advanced Patterns**: Nested patterns and guards
 - [ ] **Optimization**: Jump tables for efficient pattern matching
 
@@ -208,9 +216,11 @@ Deliver a working `plat` CLI binary that:
 - [x] **COMPLETE**: String interpolation with runtime expression evaluation
 - [x] **COMPLETE**: Enums with pattern matching and exhaustiveness checking
 - [x] **COMPLETE**: N-arm pattern matching with any number of enum variants
+- [x] **COMPLETE**: Built-in Option<T> and Result<T, E> types with type inference
 - [x] **EXAMPLE**: `print("Result: ${x + y}")` → `"Result: 42"`
 - [x] **EXAMPLE**: `enum Status { Success, Error }` with full compiler support
 - [x] **EXAMPLE**: `enum Priority { Low, Medium, High, Critical(i32), Emergency(i32) }` with 5-arm matching
+- [x] **EXAMPLE**: `Option::Some(42)` and `Result::Ok(100)` with automatic type inference
 - [x] **ACHIEVEMENT**: Full end-to-end compilation from `.plat` → native executable
 
 ### 🎯 Major Milestones Achieved

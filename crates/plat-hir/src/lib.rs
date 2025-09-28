@@ -47,12 +47,54 @@ pub struct VariantInfo {
 
 impl TypeChecker {
     pub fn new() -> Self {
-        Self {
+        let mut checker = Self {
             scopes: vec![HashMap::new()], // Global scope
             functions: HashMap::new(),
             enums: HashMap::new(),
             current_function_return_type: None,
-        }
+        };
+
+        // Register built-in Option<T> type
+        checker.register_builtin_option();
+
+        // Register built-in Result<T, E> type
+        checker.register_builtin_result();
+
+        checker
+    }
+
+    fn register_builtin_option(&mut self) {
+        let mut variants = HashMap::new();
+        // None variant has no fields
+        variants.insert("None".to_string(), vec![]);
+        // Some variant has one generic field T
+        variants.insert("Some".to_string(), vec![HirType::Unit]); // Placeholder, will be replaced by actual type
+
+        let option_info = EnumInfo {
+            name: "Option".to_string(),
+            type_params: vec!["T".to_string()],
+            variants,
+            methods: HashMap::new(),
+        };
+
+        self.enums.insert("Option".to_string(), option_info);
+    }
+
+    fn register_builtin_result(&mut self) {
+        let mut variants = HashMap::new();
+        // Ok variant has one generic field T
+        variants.insert("Ok".to_string(), vec![HirType::Unit]); // Placeholder
+        // Err variant has one generic field E
+        variants.insert("Err".to_string(), vec![HirType::Unit]); // Placeholder
+
+        let result_info = EnumInfo {
+            name: "Result".to_string(),
+            type_params: vec!["T".to_string(), "E".to_string()],
+            variants,
+            methods: HashMap::new(),
+        };
+
+        self.enums.insert("Result".to_string(), result_info);
     }
 
     pub fn check_program(mut self, program: &Program) -> Result<(), DiagnosticError> {
@@ -449,41 +491,92 @@ impl TypeChecker {
                 Ok(HirType::Unit)
             }
             Expression::EnumConstructor { enum_name, variant, args, .. } => {
-                // Check if enum exists and get variant fields
-                let variant_fields = {
-                    let enum_info = self.enums.get(enum_name)
-                        .ok_or_else(|| DiagnosticError::Type(
-                            format!("Unknown enum '{}'", enum_name)
-                        ))?;
+                // Check if enum exists
+                let enum_info = self.enums.get(enum_name)
+                    .ok_or_else(|| DiagnosticError::Type(
+                        format!("Unknown enum '{}'", enum_name)
+                    ))?.clone();
 
-                    // Check if variant exists
-                    enum_info.variants.get(variant)
-                        .ok_or_else(|| DiagnosticError::Type(
-                            format!("Enum '{}' has no variant '{}'", enum_name, variant)
-                        ))?.clone()
-                };
+                // Check if variant exists
+                let variant_fields = enum_info.variants.get(variant)
+                    .ok_or_else(|| DiagnosticError::Type(
+                        format!("Enum '{}' has no variant '{}'", enum_name, variant)
+                    ))?.clone();
 
-                // Check argument count
-                if args.len() != variant_fields.len() {
-                    return Err(DiagnosticError::Type(
-                        format!("Variant '{}::{}' expects {} arguments, got {}",
-                            enum_name, variant, variant_fields.len(), args.len())
-                    ));
-                }
+                // For generic enums (Option, Result), infer type parameters from arguments
+                let mut inferred_type_params = vec![];
 
-                // Check argument types
-                for (i, (arg, expected_type)) in args.iter().zip(variant_fields.iter()).enumerate() {
-                    let arg_type = self.check_expression(arg)?;
-                    if arg_type != *expected_type {
+                if enum_name == "Option" && variant == "Some" && args.len() == 1 {
+                    // Option::Some(value) - infer T from value type
+                    let arg_type = self.check_expression(&args[0])?;
+                    inferred_type_params.push(arg_type.clone());
+
+                    // Check argument count
+                    if args.len() != 1 {
                         return Err(DiagnosticError::Type(
-                            format!("Argument {} of variant '{}::{}' has type {:?}, expected {:?}",
-                                i + 1, enum_name, variant, arg_type, expected_type)
+                            format!("Option::Some expects 1 argument, got {}", args.len())
                         ));
+                    }
+                } else if enum_name == "Option" && variant == "None" {
+                    // Option::None - type will be inferred from context
+                    // We'll use I32 as default for now (ideally this would be a type variable)
+                    inferred_type_params.push(HirType::I32);
+
+                    if args.len() != 0 {
+                        return Err(DiagnosticError::Type(
+                            format!("Option::None expects 0 arguments, got {}", args.len())
+                        ));
+                    }
+                } else if enum_name == "Result" && variant == "Ok" && args.len() == 1 {
+                    // Result::Ok(value) - infer T from value type
+                    let arg_type = self.check_expression(&args[0])?;
+                    inferred_type_params.push(arg_type.clone());
+                    inferred_type_params.push(HirType::I32); // E defaults to I32
+
+                    if args.len() != 1 {
+                        return Err(DiagnosticError::Type(
+                            format!("Result::Ok expects 1 argument, got {}", args.len())
+                        ));
+                    }
+                } else if enum_name == "Result" && variant == "Err" && args.len() == 1 {
+                    // Result::Err(error) - infer E from error type
+                    let arg_type = self.check_expression(&args[0])?;
+                    inferred_type_params.push(HirType::I32); // T defaults to I32
+                    inferred_type_params.push(arg_type.clone());
+
+                    if args.len() != 1 {
+                        return Err(DiagnosticError::Type(
+                            format!("Result::Err expects 1 argument, got {}", args.len())
+                        ));
+                    }
+                } else {
+                    // Non-generic enum or user-defined enum
+                    // Check argument count
+                    if args.len() != variant_fields.len() {
+                        return Err(DiagnosticError::Type(
+                            format!("Variant '{}::{}' expects {} arguments, got {}",
+                                enum_name, variant, variant_fields.len(), args.len())
+                        ));
+                    }
+
+                    // Check argument types
+                    for (i, (arg, expected_type)) in args.iter().zip(variant_fields.iter()).enumerate() {
+                        let arg_type = self.check_expression(arg)?;
+                        // For built-in generic types, skip type checking here as we handle it above
+                        if !enum_info.type_params.is_empty() && *expected_type == HirType::Unit {
+                            continue;
+                        }
+                        if arg_type != *expected_type {
+                            return Err(DiagnosticError::Type(
+                                format!("Argument {} of variant '{}::{}' has type {:?}, expected {:?}",
+                                    i + 1, enum_name, variant, arg_type, expected_type)
+                            ));
+                        }
                     }
                 }
 
-                // Return the enum type (for now without type parameters)
-                Ok(HirType::Enum(enum_name.clone(), vec![]))
+                // Return the enum type with inferred type parameters
+                Ok(HirType::Enum(enum_name.clone(), inferred_type_params))
             }
             Expression::Match { value, arms, .. } => {
                 let value_type = self.check_expression(value)?;
@@ -719,16 +812,43 @@ impl TypeChecker {
                         ))?.clone()
                 };
 
+                // For generic built-in types, infer the actual field types from the expected type
+                let actual_field_types = if expected_enum == "Option" {
+                    if let HirType::Enum(_, type_params) = expected_type {
+                        if variant == "Some" && !type_params.is_empty() {
+                            vec![type_params[0].clone()]
+                        } else {
+                            vec![]
+                        }
+                    } else {
+                        variant_fields
+                    }
+                } else if expected_enum == "Result" {
+                    if let HirType::Enum(_, type_params) = expected_type {
+                        if variant == "Ok" && type_params.len() >= 1 {
+                            vec![type_params[0].clone()]
+                        } else if variant == "Err" && type_params.len() >= 2 {
+                            vec![type_params[1].clone()]
+                        } else {
+                            vec![]
+                        }
+                    } else {
+                        variant_fields
+                    }
+                } else {
+                    variant_fields
+                };
+
                 // Check binding count matches field count
-                if bindings.len() != variant_fields.len() {
+                if bindings.len() != actual_field_types.len() {
                     return Err(DiagnosticError::Type(
                         format!("Variant '{}::{}' has {} fields, but pattern has {} bindings",
-                            expected_enum, variant, variant_fields.len(), bindings.len())
+                            expected_enum, variant, actual_field_types.len(), bindings.len())
                     ));
                 }
 
                 // Add bindings to current scope
-                for (binding, field_type) in bindings.iter().zip(variant_fields.iter()) {
+                for (binding, field_type) in bindings.iter().zip(actual_field_types.iter()) {
                     if self.scopes.last().unwrap().contains_key(binding) {
                         return Err(DiagnosticError::Type(
                             format!("Variable '{}' is already bound in this pattern", binding)
