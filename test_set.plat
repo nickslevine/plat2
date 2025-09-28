@@ -1,0 +1,5 @@
+fn main() -> i32 {
+    let my_set: Set[i32] = Set{1, 2, 3, 1, 2};
+    print("Set: ${my_set}");
+    return 0;
+}

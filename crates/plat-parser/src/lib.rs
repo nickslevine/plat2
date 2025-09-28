@@ -109,6 +109,13 @@ impl Parser {
             return Ok(Type::Dict(Box::new(key_type), Box::new(value_type)));
         }
 
+        if self.match_token(&Token::Set) {
+            self.consume(Token::LeftBracket, "Expected '[' after 'Set'")?;
+            let element_type = self.parse_type()?;
+            self.consume(Token::RightBracket, "Expected ']' after element type")?;
+            return Ok(Type::Set(Box::new(element_type)));
+        }
+
         let type_name = self.consume_identifier("Expected type name")?;
 
         // Check for generic type parameters
@@ -356,7 +363,7 @@ impl Parser {
                     Expression::Literal(lit) => match lit {
                         Literal::Bool(_, s) | Literal::Integer(_, s) |
                         Literal::String(_, s) | Literal::InterpolatedString(_, s) |
-                        Literal::Array(_, s) | Literal::Dict(_, s) => s.start,
+                        Literal::Array(_, s) | Literal::Dict(_, s) | Literal::Set(_, s) => s.start,
                     },
                     Expression::Identifier { span, .. } => span.start,
                     Expression::Call { span, .. } => span.start,
@@ -642,6 +649,10 @@ impl Parser {
             return Ok(Expression::Identifier { name, span });
         }
 
+        if self.match_token(&Token::Set) {
+            return self.parse_set_literal();
+        }
+
         if self.match_token(&Token::LeftParen) {
             let expr = self.parse_expression()?;
             self.consume(Token::RightParen, "Expected ')' after expression")?;
@@ -709,7 +720,7 @@ impl Parser {
             Expression::Literal(lit) => match lit {
                 Literal::Bool(_, s) | Literal::Integer(_, s) |
                 Literal::String(_, s) | Literal::InterpolatedString(_, s) |
-                Literal::Array(_, s) | Literal::Dict(_, s) => s.start,
+                Literal::Array(_, s) | Literal::Dict(_, s) | Literal::Set(_, s) => s.start,
             },
             Expression::Identifier { span, .. } => span.start,
             Expression::Call { span, .. } => span.start,
@@ -1088,5 +1099,26 @@ impl Parser {
         let end = self.previous_span().end;
 
         Ok(Expression::Literal(Literal::Dict(pairs, Span::new(start, end))))
+    }
+
+    fn parse_set_literal(&mut self) -> Result<Expression, DiagnosticError> {
+        let start = self.previous_span().start;
+        self.consume(Token::LeftBrace, "Expected '{' after 'Set'")?;
+
+        let mut elements = Vec::new();
+
+        if !self.check(&Token::RightBrace) {
+            loop {
+                elements.push(self.parse_expression()?);
+                if !self.match_token(&Token::Comma) {
+                    break;
+                }
+            }
+        }
+
+        self.consume(Token::RightBrace, "Expected '}' after set elements")?;
+        let end = self.previous_span().end;
+
+        Ok(Expression::Literal(Literal::Set(elements, Span::new(start, end))))
     }
 }

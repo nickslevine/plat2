@@ -15,6 +15,7 @@ pub enum PlatValue {
     String(PlatString),
     Array(PlatArray),
     Dict(PlatDict),
+    Set(PlatSet),
     Unit,
 }
 
@@ -171,6 +172,76 @@ impl fmt::Display for PlatDict {
     }
 }
 
+/// GC-managed set type (using vector for simplicity, maintaining uniqueness)
+#[derive(Debug, Clone, Trace, Finalize)]
+pub struct PlatSet {
+    data: Gc<Vec<PlatValue>>,
+}
+
+impl PartialEq for PlatSet {
+    fn eq(&self, other: &Self) -> bool {
+        self.data.as_ref() == other.data.as_ref()
+    }
+}
+
+impl PlatSet {
+    pub fn new() -> Self {
+        Self {
+            data: Gc::new(Vec::new()),
+        }
+    }
+
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            data: Gc::new(Vec::with_capacity(capacity)),
+        }
+    }
+
+    pub fn insert(&mut self, value: PlatValue) {
+        // Only insert if value is not already present
+        if !self.data.contains(&value) {
+            unsafe {
+                let ptr = Gc::into_raw(self.data.clone()) as *mut Vec<PlatValue>;
+                (*ptr).push(value);
+                self.data = Gc::from_raw(ptr);
+            }
+        }
+    }
+
+    pub fn contains(&self, value: &PlatValue) -> bool {
+        self.data.contains(value)
+    }
+
+    pub fn len(&self) -> usize {
+        self.data.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.data.is_empty()
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &PlatValue> {
+        self.data.iter()
+    }
+
+    pub fn as_slice(&self) -> &[PlatValue] {
+        self.data.as_ref().as_slice()
+    }
+}
+
+impl fmt::Display for PlatSet {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{{")?;
+        for (i, value) in self.data.iter().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            write!(f, "{}", value)?;
+        }
+        write!(f, "}}")
+    }
+}
+
 impl fmt::Display for PlatValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -189,6 +260,7 @@ impl fmt::Display for PlatValue {
                 write!(f, "]")
             }
             PlatValue::Dict(dict) => write!(f, "{}", dict),
+            PlatValue::Set(set) => write!(f, "{}", set),
             PlatValue::Unit => write!(f, "()"),
         }
     }
@@ -239,6 +311,12 @@ impl From<PlatString> for PlatValue {
 impl From<PlatDict> for PlatValue {
     fn from(dict: PlatDict) -> Self {
         PlatValue::Dict(dict)
+    }
+}
+
+impl From<PlatSet> for PlatValue {
+    fn from(set: PlatSet) -> Self {
+        PlatValue::Set(set)
     }
 }
 
@@ -870,6 +948,12 @@ pub const DICT_VALUE_TYPE_I64: u8 = 1;
 pub const DICT_VALUE_TYPE_BOOL: u8 = 2;
 pub const DICT_VALUE_TYPE_STRING: u8 = 3;
 
+// Set type constants
+pub const SET_VALUE_TYPE_I32: u8 = 0;
+pub const SET_VALUE_TYPE_I64: u8 = 1;
+pub const SET_VALUE_TYPE_BOOL: u8 = 2;
+pub const SET_VALUE_TYPE_STRING: u8 = 3;
+
 /// Dict structure for runtime (C-compatible)
 /// For simplicity, using string keys and generic values
 #[repr(C)]
@@ -1042,6 +1126,215 @@ pub extern "C" fn plat_dict_to_string(dict_ptr: *const RuntimeDict) -> *const c_
                         result.push_str(if value != 0 { "true" } else { "false" });
                     },
                     DICT_VALUE_TYPE_STRING => {
+                        let string_ptr = value as *const c_char;
+                        if !string_ptr.is_null() {
+                            if let Ok(string_val) = CStr::from_ptr(string_ptr).to_str() {
+                                result.push('"');
+                                result.push_str(string_val);
+                                result.push('"');
+                            } else {
+                                result.push_str("\"<invalid>\"");
+                            }
+                        } else {
+                            result.push_str("\"<null>\"");
+                        }
+                    },
+                    _ => {
+                        result.push_str("<unknown>");
+                    }
+                }
+            }
+        }
+
+        result.push('}');
+
+        // Allocate result on GC heap
+        let mut result_bytes = result.into_bytes();
+        result_bytes.push(0); // null terminator
+
+        let size = result_bytes.len();
+        let gc_ptr = plat_gc_alloc(size);
+
+        if gc_ptr.is_null() {
+            return std::ptr::null();
+        }
+
+        // Copy result to GC memory
+        std::ptr::copy_nonoverlapping(result_bytes.as_ptr(), gc_ptr, size);
+
+        gc_ptr as *const c_char
+    }
+}
+
+/// Set structure for runtime (C-compatible)
+/// Using vector-based implementation with type information
+#[repr(C)]
+pub struct RuntimeSet {
+    values: *mut i64,               // Array of values (stored as i64)
+    value_types: *mut u8,          // Array indicating the type of each value
+    length: usize,
+    capacity: usize,
+}
+
+/// Create a new set on the GC heap
+#[no_mangle]
+pub extern "C" fn plat_set_create(
+    values: *const i64,
+    value_types: *const u8,
+    count: usize
+) -> *mut RuntimeSet {
+    if (values.is_null() || value_types.is_null()) && count > 0 {
+        return std::ptr::null_mut();
+    }
+
+    // Allocate the set struct
+    let set_size = std::mem::size_of::<RuntimeSet>();
+    let set_ptr = plat_gc_alloc(set_size) as *mut RuntimeSet;
+
+    if set_ptr.is_null() {
+        return std::ptr::null_mut();
+    }
+
+    // Allocate space for values and types arrays
+    let values_size = count * std::mem::size_of::<i64>();
+    let types_size = count * std::mem::size_of::<u8>();
+
+    let values_ptr = if count > 0 {
+        plat_gc_alloc(values_size) as *mut i64
+    } else {
+        std::ptr::null_mut()
+    };
+
+    let types_ptr = if count > 0 {
+        plat_gc_alloc(types_size) as *mut u8
+    } else {
+        std::ptr::null_mut()
+    };
+
+    // Copy data if provided and arrays allocated successfully
+    if count > 0 && !values_ptr.is_null() && !types_ptr.is_null() {
+        unsafe {
+            // For Set, we need to deduplicate values
+            let mut unique_values: Vec<(i64, u8)> = Vec::new();
+
+            for i in 0..count {
+                let value = *values.add(i);
+                let value_type = *value_types.add(i);
+
+                // Check if this value is already in the set
+                let mut already_exists = false;
+                for (existing_value, existing_type) in &unique_values {
+                    if *existing_value == value && *existing_type == value_type {
+                        already_exists = true;
+                        break;
+                    }
+                }
+
+                if !already_exists {
+                    unique_values.push((value, value_type));
+                }
+            }
+
+            // Copy the unique values
+            for (i, (value, value_type)) in unique_values.iter().enumerate() {
+                *values_ptr.add(i) = *value;
+                *types_ptr.add(i) = *value_type;
+            }
+
+            // Initialize the set struct with unique count
+            (*set_ptr) = RuntimeSet {
+                values: values_ptr,
+                value_types: types_ptr,
+                length: unique_values.len(),
+                capacity: unique_values.len(),
+            };
+        }
+    } else {
+        // Initialize empty set
+        unsafe {
+            (*set_ptr) = RuntimeSet {
+                values: values_ptr,
+                value_types: types_ptr,
+                length: 0,
+                capacity: 0,
+            };
+        }
+    }
+
+    set_ptr
+}
+
+/// Check if a value is in the set
+#[no_mangle]
+pub extern "C" fn plat_set_contains(set_ptr: *const RuntimeSet, value: i64, value_type: u8) -> bool {
+    if set_ptr.is_null() {
+        return false;
+    }
+
+    unsafe {
+        let set = &*set_ptr;
+        if set.values.is_null() || set.value_types.is_null() {
+            return false;
+        }
+
+        // Linear search for the value
+        for i in 0..set.length {
+            let set_value = *set.values.add(i);
+            let set_value_type = *set.value_types.add(i);
+            if set_value == value && set_value_type == value_type {
+                return true;
+            }
+        }
+
+        false
+    }
+}
+
+/// Get the length of a set
+#[no_mangle]
+pub extern "C" fn plat_set_len(set_ptr: *const RuntimeSet) -> usize {
+    if set_ptr.is_null() {
+        return 0;
+    }
+
+    unsafe {
+        (*set_ptr).length
+    }
+}
+
+/// Convert a set to a string for interpolation
+#[no_mangle]
+pub extern "C" fn plat_set_to_string(set_ptr: *const RuntimeSet) -> *const c_char {
+    if set_ptr.is_null() {
+        return std::ptr::null();
+    }
+
+    unsafe {
+        let set = &*set_ptr;
+
+        let mut result = String::from("{}");
+
+        for i in 0..set.length {
+            if i > 0 {
+                result.push_str(", ");
+            }
+
+            // Get value based on type
+            if !set.values.is_null() && !set.value_types.is_null() {
+                let value = *set.values.add(i);
+                let value_type = *set.value_types.add(i);
+
+                match value_type {
+                    SET_VALUE_TYPE_I32 => {
+                        result.push_str(&(value as i32).to_string());
+                    },
+                    SET_VALUE_TYPE_I64 => {
+                        result.push_str(&value.to_string());
+                    },
+                    SET_VALUE_TYPE_BOOL => {
+                        result.push_str(if value != 0 { "true" } else { "false" });
+                    },
+                    SET_VALUE_TYPE_STRING => {
                         let string_ptr = value as *const c_char;
                         if !string_ptr.is_null() {
                             if let Ok(string_val) = CStr::from_ptr(string_ptr).to_str() {

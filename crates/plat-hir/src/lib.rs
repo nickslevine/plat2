@@ -20,6 +20,7 @@ pub enum HirType {
     String,
     List(Box<HirType>),
     Dict(Box<HirType>, Box<HirType>), // key type, value type
+    Set(Box<HirType>), // element type
     Enum(String, Vec<HirType>), // name, type parameters
     Unit, // For functions that don't return anything
 }
@@ -737,6 +738,28 @@ impl TypeChecker {
 
                 Ok(HirType::Dict(Box::new(key_type), Box::new(value_type)))
             }
+            Literal::Set(elements, _) => {
+                if elements.is_empty() {
+                    return Err(DiagnosticError::Type(
+                        "Cannot infer type of empty set literal. Use explicit type annotation.".to_string()
+                    ));
+                }
+
+                // Check first element to determine element type
+                let first_type = self.check_expression(&elements[0])?;
+
+                // Check all elements have consistent type
+                for (i, element) in elements.iter().enumerate().skip(1) {
+                    let current_type = self.check_expression(element)?;
+                    if current_type != first_type {
+                        return Err(DiagnosticError::Type(
+                            format!("Set element {} has type {:?}, expected {:?}", i, current_type, first_type)
+                        ));
+                    }
+                }
+
+                Ok(HirType::Set(Box::new(first_type)))
+            }
         }
     }
 
@@ -816,6 +839,10 @@ impl TypeChecker {
                 let key_hir_type = self.ast_type_to_hir_type(key_type)?;
                 let value_hir_type = self.ast_type_to_hir_type(value_type)?;
                 Ok(HirType::Dict(Box::new(key_hir_type), Box::new(value_hir_type)))
+            }
+            Type::Set(element_type) => {
+                let element_hir_type = self.ast_type_to_hir_type(element_type)?;
+                Ok(HirType::Set(Box::new(element_hir_type)))
             }
             Type::Named(name, type_params) => {
                 // Check if this is a known enum

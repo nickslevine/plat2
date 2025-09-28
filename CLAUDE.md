@@ -240,6 +240,17 @@ Deliver a working `plat` CLI binary that:
   - [x] Formatter support for pretty printing
   - [x] Full compiler pipeline integration
 
+- [x] **Set[T]**: Hash set collections with automatic deduplication
+  - [x] Type-safe creation: `Set[i32]`, `Set[string]`, `Set[bool]`
+  - [x] Literal syntax: `Set{element1, element2, element3}`
+  - [x] Automatic deduplication during creation
+  - [x] GC-managed allocation with vector-based storage
+  - [x] Runtime functions for creation, membership testing, and string conversion
+  - [x] Set interpolation and display formatting
+  - [x] Complete type checking with helpful error messages
+  - [x] Formatter support for pretty printing
+  - [x] Full compiler pipeline integration
+
 ## 13. Stretch Goals (post-MVP)
 - [ ] Imports & modules
 - [ ] Structs & user-defined types
@@ -271,7 +282,9 @@ Deliver a working `plat` CLI binary that:
 - [x] **WORKING**: `flags[0]` → `1` (true), `numbers[0]` → `10` → typed indexing ✅
 - [x] **WORKING**: `let my_dict: Dict[string, i32] = {"key1": 42, "key2": 100}` → type-safe dicts ✅
 - [x] **WORKING**: `print("Dict: ${my_dict}")` → `"Dict: {"key1": 42, "key2": 100}"` ✅
-- [x] **ACHIEVEMENT**: Complete algebraic data types + generic collections + dictionaries ready for production!
+- [x] **WORKING**: `let my_set: Set[i32] = Set{1, 2, 3, 1, 2}` → automatic deduplication ✅
+- [x] **WORKING**: `print("Set: ${my_set}")` → `"Set: {1, 2, 3}"` → duplicates removed ✅
+- [x] **ACHIEVEMENT**: Complete algebraic data types + generic collections + dictionaries + sets ready for production!
 
 ### 📝 **Complete Working Examples (Production Ready!)**
 
@@ -441,6 +454,29 @@ fn main() {
 }
 ```
 
+```plat
+// ✅ COMPLETE: Set collections with automatic deduplication
+fn main() {
+    // Type-safe set creation with explicit annotations and automatic deduplication
+    let my_set: Set[i32] = Set{42, 1, 2, 3, 1, 2, 42};
+    let bool_set: Set[bool] = Set{true, false, true, false};
+    let string_set: Set[string] = Set{"apple", "banana", "apple", "cherry"};
+
+    // Set display and interpolation works perfectly with deduplication
+    print("Int set: ${my_set}");        // {42, 1, 2, 3} - duplicates removed
+    print("Bool set: ${bool_set}");     // {true, false} - duplicates removed
+    print("String set: ${string_set}"); // {"apple", "banana", "cherry"} - duplicates removed
+
+    // Memory-efficient GC-managed storage with vector-based implementation
+    // Perfect integration with existing Plat features:
+    // - Automatic deduplication during creation
+    // - String interpolation works seamlessly
+    // - Type checking prevents mixed element types
+    // - Formatter provides consistent pretty printing
+    // - Full compiler pipeline support with native code generation
+}
+```
+
 ### 🎯 Major Milestones Achieved
 - [x] Scaffold Cargo workspace and commit
 - [x] Implement CLI skeleton with passing tests
@@ -449,6 +485,7 @@ fn main() {
 - [x] **NEW**: Built-in Option<T> and Result<T, E> with pattern matching
 - [x] **NEW**: Generic homogeneous List[T] with type-safe operations
 - [x] **NEW**: Dict[K, V] HashMap collections with type safety and JSON-like syntax
+- [x] **NEW**: Set[T] HashSet collections with automatic deduplication
 - [x] All stages: tests passing, code working, plan completed
 ```
 

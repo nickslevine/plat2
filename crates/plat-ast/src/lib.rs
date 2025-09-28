@@ -31,6 +31,7 @@ pub enum Type {
     String,
     List(Box<Type>),
     Dict(Box<Type>, Box<Type>), // Key type, Value type
+    Set(Box<Type>), // Element type
     Named(String, Vec<Type>), // e.g., Option<T>, Message
 }
 
@@ -147,6 +148,7 @@ pub enum Literal {
     InterpolatedString(Vec<InterpolationPart>, Span),
     Array(Vec<Expression>, Span),
     Dict(Vec<(Expression, Expression)>, Span), // Key-value pairs
+    Set(Vec<Expression>, Span), // Set elements
 }
 
 #[derive(Debug, Clone, PartialEq)]

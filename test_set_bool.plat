@@ -1,0 +1,5 @@
+fn main() -> i32 {
+    let bool_set: Set[bool] = Set{true, false, true};
+    print("Boolean set: ${bool_set}");
+    return 0;
+}
