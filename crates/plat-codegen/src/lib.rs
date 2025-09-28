@@ -1060,13 +1060,18 @@ impl CodeGenerator {
                     let arm_result = Self::generate_expression_helper(builder, &arm.body, &arm_variables, &arm_variable_types, functions, module, string_counter, variable_counter)?;
 
                     // Convert arm result to match the expected continuation block type
-                    let converted_result = match (cont_param_type, &arm.body) {
-                        // If continuation expects I32 but we have I64 from pattern binding, convert down
-                        (I32, Expression::Identifier { .. }) => {
-                            builder.ins().ireduce(I32, arm_result)
+                    let converted_result = {
+                        let arm_result_type = builder.func.dfg.value_type(arm_result);
+                        if arm_result_type != cont_param_type {
+                            // Convert between types if needed
+                            match (arm_result_type, cont_param_type) {
+                                (I64, I32) => builder.ins().ireduce(I32, arm_result),
+                                (I32, I64) => builder.ins().uextend(I64, arm_result),
+                                _ => arm_result, // Same type or unsupported conversion
+                            }
+                        } else {
+                            arm_result
                         }
-                        // Otherwise use as-is
-                        _ => arm_result
                     };
 
                     builder.ins().jump(cont_block, &[converted_result]);
