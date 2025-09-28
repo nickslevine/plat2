@@ -193,14 +193,16 @@ Deliver a working `plat` CLI binary that:
 ### ✅ **Built-in Generic Types**
 - ✅ **Option<T>**: Core optional type with Some(T) and None variants
 - ✅ **Result<T, E>**: Error handling type with Ok(T) and Err(E) variants
-- ✅ **Type Inference**: Automatic type parameter inference from context
-- ✅ **Pattern Matching**: Full support for matching Option and Result types
+- ✅ **Type Inference**: Automatic type parameter inference from constructor arguments
+- ✅ **Pattern Matching**: Working support for Option<i32> and Result<i32, i32>
+- ✅ **Code Generation**: Proper handling of packed vs heap-allocated variants
+- ✅ **Exhaustiveness**: Compiler enforces handling of all Option/Result variants
 
-### 🚧 **Next Steps for Enums**
-- [ ] **Full Generic Type Unification**: Complete type inference with type variables
-- [ ] **Pattern Matching Codegen**: Fix code generation for Option/Result patterns
+### 🚧 **Next Steps for Language Features**
+- [ ] **String Support**: Option<String> and Result<String, String> pattern matching
+- [ ] **Full Type Unification**: Complete type inference with type variables
 - [ ] **Syntactic Sugar**: `?` operator, `if let`, `while let` expressions
-- [ ] **Advanced Patterns**: Nested patterns and guards
+- [ ] **Advanced Patterns**: Nested patterns, guards, and wildcard patterns
 - [ ] **Optimization**: Jump tables for efficient pattern matching
 
 ## 12. Stretch Goals (post-MVP)
@@ -217,17 +219,55 @@ Deliver a working `plat` CLI binary that:
 - [x] **COMPLETE**: Enums with pattern matching and exhaustiveness checking
 - [x] **COMPLETE**: N-arm pattern matching with any number of enum variants
 - [x] **COMPLETE**: Built-in Option<T> and Result<T, E> types with type inference
+- [x] **COMPLETE**: Pattern matching for Option and Result with binding extraction
 - [x] **EXAMPLE**: `print("Result: ${x + y}")` → `"Result: 42"`
 - [x] **EXAMPLE**: `enum Status { Success, Error }` with full compiler support
 - [x] **EXAMPLE**: `enum Priority { Low, Medium, High, Critical(i32), Emergency(i32) }` with 5-arm matching
-- [x] **EXAMPLE**: `Option::Some(42)` and `Result::Ok(100)` with automatic type inference
+- [x] **EXAMPLE**: `Option::Some(42)` → `match` → `Some(x) -> x * 2` → `84`
+- [x] **EXAMPLE**: `Result::Err(404)` → `match` → `Err(e) -> e` → `404`
 - [x] **ACHIEVEMENT**: Full end-to-end compilation from `.plat` → native executable
+
+### 📝 Option & Result Usage Examples
+
+```plat
+// Option type for nullable values
+let some_value = Option::Some(42);
+let none_value = Option::None;
+
+let result = match some_value {
+    Option::Some(x) -> x * 2,    // x = 42, returns 84
+    Option::None -> 0
+};
+
+// Result type for error handling
+let success = Result::Ok(100);
+let failure = Result::Err(404);
+
+let handled = match failure {
+    Result::Ok(value) -> value,
+    Result::Err(code) -> code * -1  // Returns -404
+};
+
+// Pattern matching with exhaustiveness
+fn safe_divide(a: i32, b: i32) -> i32 {
+    let result = match b {
+        0 -> Result::Err(-1),
+        _ -> Result::Ok(a / b)
+    };
+
+    match result {
+        Result::Ok(value) -> value,
+        Result::Err(error) -> error
+    }
+}
+```
 
 ### 🎯 Major Milestones Achieved
 - [x] Scaffold Cargo workspace and commit
 - [x] Implement CLI skeleton with passing tests
 - [x] Complete implementation stack: **lexer → parser → HIR → runtime → codegen**
 - [x] **NEW**: Full enum support with algebraic data types
+- [x] **NEW**: Built-in Option<T> and Result<T, E> with pattern matching
 - [x] All stages: tests passing, code working, plan completed
 ```
 
