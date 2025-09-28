@@ -482,6 +482,208 @@ impl TypeChecker {
                         }
                         Ok(HirType::I32)
                     }
+                    (HirType::List(_), "length") => {
+                        if !args.is_empty() {
+                            return Err(DiagnosticError::Type(
+                                "length() method takes no arguments".to_string()
+                            ));
+                        }
+                        Ok(HirType::I32)
+                    }
+                    (HirType::List(element_type), "get") => {
+                        if args.len() != 1 {
+                            return Err(DiagnosticError::Type(
+                                "get() method takes exactly one argument".to_string()
+                            ));
+                        }
+                        let index_type = self.check_expression(&args[0])?;
+                        if index_type != HirType::I32 {
+                            return Err(DiagnosticError::Type(
+                                format!("get() method expects i32 index, got {:?}", index_type)
+                            ));
+                        }
+                        // Returns Option<T> where T is the element type
+                        Ok(HirType::Enum("Option".to_string(), vec![(**element_type).clone()]))
+                    }
+                    (HirType::List(element_type), "set") => {
+                        if args.len() != 2 {
+                            return Err(DiagnosticError::Type(
+                                "set() method takes exactly two arguments".to_string()
+                            ));
+                        }
+                        let index_type = self.check_expression(&args[0])?;
+                        let value_type = self.check_expression(&args[1])?;
+                        if index_type != HirType::I32 {
+                            return Err(DiagnosticError::Type(
+                                format!("set() method expects i32 index, got {:?}", index_type)
+                            ));
+                        }
+                        if value_type != **element_type {
+                            return Err(DiagnosticError::Type(
+                                format!("set() method expects value of type {:?}, got {:?}", element_type, value_type)
+                            ));
+                        }
+                        Ok(HirType::Unit)
+                    }
+                    (HirType::List(element_type), "append") => {
+                        if args.len() != 1 {
+                            return Err(DiagnosticError::Type(
+                                "append() method takes exactly one argument".to_string()
+                            ));
+                        }
+                        let value_type = self.check_expression(&args[0])?;
+                        if value_type != **element_type {
+                            return Err(DiagnosticError::Type(
+                                format!("append() method expects value of type {:?}, got {:?}", element_type, value_type)
+                            ));
+                        }
+                        Ok(HirType::Unit)
+                    }
+                    (HirType::List(element_type), "insert_at") => {
+                        if args.len() != 2 {
+                            return Err(DiagnosticError::Type(
+                                "insert_at() method takes exactly two arguments".to_string()
+                            ));
+                        }
+                        let index_type = self.check_expression(&args[0])?;
+                        let value_type = self.check_expression(&args[1])?;
+                        if index_type != HirType::I32 {
+                            return Err(DiagnosticError::Type(
+                                format!("insert_at() method expects i32 index, got {:?}", index_type)
+                            ));
+                        }
+                        if value_type != **element_type {
+                            return Err(DiagnosticError::Type(
+                                format!("insert_at() method expects value of type {:?}, got {:?}", element_type, value_type)
+                            ));
+                        }
+                        Ok(HirType::Unit)
+                    }
+                    (HirType::List(element_type), "remove_at") => {
+                        if args.len() != 1 {
+                            return Err(DiagnosticError::Type(
+                                "remove_at() method takes exactly one argument".to_string()
+                            ));
+                        }
+                        let index_type = self.check_expression(&args[0])?;
+                        if index_type != HirType::I32 {
+                            return Err(DiagnosticError::Type(
+                                format!("remove_at() method expects i32 index, got {:?}", index_type)
+                            ));
+                        }
+                        // Returns Option<T> where T is the element type
+                        Ok(HirType::Enum("Option".to_string(), vec![(**element_type).clone()]))
+                    }
+                    (HirType::List(_), "clear") => {
+                        if !args.is_empty() {
+                            return Err(DiagnosticError::Type(
+                                "clear() method takes no arguments".to_string()
+                            ));
+                        }
+                        Ok(HirType::Unit)
+                    }
+                    (HirType::List(element_type), "contains") => {
+                        if args.len() != 1 {
+                            return Err(DiagnosticError::Type(
+                                "contains() method takes exactly one argument".to_string()
+                            ));
+                        }
+                        let value_type = self.check_expression(&args[0])?;
+                        if value_type != **element_type {
+                            return Err(DiagnosticError::Type(
+                                format!("contains() method expects value of type {:?}, got {:?}", element_type, value_type)
+                            ));
+                        }
+                        Ok(HirType::Bool)
+                    }
+                    (HirType::List(element_type), "index_of") => {
+                        if args.len() != 1 {
+                            return Err(DiagnosticError::Type(
+                                "index_of() method takes exactly one argument".to_string()
+                            ));
+                        }
+                        let value_type = self.check_expression(&args[0])?;
+                        if value_type != **element_type {
+                            return Err(DiagnosticError::Type(
+                                format!("index_of() method expects value of type {:?}, got {:?}", element_type, value_type)
+                            ));
+                        }
+                        // Returns Option<i32>
+                        Ok(HirType::Enum("Option".to_string(), vec![HirType::I32]))
+                    }
+                    (HirType::List(element_type), "count") => {
+                        if args.len() != 1 {
+                            return Err(DiagnosticError::Type(
+                                "count() method takes exactly one argument".to_string()
+                            ));
+                        }
+                        let value_type = self.check_expression(&args[0])?;
+                        if value_type != **element_type {
+                            return Err(DiagnosticError::Type(
+                                format!("count() method expects value of type {:?}, got {:?}", element_type, value_type)
+                            ));
+                        }
+                        Ok(HirType::I32)
+                    }
+                    (HirType::List(element_type), "slice") => {
+                        if args.len() != 2 {
+                            return Err(DiagnosticError::Type(
+                                "slice() method takes exactly two arguments".to_string()
+                            ));
+                        }
+                        let start_type = self.check_expression(&args[0])?;
+                        let end_type = self.check_expression(&args[1])?;
+                        if start_type != HirType::I32 {
+                            return Err(DiagnosticError::Type(
+                                format!("slice() method expects i32 start index, got {:?}", start_type)
+                            ));
+                        }
+                        if end_type != HirType::I32 {
+                            return Err(DiagnosticError::Type(
+                                format!("slice() method expects i32 end index, got {:?}", end_type)
+                            ));
+                        }
+                        // Returns List<T> where T is the element type
+                        Ok(HirType::List(element_type.clone()))
+                    }
+                    (HirType::List(element_type), "concat") => {
+                        if args.len() != 1 {
+                            return Err(DiagnosticError::Type(
+                                "concat() method takes exactly one argument".to_string()
+                            ));
+                        }
+                        let other_type = self.check_expression(&args[0])?;
+                        match other_type {
+                            HirType::List(other_element_type) if *other_element_type == **element_type => {
+                                Ok(HirType::List(element_type.clone()))
+                            }
+                            _ => Err(DiagnosticError::Type(
+                                format!("concat() method expects List<{:?}>, got {:?}", element_type, other_type)
+                            ))
+                        }
+                    }
+                    (HirType::List(element_type), "all") => {
+                        if args.len() != 1 {
+                            return Err(DiagnosticError::Type(
+                                "all() method takes exactly one argument".to_string()
+                            ));
+                        }
+                        // For now, accept any function - in a more advanced type system,
+                        // we'd check that it's a function T -> bool
+                        let _predicate_type = self.check_expression(&args[0])?;
+                        Ok(HirType::Bool)
+                    }
+                    (HirType::List(element_type), "any") => {
+                        if args.len() != 1 {
+                            return Err(DiagnosticError::Type(
+                                "any() method takes exactly one argument".to_string()
+                            ));
+                        }
+                        // For now, accept any function - in a more advanced type system,
+                        // we'd check that it's a function T -> bool
+                        let _predicate_type = self.check_expression(&args[0])?;
+                        Ok(HirType::Bool)
+                    }
                     // String methods
                     (HirType::String, "length") => {
                         if !args.is_empty() {
@@ -638,6 +840,152 @@ impl TypeChecker {
                             ));
                         }
                         Ok(HirType::Bool)
+                    }
+                    // Dict methods
+                    (HirType::Dict(key_type, value_type), "get") => {
+                        if args.len() != 1 {
+                            return Err(DiagnosticError::Type(
+                                "get() method takes exactly one argument".to_string()
+                            ));
+                        }
+                        let arg_type = self.check_expression(&args[0])?;
+                        if arg_type != **key_type {
+                            return Err(DiagnosticError::Type(
+                                format!("get() method expects key of type {:?}, got {:?}", key_type, arg_type)
+                            ));
+                        }
+                        Ok((**value_type).clone())
+                    }
+                    (HirType::Dict(key_type, value_type), "set") => {
+                        if args.len() != 2 {
+                            return Err(DiagnosticError::Type(
+                                "set() method takes exactly two arguments".to_string()
+                            ));
+                        }
+                        let key_arg_type = self.check_expression(&args[0])?;
+                        if key_arg_type != **key_type {
+                            return Err(DiagnosticError::Type(
+                                format!("set() method expects key of type {:?}, got {:?}", key_type, key_arg_type)
+                            ));
+                        }
+                        let value_arg_type = self.check_expression(&args[1])?;
+                        if value_arg_type != **value_type {
+                            return Err(DiagnosticError::Type(
+                                format!("set() method expects value of type {:?}, got {:?}", value_type, value_arg_type)
+                            ));
+                        }
+                        Ok(HirType::Bool)  // Returns true on success
+                    }
+                    (HirType::Dict(key_type, _value_type), "remove") => {
+                        if args.len() != 1 {
+                            return Err(DiagnosticError::Type(
+                                "remove() method takes exactly one argument".to_string()
+                            ));
+                        }
+                        let arg_type = self.check_expression(&args[0])?;
+                        if arg_type != **key_type {
+                            return Err(DiagnosticError::Type(
+                                format!("remove() method expects key of type {:?}, got {:?}", key_type, arg_type)
+                            ));
+                        }
+                        Ok(HirType::I64)  // Returns removed value or 0
+                    }
+                    (HirType::Dict(_, _), "clear") => {
+                        if !args.is_empty() {
+                            return Err(DiagnosticError::Type(
+                                "clear() method takes no arguments".to_string()
+                            ));
+                        }
+                        Ok(HirType::Unit)
+                    }
+                    (HirType::Dict(_, _), "length") => {
+                        if !args.is_empty() {
+                            return Err(DiagnosticError::Type(
+                                "length() method takes no arguments".to_string()
+                            ));
+                        }
+                        Ok(HirType::I32)
+                    }
+                    (HirType::Dict(_, _), "keys") => {
+                        if !args.is_empty() {
+                            return Err(DiagnosticError::Type(
+                                "keys() method takes no arguments".to_string()
+                            ));
+                        }
+                        // Returns List[string] - keys are always strings for now
+                        Ok(HirType::List(Box::new(HirType::String)))
+                    }
+                    (HirType::Dict(_key_type, value_type), "values") => {
+                        if !args.is_empty() {
+                            return Err(DiagnosticError::Type(
+                                "values() method takes no arguments".to_string()
+                            ));
+                        }
+                        // Returns List of value type
+                        Ok(HirType::List(value_type.clone()))
+                    }
+                    (HirType::Dict(key_type, _), "has_key") => {
+                        if args.len() != 1 {
+                            return Err(DiagnosticError::Type(
+                                "has_key() method takes exactly one argument".to_string()
+                            ));
+                        }
+                        let arg_type = self.check_expression(&args[0])?;
+                        if arg_type != **key_type {
+                            return Err(DiagnosticError::Type(
+                                format!("has_key() method expects key of type {:?}, got {:?}", key_type, arg_type)
+                            ));
+                        }
+                        Ok(HirType::Bool)
+                    }
+                    (HirType::Dict(_key_type, value_type), "has_value") => {
+                        if args.len() != 1 {
+                            return Err(DiagnosticError::Type(
+                                "has_value() method takes exactly one argument".to_string()
+                            ));
+                        }
+                        let arg_type = self.check_expression(&args[0])?;
+                        if arg_type != **value_type {
+                            return Err(DiagnosticError::Type(
+                                format!("has_value() method expects value of type {:?}, got {:?}", value_type, arg_type)
+                            ));
+                        }
+                        Ok(HirType::Bool)
+                    }
+                    (HirType::Dict(key_type, value_type), "merge") => {
+                        if args.len() != 1 {
+                            return Err(DiagnosticError::Type(
+                                "merge() method takes exactly one argument".to_string()
+                            ));
+                        }
+                        let arg_type = self.check_expression(&args[0])?;
+                        let expected_type = HirType::Dict(key_type.clone(), value_type.clone());
+                        if arg_type != expected_type {
+                            return Err(DiagnosticError::Type(
+                                format!("merge() method expects Dict of same type, got {:?}", arg_type)
+                            ));
+                        }
+                        Ok(HirType::Unit)
+                    }
+                    (HirType::Dict(key_type, value_type), "get_or") => {
+                        if args.len() != 2 {
+                            return Err(DiagnosticError::Type(
+                                "get_or() method takes exactly two arguments".to_string()
+                            ));
+                        }
+                        let key_arg_type = self.check_expression(&args[0])?;
+                        if key_arg_type != **key_type {
+                            return Err(DiagnosticError::Type(
+                                format!("get_or() method expects key of type {:?}, got {:?}", key_type, key_arg_type)
+                            ));
+                        }
+                        let default_arg_type = self.check_expression(&args[1])?;
+                        if default_arg_type != **value_type {
+                            return Err(DiagnosticError::Type(
+                                format!("get_or() method expects default value of type {:?}, got {:?}", value_type, default_arg_type)
+                            ));
+                        }
+                        Ok((**value_type).clone())
                     }
                     _ => Err(DiagnosticError::Type(
                         format!("Type {:?} has no method '{}'", object_type, method)

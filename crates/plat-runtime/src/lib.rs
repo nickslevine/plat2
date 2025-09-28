@@ -2,7 +2,7 @@
 mod tests;
 
 use std::fmt;
-use std::ffi::CStr;
+use std::ffi::{CStr, CString};
 use std::os::raw::c_char;
 use gc::{Gc, Trace, Finalize};
 
@@ -1071,13 +1071,13 @@ pub extern "C" fn plat_dict_get(dict_ptr: *const RuntimeDict, key: *const c_char
 
 /// Get the length of a dict
 #[no_mangle]
-pub extern "C" fn plat_dict_len(dict_ptr: *const RuntimeDict) -> usize {
+pub extern "C" fn plat_dict_len(dict_ptr: *const RuntimeDict) -> i32 {
     if dict_ptr.is_null() {
         return 0;
     }
 
     unsafe {
-        (*dict_ptr).length
+        (*dict_ptr).length as i32
     }
 }
 
@@ -1163,6 +1163,334 @@ pub extern "C" fn plat_dict_to_string(dict_ptr: *const RuntimeDict) -> *const c_
         std::ptr::copy_nonoverlapping(result_bytes.as_ptr(), gc_ptr, size);
 
         gc_ptr as *const c_char
+    }
+}
+
+/// Set a value in the dict by key (returns 1 on success, 0 on failure)
+#[no_mangle]
+pub extern "C" fn plat_dict_set(dict_ptr: *mut RuntimeDict, key: *const c_char, value: i64, value_type: i32) -> i32 {
+    if dict_ptr.is_null() || key.is_null() {
+        return 0;
+    }
+
+    unsafe {
+        let dict = &mut *dict_ptr;
+        let key_cstr = CStr::from_ptr(key);
+
+        // First check if key exists
+        for i in 0..dict.length {
+            if !dict.keys.is_null() {
+                let existing_key_ptr = *dict.keys.add(i);
+                if !existing_key_ptr.is_null() {
+                    let existing_key = CStr::from_ptr(existing_key_ptr);
+                    if key_cstr == existing_key {
+                        // Update existing value
+                        if !dict.values.is_null() && !dict.value_types.is_null() {
+                            *dict.values.add(i) = value;
+                            *dict.value_types.add(i) = value_type as u8;
+                        }
+                        return 1;
+                    }
+                }
+            }
+        }
+
+        // Key doesn't exist, need to add it
+        // Check if we need to grow the arrays
+        if dict.length >= dict.capacity {
+            let new_capacity = if dict.capacity == 0 { 8 } else { dict.capacity * 2 };
+
+            // Allocate new arrays
+            let keys_size = new_capacity * std::mem::size_of::<*const c_char>();
+            let values_size = new_capacity * std::mem::size_of::<i64>();
+            let types_size = new_capacity * std::mem::size_of::<u8>();
+
+            let new_keys_ptr = plat_gc_alloc(keys_size) as *mut *const c_char;
+            let new_values_ptr = plat_gc_alloc(values_size) as *mut i64;
+            let new_types_ptr = plat_gc_alloc(types_size) as *mut u8;
+
+            if new_keys_ptr.is_null() || new_values_ptr.is_null() || new_types_ptr.is_null() {
+                return 0;
+            }
+
+            // Copy existing data
+            if dict.length > 0 {
+                std::ptr::copy_nonoverlapping(dict.keys, new_keys_ptr, dict.length);
+                std::ptr::copy_nonoverlapping(dict.values, new_values_ptr, dict.length);
+                std::ptr::copy_nonoverlapping(dict.value_types, new_types_ptr, dict.length);
+            }
+
+            dict.keys = new_keys_ptr;
+            dict.values = new_values_ptr;
+            dict.value_types = new_types_ptr;
+            dict.capacity = new_capacity;
+        }
+
+        // Add new key-value pair
+        // Create a copy of the key string
+        let key_str = key_cstr.to_str().unwrap_or("");
+        let key_copy = CString::new(key_str).unwrap();
+        let key_copy_ptr = key_copy.into_raw();
+
+        *dict.keys.add(dict.length) = key_copy_ptr;
+        *dict.values.add(dict.length) = value;
+        *dict.value_types.add(dict.length) = value_type as u8;
+        dict.length += 1;
+
+        1
+    }
+}
+
+/// Remove a key-value pair from the dict (returns the value if found, 0 otherwise)
+#[no_mangle]
+pub extern "C" fn plat_dict_remove(dict_ptr: *mut RuntimeDict, key: *const c_char) -> i64 {
+    if dict_ptr.is_null() || key.is_null() {
+        return 0;
+    }
+
+    unsafe {
+        let dict = &mut *dict_ptr;
+        let key_cstr = CStr::from_ptr(key);
+
+        for i in 0..dict.length {
+            if !dict.keys.is_null() {
+                let existing_key_ptr = *dict.keys.add(i);
+                if !existing_key_ptr.is_null() {
+                    let existing_key = CStr::from_ptr(existing_key_ptr);
+                    if key_cstr == existing_key {
+                        // Found the key, get the value
+                        let value = if !dict.values.is_null() {
+                            *dict.values.add(i)
+                        } else {
+                            0
+                        };
+
+                        // Shift remaining elements
+                        for j in i..dict.length - 1 {
+                            *dict.keys.add(j) = *dict.keys.add(j + 1);
+                            *dict.values.add(j) = *dict.values.add(j + 1);
+                            *dict.value_types.add(j) = *dict.value_types.add(j + 1);
+                        }
+
+                        dict.length -= 1;
+                        return value;
+                    }
+                }
+            }
+        }
+
+        0 // Key not found
+    }
+}
+
+/// Clear all key-value pairs from the dict
+#[no_mangle]
+pub extern "C" fn plat_dict_clear(dict_ptr: *mut RuntimeDict) {
+    if dict_ptr.is_null() {
+        return;
+    }
+
+    unsafe {
+        let dict = &mut *dict_ptr;
+        dict.length = 0;
+    }
+}
+
+/// Get all keys from the dict as a List[string]
+#[no_mangle]
+pub extern "C" fn plat_dict_keys(dict_ptr: *const RuntimeDict) -> *mut RuntimeArray {
+    if dict_ptr.is_null() {
+        return std::ptr::null_mut();
+    }
+
+    unsafe {
+        let dict = &*dict_ptr;
+
+        // Create array for keys
+        let array_size = std::mem::size_of::<RuntimeArray>();
+        let array_ptr = plat_gc_alloc(array_size) as *mut RuntimeArray;
+
+        if array_ptr.is_null() {
+            return std::ptr::null_mut();
+        }
+
+        // Allocate memory for string pointers
+        let data_size = dict.length * std::mem::size_of::<*const c_char>();
+        let data_ptr = if dict.length > 0 {
+            plat_gc_alloc(data_size) as *mut u8
+        } else {
+            std::ptr::null_mut()
+        };
+
+        // Copy keys
+        if !data_ptr.is_null() && !dict.keys.is_null() {
+            let keys_array = data_ptr as *mut *const c_char;
+            for i in 0..dict.length {
+                *keys_array.add(i) = *dict.keys.add(i);
+            }
+        }
+
+        (*array_ptr) = RuntimeArray {
+            data: data_ptr,
+            length: dict.length,
+            capacity: dict.length,
+            element_size: std::mem::size_of::<*const c_char>(),
+            element_type: ARRAY_TYPE_STRING,
+        };
+
+        array_ptr
+    }
+}
+
+/// Get all values from the dict as a generic array
+#[no_mangle]
+pub extern "C" fn plat_dict_values(dict_ptr: *const RuntimeDict) -> *mut RuntimeArray {
+    if dict_ptr.is_null() {
+        return std::ptr::null_mut();
+    }
+
+    unsafe {
+        let dict = &*dict_ptr;
+
+        // Create array for values
+        let array_size = std::mem::size_of::<RuntimeArray>();
+        let array_ptr = plat_gc_alloc(array_size) as *mut RuntimeArray;
+
+        if array_ptr.is_null() {
+            return std::ptr::null_mut();
+        }
+
+        // Allocate memory for values
+        let data_size = dict.length * std::mem::size_of::<i64>();
+        let data_ptr = if dict.length > 0 {
+            plat_gc_alloc(data_size) as *mut u8
+        } else {
+            std::ptr::null_mut()
+        };
+
+        // Copy values
+        if !data_ptr.is_null() && !dict.values.is_null() {
+            let values_array = data_ptr as *mut i64;
+            for i in 0..dict.length {
+                *values_array.add(i) = *dict.values.add(i);
+            }
+        }
+
+        (*array_ptr) = RuntimeArray {
+            data: data_ptr,
+            length: dict.length,
+            capacity: dict.length,
+            element_size: std::mem::size_of::<i64>(),
+            element_type: ARRAY_TYPE_I32, // Will contain mixed types
+        };
+
+        array_ptr
+    }
+}
+
+/// Check if a key exists in the dict
+#[no_mangle]
+pub extern "C" fn plat_dict_has_key(dict_ptr: *const RuntimeDict, key: *const c_char) -> i32 {
+    if dict_ptr.is_null() || key.is_null() {
+        return 0;
+    }
+
+    unsafe {
+        let dict = &*dict_ptr;
+        let key_cstr = CStr::from_ptr(key);
+
+        for i in 0..dict.length {
+            if !dict.keys.is_null() {
+                let existing_key_ptr = *dict.keys.add(i);
+                if !existing_key_ptr.is_null() {
+                    let existing_key = CStr::from_ptr(existing_key_ptr);
+                    if key_cstr == existing_key {
+                        return 1;
+                    }
+                }
+            }
+        }
+
+        0
+    }
+}
+
+/// Check if a value exists in the dict
+#[no_mangle]
+pub extern "C" fn plat_dict_has_value(dict_ptr: *const RuntimeDict, value: i64, value_type: i32) -> i32 {
+    if dict_ptr.is_null() {
+        return 0;
+    }
+
+    unsafe {
+        let dict = &*dict_ptr;
+
+        for i in 0..dict.length {
+            if !dict.values.is_null() && !dict.value_types.is_null() {
+                let existing_value = *dict.values.add(i);
+                let existing_type = *dict.value_types.add(i);
+
+                if existing_type == (value_type as u8) && existing_value == value {
+                    return 1;
+                }
+            }
+        }
+
+        0
+    }
+}
+
+/// Merge another dict into this dict
+#[no_mangle]
+pub extern "C" fn plat_dict_merge(dict_ptr: *mut RuntimeDict, other_ptr: *const RuntimeDict) {
+    if dict_ptr.is_null() || other_ptr.is_null() {
+        return;
+    }
+
+    unsafe {
+        let other = &*other_ptr;
+
+        // Add all key-value pairs from other dict
+        for i in 0..other.length {
+            if !other.keys.is_null() && !other.values.is_null() && !other.value_types.is_null() {
+                let key_ptr = *other.keys.add(i);
+                let value = *other.values.add(i);
+                let value_type = *other.value_types.add(i);
+
+                if !key_ptr.is_null() {
+                    plat_dict_set(dict_ptr, key_ptr, value, value_type as i32);
+                }
+            }
+        }
+    }
+}
+
+/// Get a value or return a default if not found
+#[no_mangle]
+pub extern "C" fn plat_dict_get_or(dict_ptr: *const RuntimeDict, key: *const c_char, default: i64) -> i64 {
+    if dict_ptr.is_null() || key.is_null() {
+        return default;
+    }
+
+    unsafe {
+        let dict = &*dict_ptr;
+        let key_cstr = CStr::from_ptr(key);
+
+        for i in 0..dict.length {
+            if !dict.keys.is_null() {
+                let existing_key_ptr = *dict.keys.add(i);
+                if !existing_key_ptr.is_null() {
+                    let existing_key = CStr::from_ptr(existing_key_ptr);
+                    if key_cstr == existing_key {
+                        if !dict.values.is_null() {
+                            return *dict.values.add(i);
+                        }
+                    }
+                }
+            }
+        }
+
+        default
     }
 }
 
@@ -1747,5 +2075,630 @@ pub extern "C" fn plat_string_is_alphanumeric(str_ptr: *const c_char) -> bool {
         };
 
         !str_val.is_empty() && str_val.chars().all(|c| c.is_alphanumeric())
+    }
+}
+
+// ===== LIST METHODS =====
+
+/// Get the length of an array (alias for plat_array_len)
+#[no_mangle]
+pub extern "C" fn plat_array_length(array_ptr: *const RuntimeArray) -> i32 {
+    plat_array_len(array_ptr) as i32
+}
+
+/// Safely get an element from array, returns Option<T> encoded as (found: bool, value: i64)
+#[no_mangle]
+pub extern "C" fn plat_array_get_safe(array_ptr: *const RuntimeArray, index: i32) -> (bool, i64) {
+    if array_ptr.is_null() || index < 0 {
+        return (false, 0);
+    }
+
+    unsafe {
+        let array = &*array_ptr;
+        let index = index as usize;
+
+        if index >= array.length || array.data.is_null() {
+            return (false, 0);
+        }
+
+        let value = match array.element_type {
+            ARRAY_TYPE_I32 => {
+                let data_ptr = array.data as *const i32;
+                *data_ptr.add(index) as i64
+            },
+            ARRAY_TYPE_I64 => {
+                let data_ptr = array.data as *const i64;
+                *data_ptr.add(index)
+            },
+            ARRAY_TYPE_BOOL => {
+                let data_ptr = array.data as *const bool;
+                if *data_ptr.add(index) { 1 } else { 0 }
+            },
+            ARRAY_TYPE_STRING => {
+                let data_ptr = array.data as *const *const c_char;
+                *data_ptr.add(index) as i64
+            },
+            _ => return (false, 0),
+        };
+
+        (true, value)
+    }
+}
+
+/// Set an element in array at given index (mutates array)
+#[no_mangle]
+pub extern "C" fn plat_array_set(array_ptr: *mut RuntimeArray, index: i32, value: i64) -> bool {
+    if array_ptr.is_null() || index < 0 {
+        return false;
+    }
+
+    unsafe {
+        let array = &mut *array_ptr;
+        let index = index as usize;
+
+        if index >= array.length || array.data.is_null() {
+            return false;
+        }
+
+        match array.element_type {
+            ARRAY_TYPE_I32 => {
+                let data_ptr = array.data as *mut i32;
+                *data_ptr.add(index) = value as i32;
+            },
+            ARRAY_TYPE_I64 => {
+                let data_ptr = array.data as *mut i64;
+                *data_ptr.add(index) = value;
+            },
+            ARRAY_TYPE_BOOL => {
+                let data_ptr = array.data as *mut bool;
+                *data_ptr.add(index) = value != 0;
+            },
+            ARRAY_TYPE_STRING => {
+                let data_ptr = array.data as *mut *const c_char;
+                *data_ptr.add(index) = value as *const c_char;
+            },
+            _ => return false,
+        };
+
+        true
+    }
+}
+
+/// Append element to end of array (reallocates if needed)
+#[no_mangle]
+pub extern "C" fn plat_array_append(array_ptr: *mut RuntimeArray, value: i64) -> bool {
+    if array_ptr.is_null() {
+        return false;
+    }
+
+    unsafe {
+        let array = &mut *array_ptr;
+
+        // Check if we need to grow the array
+        if array.length >= array.capacity {
+            let new_capacity = if array.capacity == 0 { 4 } else { array.capacity * 2 };
+            let new_size = new_capacity * array.element_size;
+            let new_data_ptr = plat_gc_alloc(new_size);
+
+            if new_data_ptr.is_null() {
+                return false;
+            }
+
+            // Copy existing data
+            if array.length > 0 && !array.data.is_null() {
+                let old_size = array.length * array.element_size;
+                std::ptr::copy_nonoverlapping(array.data, new_data_ptr, old_size);
+            }
+
+            array.data = new_data_ptr;
+            array.capacity = new_capacity;
+        }
+
+        // Add the new element
+        match array.element_type {
+            ARRAY_TYPE_I32 => {
+                let data_ptr = array.data as *mut i32;
+                *data_ptr.add(array.length) = value as i32;
+            },
+            ARRAY_TYPE_I64 => {
+                let data_ptr = array.data as *mut i64;
+                *data_ptr.add(array.length) = value;
+            },
+            ARRAY_TYPE_BOOL => {
+                let data_ptr = array.data as *mut bool;
+                *data_ptr.add(array.length) = value != 0;
+            },
+            ARRAY_TYPE_STRING => {
+                let data_ptr = array.data as *mut *const c_char;
+                *data_ptr.add(array.length) = value as *const c_char;
+            },
+            _ => return false,
+        };
+
+        array.length += 1;
+        true
+    }
+}
+
+/// Insert element at specific index (shifts elements right)
+#[no_mangle]
+pub extern "C" fn plat_array_insert_at(array_ptr: *mut RuntimeArray, index: i32, value: i64) -> bool {
+    if array_ptr.is_null() || index < 0 {
+        return false;
+    }
+
+    unsafe {
+        let array = &mut *array_ptr;
+        let index = index as usize;
+
+        if index > array.length {
+            return false; // Can't insert beyond length
+        }
+
+        // Check if we need to grow the array
+        if array.length >= array.capacity {
+            let new_capacity = if array.capacity == 0 { 4 } else { array.capacity * 2 };
+            let new_size = new_capacity * array.element_size;
+            let new_data_ptr = plat_gc_alloc(new_size);
+
+            if new_data_ptr.is_null() {
+                return false;
+            }
+
+            // Copy existing data
+            if array.length > 0 && !array.data.is_null() {
+                let old_size = array.length * array.element_size;
+                std::ptr::copy_nonoverlapping(array.data, new_data_ptr, old_size);
+            }
+
+            array.data = new_data_ptr;
+            array.capacity = new_capacity;
+        }
+
+        // Shift elements right from insertion point
+        if index < array.length {
+            let elements_to_move = array.length - index;
+            match array.element_type {
+                ARRAY_TYPE_I32 => {
+                    let data_ptr = array.data as *mut i32;
+                    std::ptr::copy(data_ptr.add(index), data_ptr.add(index + 1), elements_to_move);
+                },
+                ARRAY_TYPE_I64 => {
+                    let data_ptr = array.data as *mut i64;
+                    std::ptr::copy(data_ptr.add(index), data_ptr.add(index + 1), elements_to_move);
+                },
+                ARRAY_TYPE_BOOL => {
+                    let data_ptr = array.data as *mut bool;
+                    std::ptr::copy(data_ptr.add(index), data_ptr.add(index + 1), elements_to_move);
+                },
+                ARRAY_TYPE_STRING => {
+                    let data_ptr = array.data as *mut *const c_char;
+                    std::ptr::copy(data_ptr.add(index), data_ptr.add(index + 1), elements_to_move);
+                },
+                _ => return false,
+            }
+        }
+
+        // Insert the new element
+        match array.element_type {
+            ARRAY_TYPE_I32 => {
+                let data_ptr = array.data as *mut i32;
+                *data_ptr.add(index) = value as i32;
+            },
+            ARRAY_TYPE_I64 => {
+                let data_ptr = array.data as *mut i64;
+                *data_ptr.add(index) = value;
+            },
+            ARRAY_TYPE_BOOL => {
+                let data_ptr = array.data as *mut bool;
+                *data_ptr.add(index) = value != 0;
+            },
+            ARRAY_TYPE_STRING => {
+                let data_ptr = array.data as *mut *const c_char;
+                *data_ptr.add(index) = value as *const c_char;
+            },
+            _ => return false,
+        };
+
+        array.length += 1;
+        true
+    }
+}
+
+/// Remove element at specific index, returns Option<T> encoded as (found: bool, value: i64)
+#[no_mangle]
+pub extern "C" fn plat_array_remove_at(array_ptr: *mut RuntimeArray, index: i32) -> (bool, i64) {
+    if array_ptr.is_null() || index < 0 {
+        return (false, 0);
+    }
+
+    unsafe {
+        let array = &mut *array_ptr;
+        let index = index as usize;
+
+        if index >= array.length || array.data.is_null() {
+            return (false, 0);
+        }
+
+        // Get the value being removed
+        let removed_value = match array.element_type {
+            ARRAY_TYPE_I32 => {
+                let data_ptr = array.data as *const i32;
+                *data_ptr.add(index) as i64
+            },
+            ARRAY_TYPE_I64 => {
+                let data_ptr = array.data as *const i64;
+                *data_ptr.add(index)
+            },
+            ARRAY_TYPE_BOOL => {
+                let data_ptr = array.data as *const bool;
+                if *data_ptr.add(index) { 1 } else { 0 }
+            },
+            ARRAY_TYPE_STRING => {
+                let data_ptr = array.data as *const *const c_char;
+                *data_ptr.add(index) as i64
+            },
+            _ => return (false, 0),
+        };
+
+        // Shift elements left to fill the gap
+        if index < array.length - 1 {
+            let elements_to_move = array.length - index - 1;
+            match array.element_type {
+                ARRAY_TYPE_I32 => {
+                    let data_ptr = array.data as *mut i32;
+                    std::ptr::copy(data_ptr.add(index + 1), data_ptr.add(index), elements_to_move);
+                },
+                ARRAY_TYPE_I64 => {
+                    let data_ptr = array.data as *mut i64;
+                    std::ptr::copy(data_ptr.add(index + 1), data_ptr.add(index), elements_to_move);
+                },
+                ARRAY_TYPE_BOOL => {
+                    let data_ptr = array.data as *mut bool;
+                    std::ptr::copy(data_ptr.add(index + 1), data_ptr.add(index), elements_to_move);
+                },
+                ARRAY_TYPE_STRING => {
+                    let data_ptr = array.data as *mut *const c_char;
+                    std::ptr::copy(data_ptr.add(index + 1), data_ptr.add(index), elements_to_move);
+                },
+                _ => return (false, 0),
+            }
+        }
+
+        array.length -= 1;
+        (true, removed_value)
+    }
+}
+
+/// Clear all elements from array
+#[no_mangle]
+pub extern "C" fn plat_array_clear(array_ptr: *mut RuntimeArray) -> bool {
+    if array_ptr.is_null() {
+        return false;
+    }
+
+    unsafe {
+        let array = &mut *array_ptr;
+        array.length = 0;
+        true
+    }
+}
+
+/// Check if array contains a specific value
+#[no_mangle]
+pub extern "C" fn plat_array_contains(array_ptr: *const RuntimeArray, value: i64) -> bool {
+    if array_ptr.is_null() {
+        return false;
+    }
+
+    unsafe {
+        let array = &*array_ptr;
+        if array.data.is_null() {
+            return false;
+        }
+
+        for i in 0..array.length {
+            let element_value = match array.element_type {
+                ARRAY_TYPE_I32 => {
+                    let data_ptr = array.data as *const i32;
+                    *data_ptr.add(i) as i64
+                },
+                ARRAY_TYPE_I64 => {
+                    let data_ptr = array.data as *const i64;
+                    *data_ptr.add(i)
+                },
+                ARRAY_TYPE_BOOL => {
+                    let data_ptr = array.data as *const bool;
+                    if *data_ptr.add(i) { 1 } else { 0 }
+                },
+                ARRAY_TYPE_STRING => {
+                    let data_ptr = array.data as *const *const c_char;
+                    *data_ptr.add(i) as i64
+                },
+                _ => continue,
+            };
+
+            if element_value == value {
+                return true;
+            }
+        }
+
+        false
+    }
+}
+
+/// Find index of first occurrence of value, returns Option<i32> encoded as (found: bool, index: i32)
+#[no_mangle]
+pub extern "C" fn plat_array_index_of(array_ptr: *const RuntimeArray, value: i64) -> (bool, i32) {
+    if array_ptr.is_null() {
+        return (false, -1);
+    }
+
+    unsafe {
+        let array = &*array_ptr;
+        if array.data.is_null() {
+            return (false, -1);
+        }
+
+        for i in 0..array.length {
+            let element_value = match array.element_type {
+                ARRAY_TYPE_I32 => {
+                    let data_ptr = array.data as *const i32;
+                    *data_ptr.add(i) as i64
+                },
+                ARRAY_TYPE_I64 => {
+                    let data_ptr = array.data as *const i64;
+                    *data_ptr.add(i)
+                },
+                ARRAY_TYPE_BOOL => {
+                    let data_ptr = array.data as *const bool;
+                    if *data_ptr.add(i) { 1 } else { 0 }
+                },
+                ARRAY_TYPE_STRING => {
+                    let data_ptr = array.data as *const *const c_char;
+                    *data_ptr.add(i) as i64
+                },
+                _ => continue,
+            };
+
+            if element_value == value {
+                return (true, i as i32);
+            }
+        }
+
+        (false, -1)
+    }
+}
+
+/// Count occurrences of value in array
+#[no_mangle]
+pub extern "C" fn plat_array_count(array_ptr: *const RuntimeArray, value: i64) -> i32 {
+    if array_ptr.is_null() {
+        return 0;
+    }
+
+    unsafe {
+        let array = &*array_ptr;
+        if array.data.is_null() {
+            return 0;
+        }
+
+        let mut count = 0;
+        for i in 0..array.length {
+            let element_value = match array.element_type {
+                ARRAY_TYPE_I32 => {
+                    let data_ptr = array.data as *const i32;
+                    *data_ptr.add(i) as i64
+                },
+                ARRAY_TYPE_I64 => {
+                    let data_ptr = array.data as *const i64;
+                    *data_ptr.add(i)
+                },
+                ARRAY_TYPE_BOOL => {
+                    let data_ptr = array.data as *const bool;
+                    if *data_ptr.add(i) { 1 } else { 0 }
+                },
+                ARRAY_TYPE_STRING => {
+                    let data_ptr = array.data as *const *const c_char;
+                    *data_ptr.add(i) as i64
+                },
+                _ => continue,
+            };
+
+            if element_value == value {
+                count += 1;
+            }
+        }
+
+        count
+    }
+}
+
+/// Create a slice of array from start to end (exclusive)
+#[no_mangle]
+pub extern "C" fn plat_array_slice(array_ptr: *const RuntimeArray, start: i32, end: i32) -> *mut RuntimeArray {
+    if array_ptr.is_null() || start < 0 || end < start {
+        return std::ptr::null_mut();
+    }
+
+    unsafe {
+        let array = &*array_ptr;
+        let start = start as usize;
+        let end = end as usize;
+
+        if start >= array.length || end > array.length || array.data.is_null() {
+            return std::ptr::null_mut();
+        }
+
+        let slice_length = end - start;
+
+        // Create new array with sliced elements
+        match array.element_type {
+            ARRAY_TYPE_I32 => {
+                let data_ptr = array.data as *const i32;
+                plat_array_create_i32(data_ptr.add(start), slice_length)
+            },
+            ARRAY_TYPE_I64 => {
+                let data_ptr = array.data as *const i64;
+                plat_array_create_i64(data_ptr.add(start), slice_length)
+            },
+            ARRAY_TYPE_BOOL => {
+                let data_ptr = array.data as *const bool;
+                plat_array_create_bool(data_ptr.add(start), slice_length)
+            },
+            ARRAY_TYPE_STRING => {
+                let data_ptr = array.data as *const *const c_char;
+                plat_array_create_string(data_ptr.add(start), slice_length)
+            },
+            _ => std::ptr::null_mut(),
+        }
+    }
+}
+
+/// Concatenate two arrays of the same type
+#[no_mangle]
+pub extern "C" fn plat_array_concat(array1_ptr: *const RuntimeArray, array2_ptr: *const RuntimeArray) -> *mut RuntimeArray {
+    if array1_ptr.is_null() || array2_ptr.is_null() {
+        return std::ptr::null_mut();
+    }
+
+    unsafe {
+        let array1 = &*array1_ptr;
+        let array2 = &*array2_ptr;
+
+        // Arrays must be same type
+        if array1.element_type != array2.element_type {
+            return std::ptr::null_mut();
+        }
+
+        let total_length = array1.length + array2.length;
+
+        // Allocate new array
+        let array_size = std::mem::size_of::<RuntimeArray>();
+        let new_array_ptr = plat_gc_alloc(array_size) as *mut RuntimeArray;
+
+        if new_array_ptr.is_null() {
+            return std::ptr::null_mut();
+        }
+
+        // Allocate data for combined array
+        let data_size = total_length * array1.element_size;
+        let new_data_ptr = if total_length > 0 {
+            plat_gc_alloc(data_size)
+        } else {
+            std::ptr::null_mut()
+        };
+
+        if total_length > 0 && new_data_ptr.is_null() {
+            return std::ptr::null_mut();
+        }
+
+        // Copy data from both arrays
+        if total_length > 0 && !array1.data.is_null() && !array2.data.is_null() {
+            let size1 = array1.length * array1.element_size;
+            let size2 = array2.length * array2.element_size;
+
+            std::ptr::copy_nonoverlapping(array1.data, new_data_ptr, size1);
+            std::ptr::copy_nonoverlapping(array2.data, new_data_ptr.add(size1), size2);
+        }
+
+        // Initialize new array
+        (*new_array_ptr) = RuntimeArray {
+            data: new_data_ptr,
+            length: total_length,
+            capacity: total_length,
+            element_size: array1.element_size,
+            element_type: array1.element_type,
+        };
+
+        new_array_ptr
+    }
+}
+
+/// Check if all elements satisfy predicate (simplified: check if all elements are non-zero/true)
+#[no_mangle]
+pub extern "C" fn plat_array_all_truthy(array_ptr: *const RuntimeArray) -> bool {
+    if array_ptr.is_null() {
+        return true; // Empty arrays are vacuously true
+    }
+
+    unsafe {
+        let array = &*array_ptr;
+        if array.data.is_null() || array.length == 0 {
+            return true;
+        }
+
+        for i in 0..array.length {
+            let element_value = match array.element_type {
+                ARRAY_TYPE_I32 => {
+                    let data_ptr = array.data as *const i32;
+                    *data_ptr.add(i) as i64
+                },
+                ARRAY_TYPE_I64 => {
+                    let data_ptr = array.data as *const i64;
+                    *data_ptr.add(i)
+                },
+                ARRAY_TYPE_BOOL => {
+                    let data_ptr = array.data as *const bool;
+                    if *data_ptr.add(i) { 1 } else { 0 }
+                },
+                ARRAY_TYPE_STRING => {
+                    let data_ptr = array.data as *const *const c_char;
+                    let str_ptr = *data_ptr.add(i);
+                    if str_ptr.is_null() { 0 } else { 1 }
+                },
+                _ => 0,
+            };
+
+            if element_value == 0 {
+                return false;
+            }
+        }
+
+        true
+    }
+}
+
+/// Check if any element satisfies predicate (simplified: check if any element is non-zero/true)
+#[no_mangle]
+pub extern "C" fn plat_array_any_truthy(array_ptr: *const RuntimeArray) -> bool {
+    if array_ptr.is_null() {
+        return false;
+    }
+
+    unsafe {
+        let array = &*array_ptr;
+        if array.data.is_null() || array.length == 0 {
+            return false;
+        }
+
+        for i in 0..array.length {
+            let element_value = match array.element_type {
+                ARRAY_TYPE_I32 => {
+                    let data_ptr = array.data as *const i32;
+                    *data_ptr.add(i) as i64
+                },
+                ARRAY_TYPE_I64 => {
+                    let data_ptr = array.data as *const i64;
+                    *data_ptr.add(i)
+                },
+                ARRAY_TYPE_BOOL => {
+                    let data_ptr = array.data as *const bool;
+                    if *data_ptr.add(i) { 1 } else { 0 }
+                },
+                ARRAY_TYPE_STRING => {
+                    let data_ptr = array.data as *const *const c_char;
+                    let str_ptr = *data_ptr.add(i);
+                    if str_ptr.is_null() { 0 } else { 1 }
+                },
+                _ => 0,
+            };
+
+            if element_value != 0 {
+                return true;
+            }
+        }
+
+        false
     }
 }
