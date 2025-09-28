@@ -4,6 +4,7 @@ use plat_lexer::Span;
 pub struct Program {
     pub functions: Vec<Function>,
     pub enums: Vec<EnumDecl>,
+    pub classes: Vec<ClassDecl>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -107,7 +108,7 @@ pub enum Expression {
         span: Span,
     },
     Assignment {
-        name: String,
+        target: Box<Expression>, // Can be Identifier or MemberAccess
         value: Box<Expression>,
         span: Span,
     },
@@ -136,6 +137,19 @@ pub enum Expression {
     },
     Try {
         expression: Box<Expression>,
+        span: Span,
+    },
+    Self_ {
+        span: Span,
+    },
+    MemberAccess {
+        object: Box<Expression>,
+        member: String,
+        span: Span,
+    },
+    ConstructorCall {
+        class_name: String,
+        args: Vec<NamedArg>,
         span: Span,
     },
 }
@@ -216,4 +230,28 @@ pub enum Pattern {
         span: Span,
     },
     Literal(Literal),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ClassDecl {
+    pub name: String,
+    pub type_params: Vec<String>,
+    pub fields: Vec<FieldDecl>,
+    pub methods: Vec<Function>,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct FieldDecl {
+    pub name: String,
+    pub ty: Type,
+    pub is_mutable: bool, // true for var, false for let
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct NamedArg {
+    pub name: String,
+    pub value: Expression,
+    pub span: Span,
 }

@@ -1047,13 +1047,31 @@ impl CodeGenerator {
                     }
                 }
             }
-            Expression::Assignment { name, value, .. } => {
+            Expression::Assignment { target, value, .. } => {
                 let val = Self::generate_expression_helper(builder, value, variables, variable_types, functions, module, string_counter, variable_counter)?;
-                if let Some(&var) = variables.get(name) {
-                    builder.def_var(var, val);
-                    Ok(val)
-                } else {
-                    Err(CodegenError::UndefinedVariable(name.clone()))
+
+                match target.as_ref() {
+                    Expression::Identifier { name, .. } => {
+                        if let Some(&var) = variables.get(name) {
+                            builder.def_var(var, val);
+                            Ok(val)
+                        } else {
+                            Err(CodegenError::UndefinedVariable(name.clone()))
+                        }
+                    }
+                    Expression::MemberAccess { object, member, .. } => {
+                        // For member access assignment, we'll generate code to assign to the field
+                        // This is more complex as it involves struct/class field assignment
+                        // For now, let's return an error since class codegen isn't implemented yet
+                        Err(CodegenError::UnsupportedFeature(
+                            "Member access assignment not yet implemented in codegen".to_string()
+                        ))
+                    }
+                    _ => {
+                        Err(CodegenError::UnsupportedFeature(
+                            "Invalid assignment target in codegen".to_string()
+                        ))
+                    }
                 }
             }
             Expression::Call { function, args, .. } => {

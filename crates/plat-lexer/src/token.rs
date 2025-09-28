@@ -19,6 +19,9 @@ pub enum Token {
     Enum,
     Match,
     Mut,
+    Class,
+    Init,
+    Self_,
 
     // Identifiers and literals
     Ident(String),
@@ -89,6 +92,9 @@ impl Token {
             "enum" => Some(Token::Enum),
             "match" => Some(Token::Match),
             "mut" => Some(Token::Mut),
+            "class" => Some(Token::Class),
+            "init" => Some(Token::Init),
+            "self" => Some(Token::Self_),
             "and" => Some(Token::And),
             "or" => Some(Token::Or),
             "not" => Some(Token::Not),

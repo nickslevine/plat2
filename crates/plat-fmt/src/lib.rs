@@ -25,23 +25,36 @@ impl Formatter {
     }
 
     fn format_program(&mut self, program: &Program) {
+        let mut items_written = 0;
+
         // Format enums first
-        for (i, enum_decl) in program.enums.iter().enumerate() {
-            if i > 0 {
+        for enum_decl in &program.enums {
+            if items_written > 0 {
                 self.write_line("");
             }
             self.format_enum(enum_decl);
             self.write_line("");
+            items_written += 1;
         }
 
-        // Then format functions
-        let start_idx = if program.enums.is_empty() { 0 } else { program.enums.len() };
-        for (i, function) in program.functions.iter().enumerate() {
-            if i > 0 || start_idx > 0 {
+        // Then format classes
+        for class_decl in &program.classes {
+            if items_written > 0 {
+                self.write_line("");
+            }
+            self.format_class(class_decl);
+            self.write_line("");
+            items_written += 1;
+        }
+
+        // Finally format functions
+        for function in &program.functions {
+            if items_written > 0 {
                 self.write_line("");
             }
             self.format_function(function);
             self.write_line("");
+            items_written += 1;
         }
     }
 
@@ -93,6 +106,80 @@ impl Formatter {
             }
             self.write("fn ");
             self.write(&method.name);
+            self.write("(");
+
+            for (i, param) in method.params.iter().enumerate() {
+                if i > 0 {
+                    self.write(", ");
+                }
+                self.format_parameter(param);
+            }
+
+            self.write(")");
+
+            if let Some(return_type) = &method.return_type {
+                self.write(" -> ");
+                self.format_type(return_type);
+            }
+
+            self.write(" ");
+            self.format_function_block(&method.body);
+            self.write_line("");
+        }
+
+        self.indent -= 1;
+        self.write("}");
+    }
+
+    fn format_class(&mut self, class_decl: &ClassDecl) {
+        self.write("class ");
+        self.write(&class_decl.name);
+
+        if !class_decl.type_params.is_empty() {
+            self.write("<");
+            for (i, param) in class_decl.type_params.iter().enumerate() {
+                if i > 0 {
+                    self.write(", ");
+                }
+                self.write(param);
+            }
+            self.write(">");
+        }
+
+        self.write_line(" {");
+        self.indent += 1;
+
+        // Format fields
+        for field in &class_decl.fields {
+            self.write_indent();
+            if field.is_mutable {
+                self.write("var ");
+            } else {
+                self.write("let ");
+            }
+            self.write(&field.name);
+            self.write(": ");
+            self.format_type(&field.ty);
+            self.write_line(";");
+        }
+
+        // Add blank line before methods if both fields and methods exist
+        if !class_decl.fields.is_empty() && !class_decl.methods.is_empty() {
+            self.write_line("");
+        }
+
+        // Format methods
+        for method in &class_decl.methods {
+            self.write_indent();
+            if method.name == "init" {
+                self.write("init");
+            } else {
+                if method.is_mutable {
+                    self.write("mut ");
+                }
+                self.write("fn ");
+                self.write(&method.name);
+            }
             self.write("(");
 
             for (i, param) in method.params.iter().enumerate() {
@@ -313,8 +400,8 @@ impl Formatter {
                 }
                 self.write(")");
             }
-            Expression::Assignment { name, value, .. } => {
-                self.write(name);
+            Expression::Assignment { target, value, .. } => {
+                self.format_expression(target);
                 self.write(" = ");
                 self.format_expression(value);
             }
@@ -374,6 +461,27 @@ impl Formatter {
             Expression::Try { expression, .. } => {
                 self.format_expression(expression);
                 self.write("?");
+            }
+            Expression::Self_ { .. } => {
+                self.write("self");
+            }
+            Expression::MemberAccess { object, member, .. } => {
+                self.format_expression(object);
+                self.write(".");
+                self.write(member);
+            }
+            Expression::ConstructorCall { class_name, args, .. } => {
+                self.write(class_name);
+                self.write("(");
+                for (i, arg) in args.iter().enumerate() {
+                    if i > 0 {
+                        self.write(", ");
+                    }
+                    self.write(&arg.name);
+                    self.write(" = ");
+                    self.format_expression(&arg.value);
+                }
+                self.write(")");
             }
         }
     }

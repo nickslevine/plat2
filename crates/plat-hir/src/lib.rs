@@ -9,7 +9,9 @@ pub struct TypeChecker {
     scopes: Vec<HashMap<String, HirType>>,
     functions: HashMap<String, FunctionSignature>,
     enums: HashMap<String, EnumInfo>,
+    classes: HashMap<String, ClassInfo>,
     current_function_return_type: Option<HirType>,
+    current_class_context: Option<String>, // Track which class we're currently type-checking
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -22,6 +24,7 @@ pub enum HirType {
     Dict(Box<HirType>, Box<HirType>), // key type, value type
     Set(Box<HirType>), // element type
     Enum(String, Vec<HirType>), // name, type parameters
+    Class(String, Vec<HirType>), // name, type parameters
     Unit, // For functions that don't return anything
 }
 
@@ -47,13 +50,29 @@ pub struct VariantInfo {
     pub field_types: Vec<HirType>,
 }
 
+#[derive(Debug, Clone)]
+pub struct ClassInfo {
+    pub name: String,
+    pub type_params: Vec<String>,
+    pub fields: HashMap<String, FieldInfo>, // field name -> field info
+    pub methods: HashMap<String, FunctionSignature>,
+}
+
+#[derive(Debug, Clone)]
+pub struct FieldInfo {
+    pub ty: HirType,
+    pub is_mutable: bool,
+}
+
 impl TypeChecker {
     pub fn new() -> Self {
         let mut checker = Self {
             scopes: vec![HashMap::new()], // Global scope
             functions: HashMap::new(),
             enums: HashMap::new(),
+            classes: HashMap::new(),
             current_function_return_type: None,
+            current_class_context: None,
         };
 
         // Register built-in Option<T> type
@@ -100,12 +119,16 @@ impl TypeChecker {
     }
 
     pub fn check_program(mut self, program: &Program) -> Result<(), DiagnosticError> {
-        // First pass: collect all enum definitions
+        // First pass: collect all enum and class definitions
         for enum_decl in &program.enums {
             self.collect_enum_info(enum_decl)?;
         }
 
-        // Second pass: collect all function signatures (including enum methods)
+        for class_decl in &program.classes {
+            self.collect_class_info(class_decl)?;
+        }
+
+        // Second pass: collect all function signatures (including enum and class methods)
         for function in &program.functions {
             self.collect_function_signature(function)?;
         }
@@ -114,6 +137,14 @@ impl TypeChecker {
         for enum_decl in &program.enums {
             for method in &enum_decl.methods {
                 let method_name = format!("{}::{}", enum_decl.name, method.name);
+                self.collect_function_signature_with_name(&method_name, method)?;
+            }
+        }
+
+        // Collect class method signatures
+        for class_decl in &program.classes {
+            for method in &class_decl.methods {
+                let method_name = format!("{}::{}", class_decl.name, method.name);
                 self.collect_function_signature_with_name(&method_name, method)?;
             }
         }
@@ -148,6 +179,13 @@ impl TypeChecker {
         for enum_decl in &program.enums {
             for method in &enum_decl.methods {
                 self.check_enum_method(enum_decl, method)?;
+            }
+        }
+
+        // Type check class methods
+        for class_decl in &program.classes {
+            for method in &class_decl.methods {
+                self.check_class_method(class_decl, method)?;
             }
         }
 
@@ -201,6 +239,62 @@ impl TypeChecker {
         if self.enums.insert(enum_decl.name.clone(), enum_info).is_some() {
             return Err(DiagnosticError::Type(
                 format!("Enum '{}' is defined multiple times", enum_decl.name)
+            ));
+        }
+
+        Ok(())
+    }
+
+    fn collect_class_info(&mut self, class_decl: &ClassDecl) -> Result<(), DiagnosticError> {
+        let mut fields = HashMap::new();
+        let mut methods = HashMap::new();
+
+        // Collect field information
+        for field in &class_decl.fields {
+            let field_type = self.ast_type_to_hir_type(&field.ty)?;
+            let field_info = FieldInfo {
+                ty: field_type,
+                is_mutable: field.is_mutable,
+            };
+
+            if fields.insert(field.name.clone(), field_info).is_some() {
+                return Err(DiagnosticError::Type(
+                    format!("Field '{}' is defined multiple times in class '{}'", field.name, class_decl.name)
+                ));
+            }
+        }
+
+        // Collect method signatures
+        for method in &class_decl.methods {
+            let param_types: Result<Vec<HirType>, DiagnosticError> = method.params
+                .iter()
+                .map(|param| self.ast_type_to_hir_type(&param.ty))
+                .collect();
+
+            let return_type = match &method.return_type {
+                Some(ty) => self.ast_type_to_hir_type(ty)?,
+                None => HirType::Unit,
+            };
+
+            let signature = FunctionSignature {
+                params: param_types?,
+                return_type,
+                is_mutable: method.is_mutable,
+            };
+
+            methods.insert(method.name.clone(), signature);
+        }
+
+        let class_info = ClassInfo {
+            name: class_decl.name.clone(),
+            type_params: class_decl.type_params.clone(),
+            fields,
+            methods,
+        };
+
+        if self.classes.insert(class_decl.name.clone(), class_info).is_some() {
+            return Err(DiagnosticError::Type(
+                format!("Class '{}' is defined multiple times", class_decl.name)
             ));
         }
 
@@ -438,14 +532,60 @@ impl TypeChecker {
 
                 Ok(signature.return_type)
             }
-            Expression::Assignment { name, value, .. } => {
+            Expression::Assignment { target, value, .. } => {
                 let value_type = self.check_expression(value)?;
-                let variable_type = self.lookup_variable(name)?;
 
-                if value_type != variable_type {
-                    return Err(DiagnosticError::Type(
-                        format!("Assignment type mismatch: variable '{}' has type {:?}, assigned {:?}", name, variable_type, value_type)
-                    ));
+                match target.as_ref() {
+                    Expression::Identifier { name, .. } => {
+                        let variable_type = self.lookup_variable(name)?;
+
+                        if value_type != variable_type {
+                            return Err(DiagnosticError::Type(
+                                format!("Assignment type mismatch: variable '{}' has type {:?}, assigned {:?}", name, variable_type, value_type)
+                            ));
+                        }
+                    }
+                    Expression::MemberAccess { object, member, .. } => {
+                        // Check if we're assigning to a field of a class instance
+                        let object_type = self.check_expression(object)?;
+
+                        match &object_type {
+                            HirType::Class(class_name, _) => {
+                                let class_info = self.classes.get(class_name)
+                                    .ok_or_else(|| DiagnosticError::Type(
+                                        format!("Unknown class '{}'", class_name)
+                                    ))?;
+
+                                if let Some(field_info) = class_info.fields.get(member) {
+                                    if !field_info.is_mutable {
+                                        return Err(DiagnosticError::Type(
+                                            format!("Cannot assign to immutable field '{}.{}'", class_name, member)
+                                        ));
+                                    }
+                                    if value_type != field_info.ty {
+                                        return Err(DiagnosticError::Type(
+                                            format!("Assignment type mismatch: field '{}.{}' has type {:?}, assigned {:?}",
+                                                   class_name, member, field_info.ty, value_type)
+                                        ));
+                                    }
+                                } else {
+                                    return Err(DiagnosticError::Type(
+                                        format!("Class '{}' has no field '{}'", class_name, member)
+                                    ));
+                                }
+                            }
+                            _ => {
+                                return Err(DiagnosticError::Type(
+                                    format!("Member access assignment is only allowed on class instances, got {:?}", object_type)
+                                ));
+                            }
+                        }
+                    }
+                    _ => {
+                        return Err(DiagnosticError::Type(
+                            "Invalid assignment target".to_string()
+                        ));
+                    }
                 }
 
                 Ok(HirType::Unit)
@@ -1142,6 +1282,41 @@ impl TypeChecker {
                             ))
                         }
                     }
+                    // Class methods
+                    (HirType::Class(class_name, _), method_name) => {
+                        // Check if method exists in class
+                        let class_info = self.classes.get(class_name)
+                            .ok_or_else(|| DiagnosticError::Type(
+                                format!("Unknown class '{}'", class_name)
+                            ))?.clone();
+
+                        if let Some(method_signature) = class_info.methods.get(method_name) {
+                            // Check argument count (exclude implicit self parameter)
+                            if args.len() != method_signature.params.len() {
+                                return Err(DiagnosticError::Type(
+                                    format!("Method '{}::{}' expects {} arguments, got {}",
+                                           class_name, method_name, method_signature.params.len(), args.len())
+                                ));
+                            }
+
+                            // Check argument types
+                            for (i, (arg, expected_type)) in args.iter().zip(method_signature.params.iter()).enumerate() {
+                                let arg_type = self.check_expression(arg)?;
+                                if arg_type != *expected_type {
+                                    return Err(DiagnosticError::Type(
+                                        format!("Argument {} of method '{}::{}' has type {:?}, expected {:?}",
+                                               i + 1, class_name, method_name, arg_type, expected_type)
+                                    ));
+                                }
+                            }
+
+                            Ok(method_signature.return_type.clone())
+                        } else {
+                            Err(DiagnosticError::Type(
+                                format!("Class '{}' has no method '{}'", class_name, method_name)
+                            ))
+                        }
+                    }
                     _ => Err(DiagnosticError::Type(
                         format!("Type {:?} has no method '{}'", object_type, method)
                     ))
@@ -1336,6 +1511,100 @@ impl TypeChecker {
                     ))
                 }
             }
+            Expression::Self_ { .. } => {
+                // Check if we're in a class method context
+                match &self.current_class_context {
+                    Some(class_name) => {
+                        // Return the class type (for now without generics)
+                        Ok(HirType::Class(class_name.clone(), vec![]))
+                    }
+                    None => Err(DiagnosticError::Type(
+                        "'self' can only be used within class methods".to_string()
+                    ))
+                }
+            }
+            Expression::MemberAccess { object, member, .. } => {
+                let object_type = self.check_expression(object)?;
+
+                match &object_type {
+                    HirType::Class(class_name, _) => {
+                        // Check if field exists in class
+                        let class_info = self.classes.get(class_name)
+                            .ok_or_else(|| DiagnosticError::Type(
+                                format!("Unknown class '{}'", class_name)
+                            ))?;
+
+                        if let Some(field_info) = class_info.fields.get(member) {
+                            Ok(field_info.ty.clone())
+                        } else {
+                            Err(DiagnosticError::Type(
+                                format!("Class '{}' has no field '{}'", class_name, member)
+                            ))
+                        }
+                    }
+                    _ => Err(DiagnosticError::Type(
+                        format!("Member access is only allowed on class instances, got {:?}", object_type)
+                    ))
+                }
+            }
+            Expression::ConstructorCall { class_name, args, .. } => {
+                // Check if class exists
+                let class_info = self.classes.get(class_name)
+                    .ok_or_else(|| DiagnosticError::Type(
+                        format!("Unknown class '{}'", class_name)
+                    ))?.clone();
+
+                // Check if init method exists
+                if !class_info.methods.contains_key("init") {
+                    return Err(DiagnosticError::Type(
+                        format!("Class '{}' has no init method", class_name)
+                    ));
+                }
+
+                let init_signature = &class_info.methods["init"];
+
+                // Check argument count (exclude self parameter)
+                if args.len() != init_signature.params.len() {
+                    return Err(DiagnosticError::Type(
+                        format!("Constructor for '{}' expects {} arguments, got {}",
+                               class_name, init_signature.params.len(), args.len())
+                    ));
+                }
+
+                // Check that all required fields are provided in named arguments
+                let mut provided_fields = std::collections::HashSet::new();
+                for arg in args {
+                    provided_fields.insert(&arg.name);
+                }
+
+                for field_name in class_info.fields.keys() {
+                    if !provided_fields.contains(field_name) {
+                        return Err(DiagnosticError::Type(
+                            format!("Constructor for '{}' missing required field '{}'", class_name, field_name)
+                        ));
+                    }
+                }
+
+                // Check argument types match field types
+                for arg in args {
+                    if let Some(field_info) = class_info.fields.get(&arg.name) {
+                        let arg_type = self.check_expression(&arg.value)?;
+                        if arg_type != field_info.ty {
+                            return Err(DiagnosticError::Type(
+                                format!("Constructor argument '{}' has type {:?}, expected {:?}",
+                                       arg.name, arg_type, field_info.ty)
+                            ));
+                        }
+                    } else {
+                        return Err(DiagnosticError::Type(
+                            format!("Class '{}' has no field '{}'", class_name, arg.name)
+                        ));
+                    }
+                }
+
+                // Return the class instance type
+                Ok(HirType::Class(class_name.clone(), vec![]))
+            }
         }
     }
 
@@ -1513,7 +1782,16 @@ impl TypeChecker {
                         .map(|param| self.ast_type_to_hir_type(param))
                         .collect();
                     Ok(HirType::Enum(name.clone(), type_args?))
-                } else {
+                }
+                // Check if this is a known class
+                else if self.classes.contains_key(name) {
+                    let type_args: Result<Vec<HirType>, DiagnosticError> = type_params
+                        .iter()
+                        .map(|param| self.ast_type_to_hir_type(param))
+                        .collect();
+                    Ok(HirType::Class(name.clone(), type_args?))
+                }
+                else {
                     Err(DiagnosticError::Type(
                         format!("Unknown type '{}'", name)
                     ))
@@ -1669,5 +1947,63 @@ impl TypeChecker {
 
         self.pop_scope();
         Ok(())
+    }
+
+    fn check_class_method(&mut self, class_decl: &ClassDecl, method: &Function) -> Result<(), DiagnosticError> {
+        // Set up method scope with implicit self parameter
+        self.push_scope();
+
+        // Set current class context
+        let old_class_context = self.current_class_context.clone();
+        self.current_class_context = Some(class_decl.name.clone());
+
+        // Add self parameter of class type
+        let self_type = HirType::Class(class_decl.name.clone(), vec![]); // For now, no generics
+        self.scopes.last_mut().unwrap().insert("self".to_string(), self_type);
+
+        // Add method parameters
+        for param in &method.params {
+            let param_type = self.ast_type_to_hir_type(&param.ty)?;
+            if self.scopes.last().unwrap().contains_key(&param.name) {
+                return Err(DiagnosticError::Type(
+                    format!("Parameter '{}' shadows another variable", param.name)
+                ));
+            }
+            self.scopes.last_mut().unwrap().insert(param.name.clone(), param_type);
+        }
+
+        // Special validation for init method
+        if method.name == "init" {
+            // Check that init method initializes all fields
+            self.validate_init_method(class_decl, method)?;
+        }
+
+        // Set current function return type
+        let old_return_type = self.current_function_return_type.clone();
+        self.current_function_return_type = match &method.return_type {
+            Some(ty) => Some(self.ast_type_to_hir_type(ty)?),
+            None => Some(HirType::Unit),
+        };
+
+        // Check method body
+        self.check_block(&method.body)?;
+
+        // Restore previous state
+        self.current_function_return_type = old_return_type;
+        self.current_class_context = old_class_context;
+
+        self.pop_scope();
+        Ok(())
+    }
+
+    fn validate_init_method(&mut self, class_decl: &ClassDecl, init_method: &Function) -> Result<(), DiagnosticError> {
+        // For now, just check that init method returns the class type or Unit
+        match &init_method.return_type {
+            Some(Type::Named(name, _)) if name == &class_decl.name => Ok(()),
+            None => Ok(()), // Unit return is fine
+            Some(_) => Err(DiagnosticError::Type(
+                format!("Init method for class '{}' must return {} or nothing", class_decl.name, class_decl.name)
+            )),
+        }
     }
 }

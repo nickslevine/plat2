@@ -20,16 +20,19 @@ impl Parser {
     pub fn parse(mut self) -> Result<Program, DiagnosticError> {
         let mut functions = Vec::new();
         let mut enums = Vec::new();
+        let mut classes = Vec::new();
 
         while !self.is_at_end() {
             if self.check(&Token::Enum) {
                 enums.push(self.parse_enum()?);
+            } else if self.check(&Token::Class) {
+                classes.push(self.parse_class()?);
             } else {
                 functions.push(self.parse_function()?);
             }
         }
 
-        Ok(Program { functions, enums })
+        Ok(Program { functions, enums, classes })
     }
 
     fn parse_function(&mut self) -> Result<Function, DiagnosticError> {
@@ -37,9 +40,13 @@ impl Parser {
 
         let is_mutable = self.match_token(&Token::Mut);
 
-        self.consume(Token::Fn, "Expected 'fn'")?;
-
-        let name = self.consume_identifier("Expected function name")?;
+        // Handle 'init' as a special function name, or regular 'fn'
+        let name = if self.match_token(&Token::Init) {
+            "init".to_string()
+        } else {
+            self.consume(Token::Fn, "Expected 'fn' or 'init'")?;
+            self.consume_identifier("Expected function name")?
+        };
 
         self.consume(Token::LeftParen, "Expected '('")?;
 
@@ -332,18 +339,27 @@ impl Parser {
         let expr = self.parse_logical_or()?;
 
         if self.match_token(&Token::Assign) {
-            if let Expression::Identifier { name, span } = expr {
-                let value = Box::new(self.parse_assignment()?);
-                let end = self.previous_span().end;
-                return Ok(Expression::Assignment {
-                    name,
-                    value,
-                    span: Span::new(span.start, end),
-                });
-            } else {
-                return Err(DiagnosticError::Syntax(
-                    "Invalid assignment target".to_string()
-                ));
+            // Allow assignment to identifier or member access expressions
+            match &expr {
+                Expression::Identifier { .. } | Expression::MemberAccess { .. } => {
+                    let value = Box::new(self.parse_assignment()?);
+                    let end = self.previous_span().end;
+                    let start = match &expr {
+                        Expression::Identifier { span, .. } => span.start,
+                        Expression::MemberAccess { span, .. } => span.start,
+                        _ => unreachable!(),
+                    };
+                    return Ok(Expression::Assignment {
+                        target: Box::new(expr),
+                        value,
+                        span: Span::new(start, end),
+                    });
+                }
+                _ => {
+                    return Err(DiagnosticError::Syntax(
+                        "Invalid assignment target. Only identifiers and member access are allowed.".to_string()
+                    ));
+                }
             }
         }
 
@@ -374,6 +390,9 @@ impl Parser {
                     Expression::EnumConstructor { span, .. } => span.start,
                     Expression::Match { span, .. } => span.start,
                     Expression::Try { span, .. } => span.start,
+                    Expression::Self_ { span, .. } => span.start,
+                    Expression::MemberAccess { span, .. } => span.start,
+                    Expression::ConstructorCall { span, .. } => span.start,
                 },
                 self.previous_span().end,
             );
@@ -549,23 +568,29 @@ impl Parser {
                     span: Span::new(start, end),
                 };
             } else if self.match_token(&Token::Dot) {
-                let method = self.consume_identifier("Expected method name after '.'")?;
+                let member = self.consume_identifier("Expected member name after '.'")?;
 
                 if self.match_token(&Token::LeftParen) {
+                    // Method call
                     let args = self.parse_arguments()?;
                     self.consume(Token::RightParen, "Expected ')' after method arguments")?;
                     let end = self.previous_span().end;
                     let start = self.get_expression_span(&expr, end).start;
                     expr = Expression::MethodCall {
                         object: Box::new(expr),
-                        method,
+                        method: member,
                         args,
                         span: Span::new(start, end),
                     };
                 } else {
-                    return Err(DiagnosticError::Syntax(
-                        "Expected '(' after method name".to_string()
-                    ));
+                    // Member access
+                    let end = self.previous_span().end;
+                    let start = self.get_expression_span(&expr, end).start;
+                    expr = Expression::MemberAccess {
+                        object: Box::new(expr),
+                        member,
+                        span: Span::new(start, end),
+                    };
                 }
             } else if self.match_token(&Token::Question) {
                 let end = self.previous_span().end;
@@ -628,10 +653,26 @@ impl Parser {
             return Ok(Expression::Literal(Literal::InterpolatedString(interpolation_parts, span)));
         }
 
+        if self.match_token(&Token::Self_) {
+            let span = self.previous_span();
+            return Ok(Expression::Self_ { span });
+        }
+
         if let Some(Token::Ident(name)) = self.match_if(|t| matches!(t, Token::Ident(_))) {
             let span = self.previous_span();
+            // Check for constructor call with named arguments (ClassName(param=value))
+            if self.match_token(&Token::LeftParen) && self.is_named_arg() {
+                let args = self.parse_named_arguments()?;
+                self.consume(Token::RightParen, "Expected ')' after constructor arguments")?;
+                let end = self.previous_span().end;
+                return Ok(Expression::ConstructorCall {
+                    class_name: name,
+                    args,
+                    span: Span::new(span.start, end),
+                });
+            }
             // Check for enum constructor (EnumName::Variant)
-            if self.match_token(&Token::DoubleColon) {
+            else if self.match_token(&Token::DoubleColon) {
                 let variant = self.consume_identifier("Expected variant name after ':'")?;
                 let mut args = Vec::new();
                 if self.match_token(&Token::LeftParen) {
@@ -731,6 +772,9 @@ impl Parser {
             Expression::EnumConstructor { span, .. } => span.start,
             Expression::Match { span, .. } => span.start,
             Expression::Try { span, .. } => span.start,
+            Expression::Self_ { span, .. } => span.start,
+            Expression::MemberAccess { span, .. } => span.start,
+            Expression::ConstructorCall { span, .. } => span.start,
         };
         Span::new(start, end)
     }
@@ -1120,5 +1164,114 @@ impl Parser {
         let end = self.previous_span().end;
 
         Ok(Expression::Literal(Literal::Set(elements, Span::new(start, end))))
+    }
+
+    fn parse_class(&mut self) -> Result<ClassDecl, DiagnosticError> {
+        let start = self.current_span().start;
+        self.consume(Token::Class, "Expected 'class'")?;
+
+        let name = self.consume_identifier("Expected class name")?;
+
+        // Parse optional generic parameters
+        let mut type_params = Vec::new();
+        if self.match_token(&Token::Less) {
+            loop {
+                type_params.push(self.consume_identifier("Expected type parameter name")?);
+                if !self.match_token(&Token::Comma) {
+                    break;
+                }
+            }
+            self.consume(Token::Greater, "Expected '>' after type parameters")?;
+        }
+
+        self.consume(Token::LeftBrace, "Expected '{' after class name")?;
+
+        let mut fields = Vec::new();
+        let mut methods = Vec::new();
+
+        while !self.check(&Token::RightBrace) && !self.is_at_end() {
+            // Check if it's a method (fn, init, or mut fn)
+            if self.check(&Token::Fn) || self.check(&Token::Init) || (self.check(&Token::Mut) && self.peek_next() == Some(&Token::Fn)) {
+                methods.push(self.parse_function()?);
+            } else if self.check(&Token::Let) || self.check(&Token::Var) {
+                // It's a field declaration
+                let field_start = self.current_span().start;
+                let is_mutable = self.match_token(&Token::Var);
+                if !is_mutable {
+                    self.consume(Token::Let, "Expected 'let' or 'var'")?;
+                }
+
+                let field_name = self.consume_identifier("Expected field name")?;
+                self.consume(Token::Colon, "Expected ':' after field name")?;
+                let field_type = self.parse_type()?;
+                self.consume(Token::Semicolon, "Expected ';' after field declaration")?;
+
+                let field_end = self.previous_span().end;
+                fields.push(FieldDecl {
+                    name: field_name,
+                    ty: field_type,
+                    is_mutable,
+                    span: Span::new(field_start, field_end),
+                });
+            } else {
+                return Err(DiagnosticError::Syntax(
+                    "Expected field declaration ('let'/'var') or method declaration ('fn') in class body".to_string()
+                ));
+            }
+        }
+
+        self.consume(Token::RightBrace, "Expected '}' after class body")?;
+        let end = self.previous_span().end;
+
+        Ok(ClassDecl {
+            name,
+            type_params,
+            fields,
+            methods,
+            span: Span::new(start, end),
+        })
+    }
+
+    fn is_named_arg(&mut self) -> bool {
+        // Look ahead to see if this looks like a named argument: identifier = expression
+        let saved_current = self.current;
+
+        let looks_like_named_arg = match &self.peek().token {
+            Token::Ident(_) => {
+                self.advance();
+                self.check(&Token::Assign)
+            }
+            _ => false,
+        };
+
+        // Restore position
+        self.current = saved_current;
+        looks_like_named_arg
+    }
+
+    fn parse_named_arguments(&mut self) -> Result<Vec<NamedArg>, DiagnosticError> {
+        let mut args = Vec::new();
+
+        if !self.check(&Token::RightParen) {
+            loop {
+                let start = self.current_span().start;
+                let name = self.consume_identifier("Expected parameter name")?;
+                self.consume(Token::Assign, "Expected '=' after parameter name")?;
+                let value = self.parse_expression()?;
+                let end = self.previous_span().end;
+
+                args.push(NamedArg {
+                    name,
+                    value,
+                    span: Span::new(start, end),
+                });
+
+                if !self.match_token(&Token::Comma) {
+                    break;
+                }
+            }
+        }
+
+        Ok(args)
     }
 }

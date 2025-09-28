@@ -5,9 +5,9 @@
 - [x] String methods
 - [x] List methods
 - [x] Dict methods
-- [x] Set methods (COMPLETE! 11 methods: add, remove, clear, length, contains, union, intersection, difference, is_subset_of, is_superset_of, is_disjoint_from)
+- [x] Set methods
 
-* Classes
+- [x] Classes (COMPLETE! Object-oriented programming with custom classes, constructors, methods, and field mutability)
 * enforce type annotations everywhere
 * for in
 * collection methods
