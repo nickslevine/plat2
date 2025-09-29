@@ -71,8 +71,10 @@ fn build_command(file: PathBuf) -> Result<()> {
     // Type check the program
     println!("  {} Type checking...", "→".cyan());
     let type_checker = plat_hir::TypeChecker::new();
-    type_checker.check_program(&program)
-        .with_context(|| "Type checking failed")?;
+    if let Err(e) = type_checker.check_program(&program) {
+        println!("Type checking error: {:?}", e);
+        anyhow::bail!("Type checking failed: {:?}", e);
+    }
 
     println!("  {} Generating code...", "→".cyan());
 

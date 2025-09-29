@@ -13,6 +13,7 @@ pub struct TypeChecker {
     current_function_return_type: Option<HirType>,
     current_class_context: Option<String>, // Track which class we're currently type-checking
     current_method_is_init: bool, // Track if we're currently in an init method
+    type_parameters: Vec<String>, // Track current type parameters in scope (like T, U)
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -26,6 +27,7 @@ pub enum HirType {
     Set(Box<HirType>), // element type
     Enum(String, Vec<HirType>), // name, type parameters
     Class(String, Vec<HirType>), // name, type parameters
+    TypeParameter(String), // For generic type parameters like T, U, etc.
     Unit, // For functions that don't return anything
 }
 
@@ -75,6 +77,7 @@ impl TypeChecker {
             current_function_return_type: None,
             current_class_context: None,
             current_method_is_init: false,
+            type_parameters: Vec::new(),
         };
 
         // Register built-in Option<T> type
@@ -149,13 +152,8 @@ impl TypeChecker {
             }
         }
 
-        // Collect class method signatures
-        for class_decl in &program.classes {
-            for method in &class_decl.methods {
-                let method_name = format!("{}::{}", class_decl.name, method.name);
-                self.collect_function_signature_with_name(&method_name, method)?;
-            }
-        }
+        // Note: Class method signatures are already collected in collect_class_info
+        // to ensure type parameters are properly scoped
 
         // Check that main function exists
         if !self.functions.contains_key("main") {
@@ -272,6 +270,11 @@ impl TypeChecker {
     }
 
     fn collect_class_info(&mut self, class_decl: &ClassDecl) -> Result<(), DiagnosticError> {
+        // Add type parameters to scope
+        let old_type_params = self.type_parameters.clone();
+        self.type_parameters.extend(class_decl.type_params.iter().cloned());
+
+
         let mut fields = HashMap::new();
         let mut methods = HashMap::new();
 
@@ -292,10 +295,11 @@ impl TypeChecker {
 
         // Collect method signatures
         for method in &class_decl.methods {
-            let param_types: Result<Vec<HirType>, DiagnosticError> = method.params
-                .iter()
-                .map(|param| self.ast_type_to_hir_type(&param.ty))
-                .collect();
+            let mut param_types = Vec::new();
+            for param in &method.params {
+                let param_type = self.ast_type_to_hir_type(&param.ty)?;
+                param_types.push(param_type);
+            }
 
             let return_type = match &method.return_type {
                 Some(ty) => self.ast_type_to_hir_type(ty)?,
@@ -303,12 +307,21 @@ impl TypeChecker {
             };
 
             let signature = FunctionSignature {
-                params: param_types?,
+                params: param_types,
                 return_type,
                 is_mutable: method.is_mutable,
             };
 
-            methods.insert(method.name.clone(), signature);
+            // Store in class methods
+            methods.insert(method.name.clone(), signature.clone());
+
+            // Also store in global functions map with qualified name
+            let method_name = format!("{}::{}", class_decl.name, method.name);
+            if self.functions.insert(method_name, signature).is_some() {
+                return Err(DiagnosticError::Type(
+                    format!("Method '{}::{}' is defined multiple times", class_decl.name, method.name)
+                ));
+            }
         }
 
         // Update the existing class info with the collected fields and methods
@@ -321,6 +334,9 @@ impl TypeChecker {
 
         // Update the existing entry (it should exist from register_class_name)
         self.classes.insert(class_decl.name.clone(), class_info);
+
+        // Restore previous type parameters
+        self.type_parameters = old_type_params;
 
         Ok(())
     }
@@ -1805,8 +1821,18 @@ impl TypeChecker {
                 Ok(HirType::Set(Box::new(element_hir_type)))
             }
             Type::Named(name, type_params) => {
+                // Check if this is a type parameter (T, U, etc.)
+                if self.type_parameters.contains(name) {
+                    // Type parameters shouldn't have their own type parameters
+                    if !type_params.is_empty() {
+                        return Err(DiagnosticError::Type(
+                            format!("Type parameter '{}' cannot have type arguments", name)
+                        ));
+                    }
+                    Ok(HirType::TypeParameter(name.clone()))
+                }
                 // Check if this is a known enum
-                if self.enums.contains_key(name) {
+                else if self.enums.contains_key(name) {
                     let type_args: Result<Vec<HirType>, DiagnosticError> = type_params
                         .iter()
                         .map(|param| self.ast_type_to_hir_type(param))
@@ -1983,6 +2009,10 @@ impl TypeChecker {
         // Set up method scope with implicit self parameter
         self.push_scope();
 
+        // Add class type parameters to scope
+        let old_type_params = self.type_parameters.clone();
+        self.type_parameters.extend(class_decl.type_params.iter().cloned());
+
         // Set current class context
         let old_class_context = self.current_class_context.clone();
         self.current_class_context = Some(class_decl.name.clone());
@@ -1991,8 +2021,11 @@ impl TypeChecker {
         let old_is_init = self.current_method_is_init;
         self.current_method_is_init = method.name == "init";
 
-        // Add self parameter of class type
-        let self_type = HirType::Class(class_decl.name.clone(), vec![]); // For now, no generics
+        // Add self parameter of class type (with type parameters)
+        let type_args: Vec<HirType> = class_decl.type_params.iter()
+            .map(|param| HirType::TypeParameter(param.clone()))
+            .collect();
+        let self_type = HirType::Class(class_decl.name.clone(), type_args);
         self.scopes.last_mut().unwrap().insert("self".to_string(), self_type);
 
         // Add method parameters
@@ -2026,6 +2059,7 @@ impl TypeChecker {
         self.current_function_return_type = old_return_type;
         self.current_class_context = old_class_context;
         self.current_method_is_init = old_is_init;
+        self.type_parameters = old_type_params;
 
         self.pop_scope();
         Ok(())

@@ -8,7 +8,14 @@
 - [x] Set methods
 
 - [x] Classes (COMPLETE! Object-oriented programming with custom classes, constructors, methods, and field mutability)
+- [x] Generic Classes (COMPLETE! Generic class declarations with type parameter support)
 
+- [x] member access (COMPLETE! Field reading from class instances)
+- [x] constructor calls (COMPLETE! Class instantiation with named arguments)
+- [x] class instantiation (COMPLETE! Runtime object creation and field assignment)
+- method calls, type substitution for generic classes. 
+
+* inheritance? 
 * enforce type annotations everywhere
 * for in
 

@@ -16,6 +16,7 @@ pub enum PlatValue {
     Array(PlatArray),
     Dict(PlatDict),
     Set(PlatSet),
+    Class(PlatClass),
     Unit,
 }
 
@@ -242,6 +243,54 @@ impl fmt::Display for PlatSet {
     }
 }
 
+/// GC-managed class object for storing class instances with their fields
+#[derive(Debug, Clone, Trace, Finalize)]
+pub struct PlatClass {
+    pub class_name: String,
+    pub fields: Gc<std::collections::HashMap<String, PlatValue>>,
+}
+
+impl PartialEq for PlatClass {
+    fn eq(&self, other: &Self) -> bool {
+        self.class_name == other.class_name &&
+        self.fields.as_ref() == other.fields.as_ref()
+    }
+}
+
+impl PlatClass {
+    pub fn new(class_name: String) -> Self {
+        Self {
+            class_name,
+            fields: Gc::new(std::collections::HashMap::new()),
+        }
+    }
+
+    pub fn get_field(&self, field_name: &str) -> Option<PlatValue> {
+        self.fields.get(field_name).cloned()
+    }
+
+    pub fn set_field(&mut self, field_name: String, value: PlatValue) {
+        unsafe {
+            let ptr = Gc::into_raw(self.fields.clone()) as *mut std::collections::HashMap<String, PlatValue>;
+            (*ptr).insert(field_name, value);
+            self.fields = Gc::from_raw(ptr);
+        }
+    }
+}
+
+impl fmt::Display for PlatClass {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}{{", self.class_name)?;
+        for (i, (key, value)) in self.fields.iter().enumerate() {
+            if i > 0 {
+                write!(f, ", ")?;
+            }
+            write!(f, "{}: {}", key, value)?;
+        }
+        write!(f, "}}")
+    }
+}
+
 impl fmt::Display for PlatValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -261,6 +310,7 @@ impl fmt::Display for PlatValue {
             }
             PlatValue::Dict(dict) => write!(f, "{}", dict),
             PlatValue::Set(set) => write!(f, "{}", set),
+            PlatValue::Class(class) => write!(f, "{}", class),
             PlatValue::Unit => write!(f, "()"),
         }
     }
@@ -2997,5 +3047,119 @@ pub extern "C" fn plat_array_any_truthy(array_ptr: *const RuntimeArray) -> bool 
         }
 
         false
+    }
+}
+
+// =============================================================================
+// Class Functions
+// =============================================================================
+
+/// Create a new class instance
+#[no_mangle]
+pub extern "C" fn plat_class_create(class_name_ptr: *const c_char) -> *mut PlatClass {
+    if class_name_ptr.is_null() {
+        return std::ptr::null_mut();
+    }
+
+    unsafe {
+        let class_name = CStr::from_ptr(class_name_ptr).to_string_lossy().to_string();
+        let class_instance = Box::new(PlatClass::new(class_name));
+        Box::into_raw(class_instance)
+    }
+}
+
+/// Set a field value in a class instance
+#[no_mangle]
+pub extern "C" fn plat_class_set_field_i32(
+    class_ptr: *mut PlatClass,
+    field_name_ptr: *const c_char,
+    value: i32
+) {
+    if class_ptr.is_null() || field_name_ptr.is_null() {
+        return;
+    }
+
+    unsafe {
+        let class = &mut *class_ptr;
+        let field_name = CStr::from_ptr(field_name_ptr).to_string_lossy().to_string();
+        class.set_field(field_name, PlatValue::I32(value));
+    }
+}
+
+/// Set a string field value in a class instance
+#[no_mangle]
+pub extern "C" fn plat_class_set_field_string(
+    class_ptr: *mut PlatClass,
+    field_name_ptr: *const c_char,
+    value_ptr: *const c_char
+) {
+    if class_ptr.is_null() || field_name_ptr.is_null() || value_ptr.is_null() {
+        return;
+    }
+
+    unsafe {
+        let class = &mut *class_ptr;
+        let field_name = CStr::from_ptr(field_name_ptr).to_string_lossy().to_string();
+        let value_str = CStr::from_ptr(value_ptr).to_string_lossy().to_string();
+        let plat_string = PlatString { data: Gc::new(value_str) };
+        class.set_field(field_name, PlatValue::String(plat_string));
+    }
+}
+
+/// Get an i32 field value from a class instance
+#[no_mangle]
+pub extern "C" fn plat_class_get_field_i32(
+    class_ptr: *const PlatClass,
+    field_name_ptr: *const c_char
+) -> i32 {
+    if class_ptr.is_null() || field_name_ptr.is_null() {
+        return 0;
+    }
+
+    unsafe {
+        let class = &*class_ptr;
+        let field_name = CStr::from_ptr(field_name_ptr).to_string_lossy();
+        match class.get_field(&field_name) {
+            Some(PlatValue::I32(value)) => value,
+            _ => 0, // Return default if field not found or wrong type
+        }
+    }
+}
+
+/// Get a string field value from a class instance (returns pointer to C string)
+#[no_mangle]
+pub extern "C" fn plat_class_get_field_string(
+    class_ptr: *const PlatClass,
+    field_name_ptr: *const c_char
+) -> *const c_char {
+    if class_ptr.is_null() || field_name_ptr.is_null() {
+        return std::ptr::null();
+    }
+
+    unsafe {
+        let class = &*class_ptr;
+        let field_name = CStr::from_ptr(field_name_ptr).to_string_lossy();
+        match class.get_field(&field_name) {
+            Some(PlatValue::String(ref plat_string)) => {
+                let c_string = CString::new(plat_string.data.as_str()).unwrap();
+                c_string.into_raw() // Caller is responsible for freeing
+            },
+            _ => std::ptr::null(),
+        }
+    }
+}
+
+/// Convert class instance to string representation
+#[no_mangle]
+pub extern "C" fn plat_class_to_string(class_ptr: *const PlatClass) -> *const c_char {
+    if class_ptr.is_null() {
+        return std::ptr::null();
+    }
+
+    unsafe {
+        let class = &*class_ptr;
+        let string_repr = format!("{}", class);
+        let c_string = CString::new(string_repr).unwrap();
+        c_string.into_raw() // Caller is responsible for freeing
     }
 }

@@ -1,0 +1,11 @@
+class Vector<T> {
+  let data: T;
+
+  init(data: T) {
+    self.data = data;
+  }
+}
+
+fn main() {
+  print("test");
+}

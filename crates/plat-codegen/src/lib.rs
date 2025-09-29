@@ -27,6 +27,7 @@ pub enum VariableType {
     Array,
     Dict,
     Set,
+    Class(String), // class name
     Enum(String), // enum name
 }
 
@@ -77,6 +78,7 @@ impl CodeGenerator {
             Expression::Literal(Literal::Dict(_, _)) => VariableType::Dict,
             Expression::Literal(Literal::Set(_, _)) => VariableType::Set,
             Expression::EnumConstructor { enum_name, .. } => VariableType::Enum(enum_name.clone()),
+            Expression::ConstructorCall { class_name, .. } => VariableType::Class(class_name.clone()),
             _ => VariableType::I32,
         }
     }
@@ -311,10 +313,11 @@ impl CodeGenerator {
                     }
                     Expression::Literal(Literal::Bool(_, _)) => (I32, VariableType::Bool),
                     Expression::EnumConstructor { enum_name, .. } => (I64, VariableType::Enum(enum_name.clone())),
+                    Expression::ConstructorCall { class_name, .. } => (I64, VariableType::Class(class_name.clone())),
                     Expression::Match { arms, .. } => {
                         let match_type = Self::determine_match_return_type(arms, variable_types);
                         let cranelift_type = match match_type {
-                            VariableType::String | VariableType::Array | VariableType::Enum(_) => I64,
+                            VariableType::String | VariableType::Array | VariableType::Enum(_) | VariableType::Class(_) => I64,
                             _ => I32,
                         };
                         (cranelift_type, match_type)
@@ -367,10 +370,11 @@ impl CodeGenerator {
                     }
                     Expression::Literal(Literal::Bool(_, _)) => (I32, VariableType::Bool),
                     Expression::EnumConstructor { enum_name, .. } => (I64, VariableType::Enum(enum_name.clone())),
+                    Expression::ConstructorCall { class_name, .. } => (I64, VariableType::Class(class_name.clone())),
                     Expression::Match { arms, .. } => {
                         let match_type = Self::determine_match_return_type(arms, variable_types);
                         let cranelift_type = match match_type {
-                            VariableType::String | VariableType::Array | VariableType::Enum(_) => I64,
+                            VariableType::String | VariableType::Array | VariableType::Enum(_) | VariableType::Class(_) => I64,
                             _ => I32,
                         };
                         (cranelift_type, match_type)
@@ -2204,7 +2208,7 @@ impl CodeGenerator {
                         Expression::Literal(Literal::Dict(_, _)) => true,
                         Expression::Literal(Literal::Set(_, _)) => true,
                         Expression::Identifier { name, .. } => {
-                            matches!(variable_types.get(name), Some(VariableType::String) | Some(VariableType::Array) | Some(VariableType::Dict) | Some(VariableType::Set))
+                            matches!(variable_types.get(name), Some(VariableType::String) | Some(VariableType::Array) | Some(VariableType::Dict) | Some(VariableType::Set) | Some(VariableType::Class(_)))
                         }
                         _ => false,
                     };
@@ -2340,7 +2344,7 @@ impl CodeGenerator {
                 // Determine the return type for the match expression early
                 let match_return_type = Self::determine_match_return_type(arms, variable_types);
                 let cont_param_type = match match_return_type {
-                    VariableType::String | VariableType::Array | VariableType::Enum(_) => I64,
+                    VariableType::String | VariableType::Array | VariableType::Enum(_) | VariableType::Class(_) => I64,
                     _ => I32,
                 };
 
@@ -2480,8 +2484,173 @@ impl CodeGenerator {
                 let extracted_val = builder.ins().ireduce(I32, expr_val);
                 Ok(extracted_val)
             }
+            Expression::MemberAccess { object, member, .. } => {
+                // Generate code for reading a field from a class instance
+
+                // First, evaluate the object expression to get the class pointer
+                let object_val = Self::generate_expression_helper(
+                    builder, object, variables, variable_types, functions, module, string_counter, variable_counter
+                )?;
+
+                // Create field name string
+                let field_name_str = format!("field_access_{}", variable_counter);
+                let field_name_id = module.declare_data(&field_name_str, Linkage::Local, false, false)
+                    .map_err(CodegenError::ModuleError)?;
+                let mut field_name_desc = DataDescription::new();
+                let field_name_bytes = [member.as_bytes(), &[0]].concat();
+                field_name_desc.define(field_name_bytes.into_boxed_slice());
+                module.define_data(field_name_id, &field_name_desc)
+                    .map_err(CodegenError::ModuleError)?;
+
+                let field_name_addr = module.declare_data_in_func(field_name_id, builder.func);
+                let field_name_val = builder.ins().symbol_value(I64, field_name_addr);
+
+                *variable_counter += 1;
+
+                // For now, assume the field is i32 type (we'll enhance this later)
+                // Declare plat_class_get_field_i32 function
+                let get_field_sig = {
+                    let mut sig = module.make_signature();
+                    sig.call_conv = CallConv::SystemV;
+                    sig.params.push(AbiParam::new(I64)); // class pointer
+                    sig.params.push(AbiParam::new(I64)); // field name pointer
+                    sig.returns.push(AbiParam::new(I32)); // field value (i32)
+                    sig
+                };
+
+                let get_field_id = module.declare_function("plat_class_get_field_i32", Linkage::Import, &get_field_sig)
+                    .map_err(CodegenError::ModuleError)?;
+                let get_field_ref = module.declare_func_in_func(get_field_id, builder.func);
+
+                // Call plat_class_get_field_i32
+                let call = builder.ins().call(get_field_ref, &[object_val, field_name_val]);
+                let field_value = builder.inst_results(call)[0];
+
+                Ok(field_value)
+            }
+            Expression::ConstructorCall { class_name, args, .. } => {
+                // Create a new class instance
+
+                // First, create the class name string
+                let class_name_cstring = std::ffi::CString::new(class_name.as_str()).unwrap();
+                let class_name_ptr = class_name_cstring.as_ptr();
+
+                // Declare plat_class_create function
+                let create_sig = {
+                    let mut sig = module.make_signature();
+                    sig.call_conv = CallConv::SystemV;
+                    sig.params.push(AbiParam::new(I64)); // class name string pointer
+                    sig.returns.push(AbiParam::new(I64)); // class instance pointer
+                    sig
+                };
+
+                let create_id = module.declare_function("plat_class_create", Linkage::Import, &create_sig)
+                    .map_err(CodegenError::ModuleError)?;
+                let create_ref = module.declare_func_in_func(create_id, builder.func);
+
+                // Create a global data for the class name string
+                let class_name_str = format!("class_name_{}", variable_counter);
+                let class_name_id = module.declare_data(&class_name_str, Linkage::Local, false, false)
+                    .map_err(CodegenError::ModuleError)?;
+                let mut class_name_desc = DataDescription::new();
+                let class_name_bytes = [class_name.as_bytes(), &[0]].concat();
+                class_name_desc.define(class_name_bytes.into_boxed_slice());
+                module.define_data(class_name_id, &class_name_desc)
+                    .map_err(CodegenError::ModuleError)?;
+
+                let class_name_addr = module.declare_data_in_func(class_name_id, builder.func);
+                let class_name_val = builder.ins().symbol_value(I64, class_name_addr);
+
+                *variable_counter += 1;
+
+                // Call plat_class_create
+                let call = builder.ins().call(create_ref, &[class_name_val]);
+                let class_ptr = builder.inst_results(call)[0];
+
+                // Set each field from the named arguments
+                for arg in args {
+                    let field_name = &arg.name;
+                    let field_value_expr = &arg.value;
+
+                    // Evaluate the field value
+                    let field_value = Self::generate_expression_helper(
+                        builder, field_value_expr, variables, variable_types, functions, module, string_counter, variable_counter
+                    )?;
+
+                    // Create field name string
+                    let field_name_str = format!("field_name_{}", variable_counter);
+                    let field_name_id = module.declare_data(&field_name_str, Linkage::Local, false, false)
+                        .map_err(CodegenError::ModuleError)?;
+                    let mut field_name_desc = DataDescription::new();
+                    let field_name_bytes = [field_name.as_bytes(), &[0]].concat();
+                    field_name_desc.define(field_name_bytes.into_boxed_slice());
+                    module.define_data(field_name_id, &field_name_desc)
+                        .map_err(CodegenError::ModuleError)?;
+
+                    let field_name_addr = module.declare_data_in_func(field_name_id, builder.func);
+                    let field_name_val = builder.ins().symbol_value(I64, field_name_addr);
+
+                    *variable_counter += 1;
+
+                    // Determine field type and call appropriate setter
+                    // Check if this is a string literal
+                    match field_value_expr {
+                        Expression::Literal(Literal::String(_, _)) |
+                        Expression::Literal(Literal::InterpolatedString(_, _)) => {
+                            // String field
+                            let set_field_sig = {
+                                let mut sig = module.make_signature();
+                                sig.call_conv = CallConv::SystemV;
+                                sig.params.push(AbiParam::new(I64)); // class pointer
+                                sig.params.push(AbiParam::new(I64)); // field name pointer
+                                sig.params.push(AbiParam::new(I64)); // field value (string pointer)
+                                sig
+                            };
+
+                            let set_field_id = module.declare_function("plat_class_set_field_string", Linkage::Import, &set_field_sig)
+                                .map_err(CodegenError::ModuleError)?;
+                            let set_field_ref = module.declare_func_in_func(set_field_id, builder.func);
+
+                            // Call plat_class_set_field_string
+                            builder.ins().call(set_field_ref, &[class_ptr, field_name_val, field_value]);
+                        }
+                        _ => {
+                            // Integer field (default case)
+                            let set_field_sig = {
+                                let mut sig = module.make_signature();
+                                sig.call_conv = CallConv::SystemV;
+                                sig.params.push(AbiParam::new(I64)); // class pointer
+                                sig.params.push(AbiParam::new(I64)); // field name pointer
+                                sig.params.push(AbiParam::new(I32)); // field value (i32)
+                                sig
+                            };
+
+                            let set_field_id = module.declare_function("plat_class_set_field_i32", Linkage::Import, &set_field_sig)
+                                .map_err(CodegenError::ModuleError)?;
+                            let set_field_ref = module.declare_func_in_func(set_field_id, builder.func);
+
+                            // For now, assume field value is already i32
+                            let field_value_i32 = field_value;
+
+                            // Call plat_class_set_field_i32
+                            builder.ins().call(set_field_ref, &[class_ptr, field_name_val, field_value_i32]);
+                        }
+                    }
+                }
+
+                // Return the class pointer
+                Ok(class_ptr)
+            }
+            Expression::Self_ { .. } => {
+                // For now, return an error since we need to implement self parameter
+                Err(CodegenError::UnsupportedFeature("Self references not yet implemented".to_string()))
+            }
+            Expression::Block(block) => {
+                // For now, return an error since we need to implement block expressions
+                Err(CodegenError::UnsupportedFeature("Block expressions not yet implemented".to_string()))
+            }
             _ => {
-                // TODO: Implement blocks, etc.
+                // TODO: Implement any remaining expressions
                 Err(CodegenError::UnsupportedFeature("Complex expressions not yet implemented".to_string()))
             }
         }
@@ -2853,6 +3022,21 @@ impl CodeGenerator {
                                         sig
                                     };
                                     let convert_id = module.declare_function("plat_enum_to_string", Linkage::Import, &convert_sig)
+                                        .map_err(CodegenError::ModuleError)?;
+                                    let convert_ref = module.declare_func_in_func(convert_id, builder.func);
+                                    let call = builder.ins().call(convert_ref, &[expr_val]);
+                                    builder.inst_results(call)[0]
+                                }
+                                Some(VariableType::Class(_)) => {
+                                    // Class variable, convert to string representation
+                                    let convert_sig = {
+                                        let mut sig = module.make_signature();
+                                        sig.call_conv = CallConv::SystemV;
+                                        sig.params.push(AbiParam::new(I64));
+                                        sig.returns.push(AbiParam::new(I64));
+                                        sig
+                                    };
+                                    let convert_id = module.declare_function("plat_class_to_string", Linkage::Import, &convert_sig)
                                         .map_err(CodegenError::ModuleError)?;
                                     let convert_ref = module.declare_func_in_func(convert_id, builder.func);
                                     let call = builder.ins().call(convert_ref, &[expr_val]);

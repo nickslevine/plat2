@@ -1,0 +1,26 @@
+class Point {
+  let x: i32;
+  let y: i32;
+  var name: string;
+
+  init(x: i32, y: i32, name: string) {
+    self.x = x;
+    self.y = y;
+    self.name = name;
+  }
+}
+
+fn main() {
+  // Constructor calls work!
+  let p1 = Point(x = 10, y = 20, name = "origin");
+  let p2 = Point(x = 5, y = 15, name = "point2");
+
+  // Member access works!
+  print("Point 1 coordinates: (${p1.x}, ${p1.y})");
+  print("Point 1 name: ${p1.name}");
+
+  print("Point 2 coordinates: (${p2.x}, ${p2.y})");
+  print("Point 2 name: ${p2.name}");
+
+  print("Class functionality is working!");
+}
