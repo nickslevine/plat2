@@ -1,0 +1,12 @@
+fn main() -> i32 {
+    let my_dict: Dict[string, i32] = {"key1": 42};
+    print("Dict: ${my_dict}");
+
+    let has_key1 = my_dict.has_key("key1");
+    print("Has key1: ${has_key1}");
+
+    let has_key2 = my_dict.has_key("key2");
+    print("Has key2: ${has_key2}");
+
+    return 0;
+}

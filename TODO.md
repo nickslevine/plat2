@@ -8,11 +8,9 @@
 - [x] Set methods
 
 - [x] Classes (COMPLETE! Object-oriented programming with custom classes, constructors, methods, and field mutability)
+
 * enforce type annotations everywhere
 * for in
-* collection methods
-* list methods:
-* string methods
 
 * regex
 * if expressions? 

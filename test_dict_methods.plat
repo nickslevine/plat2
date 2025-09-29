@@ -1,0 +1,58 @@
+fn main() -> i32 {
+    // Create a dictionary with string keys and i32 values
+    let scores: Dict[string, i32] = {"Alice": 95, "Bob": 87, "Charlie": 92};
+
+    // Test get method
+    let alice_score = scores.get("Alice");
+    print("Alice's score: ${alice_score}");
+
+    // Test set method
+    let success = scores.set("David", 88);
+    print("Set David's score succeeded: ${success}");
+
+    // Test length method
+    let dict_length = scores.length();
+    print("Dictionary length: ${dict_length}");
+
+    // Test has_key method
+    let has_alice = scores.has_key("Alice");
+    let has_eve = scores.has_key("Eve");
+    print("Has Alice: ${has_alice}, Has Eve: ${has_eve}");
+
+    // Test has_value method
+    let has_95 = scores.has_value(95);
+    let has_100 = scores.has_value(100);
+    print("Has value 95: ${has_95}, Has value 100: ${has_100}");
+
+    // Test remove method
+    let removed = scores.remove("Bob");
+    print("Removed Bob's score: ${removed}");
+    let new_length = scores.length();
+    print("Length after remove: ${new_length}");
+
+    // Test get_or method with default
+    let eve_score = scores.get_or("Eve", 0);
+    let alice_score2 = scores.get_or("Alice", 0);
+    print("Eve's score (or default): ${eve_score}, Alice's score (or default): ${alice_score2}");
+
+    // Test keys method
+    let all_keys = scores.keys();
+    print("All keys: ${all_keys}");
+
+    // Test values method
+    let all_values = scores.values();
+    print("All values: ${all_values}");
+
+    // Test merge method
+    let extra_scores: Dict[string, i32] = {"Eve": 90, "Frank": 85};
+    scores.merge(extra_scores);
+    let final_length = scores.length();
+    print("Length after merge: ${final_length}");
+
+    // Test clear method
+    scores.clear();
+    let cleared_length = scores.length();
+    print("Length after clear: ${cleared_length}");
+
+    return 0;
+}

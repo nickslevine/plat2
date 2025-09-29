@@ -1,0 +1,13 @@
+fn main() -> i32 {
+    // Test get method
+    let my_dict: Dict[string, i32] = {"key1": 42};
+    print("Dict: ${my_dict}");
+
+    let length = my_dict.length();
+    print("Length: ${length}");
+
+    let value = my_dict.get("key1");
+    print("Value for key1: ${value}");
+
+    return 0;
+}

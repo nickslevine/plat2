@@ -1,0 +1,14 @@
+class Point {
+  let x: i32;
+  let y: i32;
+
+  init(x: i32, y: i32) {
+    self.x = x;
+    self.y = y;
+  }
+}
+
+fn main() {
+  let p = Point(x = 1, y = 2);
+  print("Point: (${p.x}, ${p.y})");
+}

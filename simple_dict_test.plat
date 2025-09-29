@@ -1,0 +1,11 @@
+fn main() -> i32 {
+    // Simple dict creation
+    let my_dict: Dict[string, i32] = {"key1": 42, "key2": 100};
+    print("Dict: ${my_dict}");
+
+    // Test length method
+    let length = my_dict.length();
+    print("Length: ${length}");
+
+    return 0;
+}

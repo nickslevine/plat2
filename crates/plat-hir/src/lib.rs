@@ -12,6 +12,7 @@ pub struct TypeChecker {
     classes: HashMap<String, ClassInfo>,
     current_function_return_type: Option<HirType>,
     current_class_context: Option<String>, // Track which class we're currently type-checking
+    current_method_is_init: bool, // Track if we're currently in an init method
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -73,6 +74,7 @@ impl TypeChecker {
             classes: HashMap::new(),
             current_function_return_type: None,
             current_class_context: None,
+            current_method_is_init: false,
         };
 
         // Register built-in Option<T> type
@@ -119,11 +121,17 @@ impl TypeChecker {
     }
 
     pub fn check_program(mut self, program: &Program) -> Result<(), DiagnosticError> {
-        // First pass: collect all enum and class definitions
+        // First pass: collect all enum definitions
         for enum_decl in &program.enums {
             self.collect_enum_info(enum_decl)?;
         }
 
+        // First phase: register all class names (without processing types)
+        for class_decl in &program.classes {
+            self.register_class_name(class_decl)?;
+        }
+
+        // Second phase: process class field types and method signatures
         for class_decl in &program.classes {
             self.collect_class_info(class_decl)?;
         }
@@ -245,6 +253,24 @@ impl TypeChecker {
         Ok(())
     }
 
+    fn register_class_name(&mut self, class_decl: &ClassDecl) -> Result<(), DiagnosticError> {
+        // Just register the class name with empty info for now
+        let class_info = ClassInfo {
+            name: class_decl.name.clone(),
+            type_params: class_decl.type_params.clone(),
+            fields: HashMap::new(),
+            methods: HashMap::new(),
+        };
+
+        if self.classes.insert(class_decl.name.clone(), class_info).is_some() {
+            return Err(DiagnosticError::Type(
+                format!("Class '{}' is defined multiple times", class_decl.name)
+            ));
+        }
+
+        Ok(())
+    }
+
     fn collect_class_info(&mut self, class_decl: &ClassDecl) -> Result<(), DiagnosticError> {
         let mut fields = HashMap::new();
         let mut methods = HashMap::new();
@@ -285,6 +311,7 @@ impl TypeChecker {
             methods.insert(method.name.clone(), signature);
         }
 
+        // Update the existing class info with the collected fields and methods
         let class_info = ClassInfo {
             name: class_decl.name.clone(),
             type_params: class_decl.type_params.clone(),
@@ -292,11 +319,8 @@ impl TypeChecker {
             methods,
         };
 
-        if self.classes.insert(class_decl.name.clone(), class_info).is_some() {
-            return Err(DiagnosticError::Type(
-                format!("Class '{}' is defined multiple times", class_decl.name)
-            ));
-        }
+        // Update the existing entry (it should exist from register_class_name)
+        self.classes.insert(class_decl.name.clone(), class_info);
 
         Ok(())
     }
@@ -557,7 +581,13 @@ impl TypeChecker {
                                     ))?;
 
                                 if let Some(field_info) = class_info.fields.get(member) {
-                                    if !field_info.is_mutable {
+                                    // Allow assignment to immutable fields if we're in an init method and assigning to self
+                                    let is_self_assignment = match object.as_ref() {
+                                        Expression::Self_ { .. } => true,
+                                        _ => false,
+                                    };
+
+                                    if !field_info.is_mutable && !(self.current_method_is_init && is_self_assignment) {
                                         return Err(DiagnosticError::Type(
                                             format!("Cannot assign to immutable field '{}.{}'", class_name, member)
                                         ));
@@ -1957,6 +1987,10 @@ impl TypeChecker {
         let old_class_context = self.current_class_context.clone();
         self.current_class_context = Some(class_decl.name.clone());
 
+        // Set init method flag
+        let old_is_init = self.current_method_is_init;
+        self.current_method_is_init = method.name == "init";
+
         // Add self parameter of class type
         let self_type = HirType::Class(class_decl.name.clone(), vec![]); // For now, no generics
         self.scopes.last_mut().unwrap().insert("self".to_string(), self_type);
@@ -1991,6 +2025,7 @@ impl TypeChecker {
         // Restore previous state
         self.current_function_return_type = old_return_type;
         self.current_class_context = old_class_context;
+        self.current_method_is_init = old_is_init;
 
         self.pop_scope();
         Ok(())
