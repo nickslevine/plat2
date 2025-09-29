@@ -38,6 +38,9 @@ impl Parser {
     fn parse_function(&mut self) -> Result<Function, DiagnosticError> {
         let start = self.current_span().start;
 
+        // Parse optional modifiers: virtual, override, mut
+        let is_virtual = self.match_token(&Token::Virtual);
+        let is_override = self.match_token(&Token::Override);
         let is_mutable = self.match_token(&Token::Mut);
 
         // Handle 'init' as a special function name, or regular 'fn'
@@ -69,6 +72,8 @@ impl Parser {
             return_type,
             body,
             is_mutable,
+            is_virtual,
+            is_override,
             span: Span::new(start, end),
         })
     }
@@ -393,6 +398,7 @@ impl Parser {
                     Expression::Self_ { span, .. } => span.start,
                     Expression::MemberAccess { span, .. } => span.start,
                     Expression::ConstructorCall { span, .. } => span.start,
+                    Expression::SuperCall { span, .. } => span.start,
                 },
                 self.previous_span().end,
             );
@@ -658,6 +664,21 @@ impl Parser {
             return Ok(Expression::Self_ { span });
         }
 
+        if self.match_token(&Token::Super) {
+            let start = self.previous_span().start;
+            self.consume(Token::Dot, "Expected '.' after 'super'")?;
+            let method = self.consume_identifier("Expected method name after 'super.'")?;
+            self.consume(Token::LeftParen, "Expected '(' after super method name")?;
+            let args = self.parse_arguments()?;
+            self.consume(Token::RightParen, "Expected ')' after super method arguments")?;
+            let end = self.previous_span().end;
+            return Ok(Expression::SuperCall {
+                method,
+                args,
+                span: Span::new(start, end),
+            });
+        }
+
         if let Some(Token::Ident(name)) = self.match_if(|t| matches!(t, Token::Ident(_))) {
             let span = self.previous_span();
             // Check for constructor call with named arguments (ClassName(param=value))
@@ -775,6 +796,7 @@ impl Parser {
             Expression::Self_ { span, .. } => span.start,
             Expression::MemberAccess { span, .. } => span.start,
             Expression::ConstructorCall { span, .. } => span.start,
+            Expression::SuperCall { span, .. } => span.start,
         };
         Span::new(start, end)
     }
@@ -1184,14 +1206,23 @@ impl Parser {
             self.consume(Token::Greater, "Expected '>' after type parameters")?;
         }
 
-        self.consume(Token::LeftBrace, "Expected '{' after class name")?;
+        // Parse optional inheritance
+        let parent_class = if self.match_token(&Token::Colon) {
+            Some(self.consume_identifier("Expected parent class name after ':'")?)
+        } else {
+            None
+        };
+
+        self.consume(Token::LeftBrace, "Expected '{' after class declaration")?;
 
         let mut fields = Vec::new();
         let mut methods = Vec::new();
 
         while !self.check(&Token::RightBrace) && !self.is_at_end() {
-            // Check if it's a method (fn, init, or mut fn)
-            if self.check(&Token::Fn) || self.check(&Token::Init) || (self.check(&Token::Mut) && self.peek_next() == Some(&Token::Fn)) {
+            // Check if it's a method (fn, init, virtual fn, override fn, mut fn, etc.)
+            if self.check(&Token::Fn) || self.check(&Token::Init)
+                || self.check(&Token::Virtual) || self.check(&Token::Override)
+                || (self.check(&Token::Mut) && self.peek_next() == Some(&Token::Fn)) {
                 methods.push(self.parse_function()?);
             } else if self.check(&Token::Let) || self.check(&Token::Var) {
                 // It's a field declaration
@@ -1226,6 +1257,7 @@ impl Parser {
         Ok(ClassDecl {
             name,
             type_params,
+            parent_class,
             fields,
             methods,
             span: Span::new(start, end),

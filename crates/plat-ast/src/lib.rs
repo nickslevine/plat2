@@ -14,6 +14,8 @@ pub struct Function {
     pub return_type: Option<Type>,
     pub body: Block,
     pub is_mutable: bool,
+    pub is_virtual: bool,    // true if method is virtual (can be overridden)
+    pub is_override: bool,   // true if method overrides a parent method
     pub span: Span,
 }
 
@@ -152,6 +154,11 @@ pub enum Expression {
         args: Vec<NamedArg>,
         span: Span,
     },
+    SuperCall {
+        method: String,
+        args: Vec<Expression>,
+        span: Span,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -236,6 +243,7 @@ pub enum Pattern {
 pub struct ClassDecl {
     pub name: String,
     pub type_params: Vec<String>,
+    pub parent_class: Option<String>, // None for no inheritance, Some(name) for inheritance
     pub fields: Vec<FieldDecl>,
     pub methods: Vec<Function>,
     pub span: Span,

@@ -101,6 +101,12 @@ impl Formatter {
         // Format methods
         for method in &enum_decl.methods {
             self.write_indent();
+            if method.is_virtual {
+                self.write("virtual ");
+            }
+            if method.is_override {
+                self.write("override ");
+            }
             if method.is_mutable {
                 self.write("mut ");
             }
@@ -146,6 +152,12 @@ impl Formatter {
             self.write(">");
         }
 
+        // Format inheritance
+        if let Some(parent_class) = &class_decl.parent_class {
+            self.write(" : ");
+            self.write(parent_class);
+        }
+
         self.write_line(" {");
         self.indent += 1;
 
@@ -174,6 +186,12 @@ impl Formatter {
             if method.name == "init" {
                 self.write("init");
             } else {
+                if method.is_virtual {
+                    self.write("virtual ");
+                }
+                if method.is_override {
+                    self.write("override ");
+                }
                 if method.is_mutable {
                     self.write("mut ");
                 }
@@ -206,6 +224,12 @@ impl Formatter {
     }
 
     fn format_function(&mut self, function: &Function) {
+        if function.is_virtual {
+            self.write("virtual ");
+        }
+        if function.is_override {
+            self.write("override ");
+        }
         if function.is_mutable {
             self.write("mut ");
         }
@@ -480,6 +504,18 @@ impl Formatter {
                     self.write(&arg.name);
                     self.write(" = ");
                     self.format_expression(&arg.value);
+                }
+                self.write(")");
+            }
+            Expression::SuperCall { method, args, .. } => {
+                self.write("super.");
+                self.write(method);
+                self.write("(");
+                for (i, arg) in args.iter().enumerate() {
+                    if i > 0 {
+                        self.write(", ");
+                    }
+                    self.format_expression(arg);
                 }
                 self.write(")");
             }

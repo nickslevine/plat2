@@ -22,6 +22,9 @@ pub enum Token {
     Class,
     Init,
     Self_,
+    Virtual,
+    Override,
+    Super,
 
     // Identifiers and literals
     Ident(String),
@@ -95,6 +98,9 @@ impl Token {
             "class" => Some(Token::Class),
             "init" => Some(Token::Init),
             "self" => Some(Token::Self_),
+            "virtual" => Some(Token::Virtual),
+            "override" => Some(Token::Override),
+            "super" => Some(Token::Super),
             "and" => Some(Token::And),
             "or" => Some(Token::Or),
             "not" => Some(Token::Not),

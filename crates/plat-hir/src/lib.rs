@@ -14,9 +14,10 @@ pub struct TypeChecker {
     current_class_context: Option<String>, // Track which class we're currently type-checking
     current_method_is_init: bool, // Track if we're currently in an init method
     type_parameters: Vec<String>, // Track current type parameters in scope (like T, U)
+    monomorphizer: Monomorphizer, // For generic type specialization
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum HirType {
     Bool,
     I32,
@@ -57,8 +58,10 @@ pub struct VariantInfo {
 pub struct ClassInfo {
     pub name: String,
     pub type_params: Vec<String>,
+    pub parent_class: Option<String>, // None for no inheritance
     pub fields: HashMap<String, FieldInfo>, // field name -> field info
     pub methods: HashMap<String, FunctionSignature>,
+    pub virtual_methods: HashMap<String, FunctionSignature>, // methods that can be overridden
 }
 
 #[derive(Debug, Clone)]
@@ -78,6 +81,7 @@ impl TypeChecker {
             current_class_context: None,
             current_method_is_init: false,
             type_parameters: Vec::new(),
+            monomorphizer: Monomorphizer::new(),
         };
 
         // Register built-in Option<T> type
@@ -137,6 +141,11 @@ impl TypeChecker {
         // Second phase: process class field types and method signatures
         for class_decl in &program.classes {
             self.collect_class_info(class_decl)?;
+        }
+
+        // Third phase: validate inheritance relationships
+        for class_decl in &program.classes {
+            self.validate_inheritance(class_decl)?;
         }
 
         // Second pass: collect all function signatures (including enum and class methods)
@@ -256,8 +265,10 @@ impl TypeChecker {
         let class_info = ClassInfo {
             name: class_decl.name.clone(),
             type_params: class_decl.type_params.clone(),
+            parent_class: class_decl.parent_class.clone(),
             fields: HashMap::new(),
             methods: HashMap::new(),
+            virtual_methods: HashMap::new(),
         };
 
         if self.classes.insert(class_decl.name.clone(), class_info).is_some() {
@@ -324,12 +335,23 @@ impl TypeChecker {
             }
         }
 
+        // Separate virtual methods from regular methods
+        let mut virtual_methods = HashMap::new();
+        for method in &class_decl.methods {
+            if method.is_virtual {
+                let method_signature = methods.get(&method.name).unwrap().clone();
+                virtual_methods.insert(method.name.clone(), method_signature);
+            }
+        }
+
         // Update the existing class info with the collected fields and methods
         let class_info = ClassInfo {
             name: class_decl.name.clone(),
             type_params: class_decl.type_params.clone(),
+            parent_class: class_decl.parent_class.clone(),
             fields,
             methods,
+            virtual_methods,
         };
 
         // Update the existing entry (it should exist from register_class_name)
@@ -337,6 +359,82 @@ impl TypeChecker {
 
         // Restore previous type parameters
         self.type_parameters = old_type_params;
+
+        Ok(())
+    }
+
+    fn validate_inheritance(&mut self, class_decl: &ClassDecl) -> Result<(), DiagnosticError> {
+        if let Some(parent_name) = &class_decl.parent_class {
+            // Check if parent class exists
+            if !self.classes.contains_key(parent_name) {
+                return Err(DiagnosticError::Type(
+                    format!("Parent class '{}' not found for class '{}'", parent_name, class_decl.name)
+                ));
+            }
+
+            // Check for circular inheritance
+            let mut visited = std::collections::HashSet::new();
+            let mut current = Some(parent_name.clone());
+            visited.insert(class_decl.name.clone());
+
+            while let Some(class_name) = current {
+                if visited.contains(&class_name) {
+                    return Err(DiagnosticError::Type(
+                        format!("Circular inheritance detected involving class '{}'", class_decl.name)
+                    ));
+                }
+                visited.insert(class_name.clone());
+
+                current = self.classes.get(&class_name)
+                    .and_then(|class_info| class_info.parent_class.clone());
+            }
+
+            // Validate method overrides
+            let parent_class = self.classes.get(parent_name).unwrap().clone();
+            for method in &class_decl.methods {
+                if method.is_override {
+                    // Method must override a virtual method in parent
+                    if !parent_class.virtual_methods.contains_key(&method.name) {
+                        return Err(DiagnosticError::Type(
+                            format!("Method '{}' in class '{}' is marked override but parent '{}' has no virtual method '{}'",
+                                method.name, class_decl.name, parent_name, method.name)
+                        ));
+                    }
+
+                    // Signatures must match (for now, simplified check)
+                    let parent_method = &parent_class.virtual_methods[&method.name];
+                    let child_method_signature = self.classes[&class_decl.name].methods.get(&method.name).unwrap();
+
+                    if parent_method.params.len() != child_method_signature.params.len() {
+                        return Err(DiagnosticError::Type(
+                            format!("Override method '{}' in class '{}' has different parameter count than parent method",
+                                method.name, class_decl.name)
+                        ));
+                    }
+
+                    // Return type must match
+                    if parent_method.return_type != child_method_signature.return_type {
+                        return Err(DiagnosticError::Type(
+                            format!("Override method '{}' in class '{}' has different return type than parent method",
+                                method.name, class_decl.name)
+                        ));
+                    }
+                } else if parent_class.virtual_methods.contains_key(&method.name) && !method.is_virtual {
+                    // Warning: overriding a virtual method without override keyword
+                    // For now, we'll allow this but could be made stricter
+                }
+            }
+        }
+
+        // Check that non-override methods are not marked as override
+        for method in &class_decl.methods {
+            if method.is_override && class_decl.parent_class.is_none() {
+                return Err(DiagnosticError::Type(
+                    format!("Method '{}' in class '{}' is marked override but class has no parent",
+                        method.name, class_decl.name)
+                ));
+            }
+        }
 
         Ok(())
     }
@@ -1631,14 +1729,59 @@ impl TypeChecker {
                     }
                 }
 
-                // Check argument types match field types
+                // Infer generic type parameters from constructor arguments
+                let mut inferred_type_args = Vec::new();
+
+                if !class_info.type_params.is_empty() {
+                    // For generic classes, we need to infer type parameters from the constructor arguments
+                    // This is a simplified approach - in practice, you might want more sophisticated inference
+
+                    // Create a type substitution based on field types and argument types
+                    let mut type_mapping = HashMap::new();
+
+                    for arg in args {
+                        if let Some(field_info) = class_info.fields.get(&arg.name) {
+                            let arg_type = self.check_expression(&arg.value)?;
+
+                            // Try to match field type with argument type to infer generics
+                            if let HirType::TypeParameter(param_name) = &field_info.ty {
+                                if !type_mapping.contains_key(param_name) {
+                                    type_mapping.insert(param_name.clone(), arg_type.clone());
+                                }
+                            }
+                        }
+                    }
+
+                    // Build type arguments from the mapping
+                    for type_param in &class_info.type_params {
+                        if let Some(concrete_type) = type_mapping.get(type_param) {
+                            inferred_type_args.push(concrete_type.clone());
+                        } else {
+                            // Default to I32 if we can't infer the type
+                            inferred_type_args.push(HirType::I32);
+                        }
+                    }
+                }
+
+                // Check argument types match field types (after substitution for generics)
+                let substitution: TypeSubstitution = if !class_info.type_params.is_empty() {
+                    class_info.type_params.iter()
+                        .zip(inferred_type_args.iter())
+                        .map(|(param, concrete)| (param.clone(), concrete.clone()))
+                        .collect()
+                } else {
+                    HashMap::new()
+                };
+
                 for arg in args {
                     if let Some(field_info) = class_info.fields.get(&arg.name) {
                         let arg_type = self.check_expression(&arg.value)?;
-                        if arg_type != field_info.ty {
+                        let expected_type = field_info.ty.substitute_types(&substitution);
+
+                        if arg_type != expected_type {
                             return Err(DiagnosticError::Type(
                                 format!("Constructor argument '{}' has type {:?}, expected {:?}",
-                                       arg.name, arg_type, field_info.ty)
+                                       arg.name, arg_type, expected_type)
                             ));
                         }
                     } else {
@@ -1648,8 +1791,62 @@ impl TypeChecker {
                     }
                 }
 
-                // Return the class instance type
-                Ok(HirType::Class(class_name.clone(), vec![]))
+                // If the class is generic, specialize it
+                if !class_info.type_params.is_empty() {
+                    let _specialized_name = self.monomorphizer.specialize_class(&class_info, &inferred_type_args)?;
+                    // Return the generic class type with inferred type arguments
+                    Ok(HirType::Class(class_name.clone(), inferred_type_args))
+                } else {
+                    // Return the non-generic class instance type
+                    Ok(HirType::Class(class_name.clone(), vec![]))
+                }
+            }
+            Expression::SuperCall { method, args, .. } => {
+                // Check if we're in a class method context
+                let current_class = self.current_class_context.as_ref()
+                    .ok_or_else(|| DiagnosticError::Type(
+                        "'super' can only be used within class methods".to_string()
+                    ))?;
+
+                // Get current class info
+                let class_info = self.classes.get(current_class).unwrap();
+                let parent_class_name = class_info.parent_class.as_ref()
+                    .ok_or_else(|| DiagnosticError::Type(
+                        format!("Class '{}' has no parent class for 'super' call", current_class)
+                    ))?;
+
+                // Get parent class info
+                let parent_class = self.classes.get(parent_class_name)
+                    .ok_or_else(|| DiagnosticError::Type(
+                        format!("Parent class '{}' not found", parent_class_name)
+                    ))?;
+
+                // Check if method exists in parent and clone the signature
+                let parent_method_signature = parent_class.methods.get(method)
+                    .ok_or_else(|| DiagnosticError::Type(
+                        format!("Parent class '{}' has no method '{}'", parent_class_name, method)
+                    ))?.clone();
+
+                // Check argument count (exclude implicit self parameter)
+                if args.len() != parent_method_signature.params.len() {
+                    return Err(DiagnosticError::Type(
+                        format!("Super method '{}' expects {} arguments, got {}",
+                               method, parent_method_signature.params.len(), args.len())
+                    ));
+                }
+
+                // Check argument types
+                for (i, (arg, expected_type)) in args.iter().zip(parent_method_signature.params.iter()).enumerate() {
+                    let arg_type = self.check_expression(arg)?;
+                    if arg_type != *expected_type {
+                        return Err(DiagnosticError::Type(
+                            format!("Argument {} of super method '{}' has type {:?}, expected {:?}",
+                                   i + 1, method, arg_type, expected_type)
+                        ));
+                    }
+                }
+
+                Ok(parent_method_signature.return_type)
             }
         }
     }
@@ -2074,5 +2271,238 @@ impl TypeChecker {
                 format!("Init method for class '{}' must return {} or nothing", class_decl.name, class_decl.name)
             )),
         }
+    }
+}
+
+/// Type substitution for generic type parameters
+/// Maps type parameter names (like "T", "U") to concrete types (like HirType::I32)
+pub type TypeSubstitution = HashMap<String, HirType>;
+
+/// Trait for types that can have type parameters substituted
+pub trait TypeSubstitutable {
+    fn substitute_types(&self, substitution: &TypeSubstitution) -> Self;
+}
+
+impl TypeSubstitutable for HirType {
+    fn substitute_types(&self, substitution: &TypeSubstitution) -> Self {
+        match self {
+            HirType::TypeParameter(param_name) => {
+                // Replace type parameter with concrete type if available
+                substitution.get(param_name).cloned().unwrap_or_else(|| {
+                    // If no substitution available, keep as type parameter
+                    // This shouldn't happen in well-formed code after monomorphization
+                    self.clone()
+                })
+            }
+            HirType::List(element_type) => {
+                HirType::List(Box::new(element_type.substitute_types(substitution)))
+            }
+            HirType::Dict(key_type, value_type) => {
+                HirType::Dict(
+                    Box::new(key_type.substitute_types(substitution)),
+                    Box::new(value_type.substitute_types(substitution))
+                )
+            }
+            HirType::Set(element_type) => {
+                HirType::Set(Box::new(element_type.substitute_types(substitution)))
+            }
+            HirType::Enum(name, type_params) => {
+                HirType::Enum(
+                    name.clone(),
+                    type_params.iter().map(|t| t.substitute_types(substitution)).collect()
+                )
+            }
+            HirType::Class(name, type_params) => {
+                HirType::Class(
+                    name.clone(),
+                    type_params.iter().map(|t| t.substitute_types(substitution)).collect()
+                )
+            }
+            // Primitive types don't need substitution
+            HirType::Bool | HirType::I32 | HirType::I64 | HirType::String | HirType::Unit => {
+                self.clone()
+            }
+        }
+    }
+}
+
+impl TypeSubstitutable for FieldInfo {
+    fn substitute_types(&self, substitution: &TypeSubstitution) -> Self {
+        FieldInfo {
+            ty: self.ty.substitute_types(substitution),
+            is_mutable: self.is_mutable,
+        }
+    }
+}
+
+impl TypeSubstitutable for FunctionSignature {
+    fn substitute_types(&self, substitution: &TypeSubstitution) -> Self {
+        FunctionSignature {
+            params: self.params.iter().map(|t| t.substitute_types(substitution)).collect(),
+            return_type: self.return_type.substitute_types(substitution),
+            is_mutable: self.is_mutable,
+        }
+    }
+}
+
+/// Monomorphization: Generate specialized versions of generic types
+pub struct Monomorphizer {
+    /// Track which generic types have been instantiated with what concrete types
+    /// Key: (generic_type_name, concrete_type_args), Value: specialized_name
+    instantiations: HashMap<(String, Vec<HirType>), String>,
+
+    /// Generated specialized types
+    specialized_classes: HashMap<String, ClassInfo>,
+    specialized_enums: HashMap<String, EnumInfo>,
+
+    /// Counter for generating unique specialized names
+    specialization_counter: usize,
+}
+
+impl Monomorphizer {
+    pub fn new() -> Self {
+        Self {
+            instantiations: HashMap::new(),
+            specialized_classes: HashMap::new(),
+            specialized_enums: HashMap::new(),
+            specialization_counter: 0,
+        }
+    }
+
+    /// Get or create a specialized version of a generic class
+    pub fn specialize_class(&mut self, class_info: &ClassInfo, type_args: &[HirType]) -> Result<String, DiagnosticError> {
+        // If not generic, return original name
+        if class_info.type_params.is_empty() {
+            return Ok(class_info.name.clone());
+        }
+
+        // Check if we already specialized this combination
+        let key = (class_info.name.clone(), type_args.to_vec());
+        if let Some(specialized_name) = self.instantiations.get(&key) {
+            return Ok(specialized_name.clone());
+        }
+
+        // Validate type argument count
+        if class_info.type_params.len() != type_args.len() {
+            return Err(DiagnosticError::Type(
+                format!("Class '{}' expects {} type arguments, got {}",
+                    class_info.name, class_info.type_params.len(), type_args.len())
+            ));
+        }
+
+        // Create type substitution map
+        let mut substitution = TypeSubstitution::new();
+        for (param_name, concrete_type) in class_info.type_params.iter().zip(type_args.iter()) {
+            substitution.insert(param_name.clone(), concrete_type.clone());
+        }
+
+        // Generate specialized name
+        let specialized_name = format!("{}$specialized${}", class_info.name, self.specialization_counter);
+        self.specialization_counter += 1;
+
+        // Create specialized class info
+        let specialized_fields: HashMap<String, FieldInfo> = class_info.fields.iter()
+            .map(|(name, field)| (name.clone(), field.substitute_types(&substitution)))
+            .collect();
+
+        let specialized_methods: HashMap<String, FunctionSignature> = class_info.methods.iter()
+            .map(|(name, sig)| (name.clone(), sig.substitute_types(&substitution)))
+            .collect();
+
+        let specialized_class = ClassInfo {
+            name: specialized_name.clone(),
+            type_params: vec![], // Specialized classes are not generic
+            parent_class: class_info.parent_class.clone(),
+            fields: specialized_fields,
+            methods: specialized_methods,
+            virtual_methods: HashMap::new(), // For now, specialized classes don't inherit virtuals
+        };
+
+        // Store the specialized class
+        self.specialized_classes.insert(specialized_name.clone(), specialized_class);
+        self.instantiations.insert(key, specialized_name.clone());
+
+        Ok(specialized_name)
+    }
+
+    /// Get or create a specialized version of a generic enum
+    pub fn specialize_enum(&mut self, enum_info: &EnumInfo, type_args: &[HirType]) -> Result<String, DiagnosticError> {
+        // If not generic, return original name
+        if enum_info.type_params.is_empty() {
+            return Ok(enum_info.name.clone());
+        }
+
+        // Check if we already specialized this combination
+        let key = (enum_info.name.clone(), type_args.to_vec());
+        if let Some(specialized_name) = self.instantiations.get(&key) {
+            return Ok(specialized_name.clone());
+        }
+
+        // Validate type argument count
+        if enum_info.type_params.len() != type_args.len() {
+            return Err(DiagnosticError::Type(
+                format!("Enum '{}' expects {} type arguments, got {}",
+                    enum_info.name, enum_info.type_params.len(), type_args.len())
+            ));
+        }
+
+        // Create type substitution map
+        let mut substitution = TypeSubstitution::new();
+        for (param_name, concrete_type) in enum_info.type_params.iter().zip(type_args.iter()) {
+            substitution.insert(param_name.clone(), concrete_type.clone());
+        }
+
+        // Generate specialized name
+        let specialized_name = format!("{}$specialized${}", enum_info.name, self.specialization_counter);
+        self.specialization_counter += 1;
+
+        // Create specialized enum info
+        let specialized_variants: HashMap<String, Vec<HirType>> = enum_info.variants.iter()
+            .map(|(name, field_types)| {
+                let specialized_fields = field_types.iter()
+                    .map(|ty| ty.substitute_types(&substitution))
+                    .collect();
+                (name.clone(), specialized_fields)
+            })
+            .collect();
+
+        let specialized_methods: HashMap<String, FunctionSignature> = enum_info.methods.iter()
+            .map(|(name, sig)| (name.clone(), sig.substitute_types(&substitution)))
+            .collect();
+
+        let specialized_enum = EnumInfo {
+            name: specialized_name.clone(),
+            type_params: vec![], // Specialized enums are not generic
+            variants: specialized_variants,
+            methods: specialized_methods,
+        };
+
+        // Store the specialized enum
+        self.specialized_enums.insert(specialized_name.clone(), specialized_enum);
+        self.instantiations.insert(key, specialized_name.clone());
+
+        Ok(specialized_name)
+    }
+
+    /// Get all specialized classes generated so far
+    pub fn get_specialized_classes(&self) -> &HashMap<String, ClassInfo> {
+        &self.specialized_classes
+    }
+
+    /// Get all specialized enums generated so far
+    pub fn get_specialized_enums(&self) -> &HashMap<String, EnumInfo> {
+        &self.specialized_enums
+    }
+}
+
+impl TypeChecker {
+    /// Get the monomorphized types after type checking
+    pub fn get_monomorphized_types(self) -> (HashMap<String, ClassInfo>, HashMap<String, EnumInfo>) {
+        (self.monomorphizer.specialized_classes, self.monomorphizer.specialized_enums)
+    }
+
+    /// Get a reference to the monomorphizer for debugging
+    pub fn get_monomorphizer(&self) -> &Monomorphizer {
+        &self.monomorphizer
     }
 }

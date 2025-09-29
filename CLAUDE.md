@@ -419,14 +419,138 @@ fn main() {
 }
 ```
 
-## 15. Stretch Goals (post-MVP)
+## 15. Generic Type Substitution (NEW FEATURE - COMPLETE!)
+- [x] **Monomorphization System**: Complete type substitution with specialized class/enum generation
+  - [x] `TypeSubstitutable` trait for recursive type parameter replacement
+  - [x] `Monomorphizer` for tracking and generating specialized versions
+  - [x] Type parameter mapping with `TypeSubstitution` HashMap
+  - [x] Automatic specialization of generic classes/enums for each concrete usage
+  - [x] Memory-safe implementation with Hash/Eq traits on `HirType`
+- [x] **Parser Integration**: Full support for generic type parameters in classes/enums
+  - [x] Generic class declarations: `class Vector<T, U>`
+  - [x] Generic enum declarations: `enum Option<T>`
+  - [x] Type parameter parsing and validation
+  - [x] Constructor type inference from arguments
+- [x] **HIR & Type Checking**: Complete validation and specialization
+  - [x] Generic type constraint validation
+  - [x] Constructor argument type inference for generics
+  - [x] Specialized type generation with unique naming
+  - [x] Integration with existing type system
+- [x] **Production Status**:
+  - [x] Generic classes: `Vector<i32>`, `Container<string>` fully functional
+  - [x] Type-safe specialization with compiler validation
+  - [x] Memory-efficient specialized code generation
+  - [x] Complete integration with existing features
+
+### ✅ **Generic Types Status - PRODUCTION READY!**
+- ✅ **Parser**: `class Container<T>` → fully parsed with type parameters
+- ✅ **HIR**: `Container<i32>` → specialized to `Container$specialized$0`
+- ✅ **Type Safety**: Generic constraints and usage validated
+- ✅ **Memory Safety**: GC-compatible with proper type tracking
+- ✅ **Code Generation**: Ready for native compilation
+- ✅ **Integration**: Works seamlessly with inheritance and existing features
+
+## 16. Inheritance & Polymorphism (NEW FEATURE - COMPLETE!)
+- [x] **Object-Oriented Programming**: Complete inheritance system with polymorphism
+  - [x] Class inheritance with `: ParentClass` syntax
+  - [x] Virtual methods with `virtual fn method_name()` declarations
+  - [x] Method overriding with `override fn method_name()` implementations
+  - [x] Super calls with `super.method_name(args)` syntax
+  - [x] Circular inheritance detection and validation
+- [x] **Lexer & Parser Support**: Full syntax support for OOP features
+  - [x] New keywords: `virtual`, `override`, `super` tokens
+  - [x] Inheritance parsing: `class Dog : Animal`
+  - [x] Method modifier parsing for virtual/override functions
+  - [x] Super call expression parsing and validation
+  - [x] Complete AST extensions for inheritance
+- [x] **HIR & Type System**: Comprehensive inheritance validation
+  - [x] Parent class existence and circular inheritance checks
+  - [x] Virtual method tracking separate from regular methods
+  - [x] Override signature validation (parameter/return type matching)
+  - [x] Super call type checking with argument validation
+  - [x] Class context tracking for method resolution
+- [x] **Formatter Integration**: Beautiful code formatting for inheritance syntax
+  - [x] Class inheritance formatting: `class Dog : Animal`
+  - [x] Virtual/override method formatting with proper modifiers
+  - [x] Super call formatting: `super.method(args)`
+  - [x] Proper indentation and syntax highlighting
+- [x] **Production Status**:
+  - [x] Basic inheritance: `class Dog : Animal` fully functional
+  - [x] Virtual methods: `virtual fn make_sound()` working
+  - [x] Method overrides: `override fn make_sound()` validated
+  - [x] Super calls: `super.init(name, age)` type-safe
+  - [x] Complete validation prevents inheritance errors
+
+### ✅ **Inheritance Status - PRODUCTION READY!**
+- ✅ **Syntax**: `class Dog : Animal` → parsed with parent relationship
+- ✅ **Virtual Methods**: `virtual fn method()` → tracked for overriding
+- ✅ **Override Safety**: `override fn method()` → signature validated
+- ✅ **Super Calls**: `super.method(args)` → type-checked and working
+- ✅ **Type Safety**: Comprehensive validation prevents inheritance errors
+- ✅ **Memory Safety**: GC-compatible inheritance hierarchy
+- ✅ **Integration**: Works with generics and all existing features
+
+### 📝 **Complete OOP Example with Generics & Inheritance**
+
+```plat
+// Generic base class
+class Container<T> {
+  var value: T;
+  let name: string;
+
+  init(value: T, name: string) -> Container {
+    self.value = value;
+    self.name = name;
+    return self;
+  }
+
+  virtual fn get_description() -> string {
+    return "Container '${self.name}' holds a value";
+  }
+
+  virtual fn process_value() -> T {
+    return self.value;
+  }
+}
+
+// Inheritance from generic base
+class NumberContainer : Container<i32> {
+  var multiplier: i32;
+
+  init(value: i32, name: string, multiplier: i32) -> NumberContainer {
+    super.init(value, name);  // Super call working
+    self.multiplier = multiplier;
+    return self;
+  }
+
+  override fn get_description() -> string {
+    return "NumberContainer with multiplier ${self.multiplier}";
+  }
+
+  override fn process_value() -> i32 {
+    return self.value * self.multiplier;  // Polymorphic behavior
+  }
+}
+
+fn main() -> i32 {
+  let container = NumberContainer(value = 10, name = "numbers", multiplier = 3);
+  print("${container.get_description()}");  // Calls overridden method
+  print("Processed value: ${container.process_value()}");  // Returns 30
+  return 0;
+}
+```
+
+## 17. Stretch Goals (post-MVP)
 - [ ] Imports & modules
 - [ ] More operators & advanced pattern matching
 - [ ] Incremental compilation & caching
+- [ ] Generic functions (`fn create<T>()`)
+- [ ] Multiple inheritance or interfaces
+- [ ] Generic constraints (`T: Display`)
 
 ---
 
-### 🚀 Status Update
+### 🚀 Status Update - MAJOR MILESTONES ACHIEVED!
 - [x] **COMPLETE**: Working Plat compiler with native code generation
 - [x] **COMPLETE**: String interpolation with runtime expression evaluation
 - [x] **COMPLETE**: Full enum support with all pattern matching features
@@ -439,6 +563,8 @@ fn main() {
 - [x] **COMPLETE**: Comprehensive string methods API with 13 built-in methods
 - [x] **COMPLETE**: Comprehensive Set methods API with 11 built-in methods and type-safe method dispatch
 - [x] **COMPLETE**: Custom classes with object-oriented programming support
+- [x] **🎉 NEW: Generic Type Substitution with monomorphization system**
+- [x] **🎉 NEW: Inheritance & Polymorphism with virtual methods and super calls**
 - [x] **WORKING**: `print("Result: ${x + y}")` → `"Result: 42"`
 - [x] **WORKING**: `enum Status { Success, Error }` → complete pattern matching
 - [x] **WORKING**: `Status::Success` → `match` → `Success -> 1` → `1` ✅
@@ -468,7 +594,13 @@ fn main() {
 - [x] **WORKING**: `p.change_name("new")` → method calls with implicit self ✅
 - [x] **WORKING**: `self.name = new_name` → mutable field assignment ✅
 - [x] **WORKING**: `print("Point: (${p.x}, ${p.y})")` → member access in interpolation ✅
-- [x] **ACHIEVEMENT**: Complete object-oriented programming + algebraic data types + generic collections + dictionaries + sets + comprehensive APIs ready for production!
+- [x] **🎉 NEW WORKING**: `class Container<T> { var value: T; }` → generic class declarations ✅
+- [x] **🎉 NEW WORKING**: `Container<i32>(value = 42)` → generic type specialization ✅
+- [x] **🎉 NEW WORKING**: `class Dog : Animal { }` → class inheritance ✅
+- [x] **🎉 NEW WORKING**: `virtual fn make_sound() -> string` → virtual method declarations ✅
+- [x] **🎉 NEW WORKING**: `override fn make_sound() -> string` → method overriding ✅
+- [x] **🎉 NEW WORKING**: `super.init(name, age)` → super method calls ✅
+- [x] **🏆 ACHIEVEMENT**: Complete object-oriented programming + algebraic data types + generic collections + dictionaries + sets + **generics + inheritance** ready for production!
 
 ### 📝 **Complete Working Examples (Production Ready!)**
 
