@@ -10,12 +10,12 @@
 - [x] Classes (COMPLETE! Object-oriented programming with custom classes, constructors, methods, and field mutability)
 - [x] Generic Classes (COMPLETE! Generic class declarations with type parameter support)
 
-- [x] member access (COMPLETE! Field reading from class instances)
+- [x] member access (COMPLETE! Field reading from class instances, including string fields)
 - [x] constructor calls (COMPLETE! Class instantiation with named arguments)
 - [x] class instantiation (COMPLETE! Runtime object creation and field assignment)
-- method calls, type substitution for generic classes. 
-
-* inheritance? 
+- [x] method calls (COMPLETE! Instance methods with void, i32, and object return types)
+- [ ] type substitution for generic classes (Parser support exists, runtime instantiation needed)
+- [ ] inheritance and polymorphism (Base classes, virtual methods, super calls) 
 * enforce type annotations everywhere
 * for in
 

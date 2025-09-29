@@ -1,0 +1,30 @@
+class Point {
+  let x: i32;
+  let y: i32;
+  var name: string;
+
+  init(x: i32, y: i32, name: string) {
+    self.x = x;
+    self.y = y;
+    self.name = name;
+  }
+
+  fn change_name(new_name: string) {
+    self.name = new_name;
+  }
+
+  fn get_magnitude() -> i32 {
+    return self.x * self.x + self.y * self.y;
+  }
+}
+
+fn main() {
+  let p1 = Point(x = 3, y = 4, name = "first");
+
+  print("Before: ${p1.name}");
+  p1.change_name("changed");
+  print("After: ${p1.name}");
+
+  let magnitude = p1.get_magnitude();
+  print("Magnitude: ${magnitude}");
+}

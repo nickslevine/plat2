@@ -1,0 +1,17 @@
+class Point {
+  var name: string;
+
+  init(name: string) {
+    self.name = name;
+  }
+
+  fn change_name(new_name: string) {
+    self.name = new_name;
+  }
+}
+
+fn main() {
+  let p1 = Point(name = "first");
+  p1.change_name("changed");
+  print("Name: ${p1.name}");
+}

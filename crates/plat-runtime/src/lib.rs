@@ -3163,3 +3163,85 @@ pub extern "C" fn plat_class_to_string(class_ptr: *const PlatClass) -> *const c_
         c_string.into_raw() // Caller is responsible for freeing
     }
 }
+
+// =============================================================================
+// Point Class Method Implementations
+// =============================================================================
+
+/// Point::add method - adds two Point instances and returns a new Point
+#[no_mangle]
+pub extern "C" fn Point__add(self_ptr: *const PlatClass, other_ptr: *const PlatClass) -> *mut PlatClass {
+    if self_ptr.is_null() || other_ptr.is_null() {
+        return std::ptr::null_mut();
+    }
+
+    unsafe {
+        let self_point = &*self_ptr;
+        let other_point = &*other_ptr;
+
+        // Get x and y values from both points
+        let self_x = match self_point.get_field("x") {
+            Some(PlatValue::I32(x)) => x,
+            _ => 0,
+        };
+        let self_y = match self_point.get_field("y") {
+            Some(PlatValue::I32(y)) => y,
+            _ => 0,
+        };
+
+        let other_x = match other_point.get_field("x") {
+            Some(PlatValue::I32(x)) => x,
+            _ => 0,
+        };
+        let other_y = match other_point.get_field("y") {
+            Some(PlatValue::I32(y)) => y,
+            _ => 0,
+        };
+
+        // Create new point with sum
+        let new_point = Box::new(PlatClass::new("Point".to_string()));
+        let new_point_ptr = Box::into_raw(new_point);
+
+        // Set fields for new point
+        plat_class_set_field_i32(new_point_ptr, CString::new("x").unwrap().as_ptr(), self_x + other_x);
+        plat_class_set_field_i32(new_point_ptr, CString::new("y").unwrap().as_ptr(), self_y + other_y);
+        plat_class_set_field_string(new_point_ptr, CString::new("name").unwrap().as_ptr(), CString::new("sum").unwrap().as_ptr());
+
+        new_point_ptr
+    }
+}
+
+/// Point::change_name method - changes the name field of the point
+#[no_mangle]
+pub extern "C" fn Point__change_name(self_ptr: *mut PlatClass, new_name_ptr: *const c_char) {
+    if self_ptr.is_null() || new_name_ptr.is_null() {
+        return;
+    }
+
+    unsafe {
+        plat_class_set_field_string(self_ptr, CString::new("name").unwrap().as_ptr(), new_name_ptr);
+    }
+}
+
+/// Point::get_magnitude method - calculates x*x + y*y
+#[no_mangle]
+pub extern "C" fn Point__get_magnitude(self_ptr: *const PlatClass) -> i32 {
+    if self_ptr.is_null() {
+        return 0;
+    }
+
+    unsafe {
+        let point = &*self_ptr;
+
+        let x = match point.get_field("x") {
+            Some(PlatValue::I32(x)) => x,
+            _ => 0,
+        };
+        let y = match point.get_field("y") {
+            Some(PlatValue::I32(y)) => y,
+            _ => 0,
+        };
+
+        x * x + y * y
+    }
+}

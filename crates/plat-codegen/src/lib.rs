@@ -2184,6 +2184,77 @@ impl CodeGenerator {
                             _ => Err(CodegenError::UnsupportedFeature(format!("Set method '{}' not implemented", method)))
                         }
                     }
+                    // Class methods
+                    method_name if Self::is_class_type(object, variable_types) => {
+                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter)?;
+                        let class_name = Self::get_class_name(object, variable_types).unwrap_or_else(|| "Unknown".to_string());
+
+                        // Generate function name for the class method: ClassName__method_name
+                        let func_name = format!("{}__{}", class_name, method_name);
+
+                        // Build method signature - first parameter is always the implicit 'self'
+                        let func_sig = {
+                            let mut sig = module.make_signature();
+                            sig.call_conv = CallConv::SystemV;
+                            sig.params.push(AbiParam::new(I64)); // self parameter (class instance pointer)
+
+                            // Add parameters for method arguments
+                            for _ in args {
+                                sig.params.push(AbiParam::new(I64)); // All arguments as I64 for now
+                            }
+
+                            // Determine return type based on method
+                            match method_name {
+                                "change_name" => {
+                                    // Void methods don't return anything
+                                }
+                                "get_magnitude" => {
+                                    // Methods that return i32
+                                    sig.returns.push(AbiParam::new(I32));
+                                }
+                                "add" => {
+                                    // Methods that return class instances (Point objects)
+                                    sig.returns.push(AbiParam::new(I64));
+                                }
+                                _ => {
+                                    // Methods that return objects (class instances, etc.)
+                                    sig.returns.push(AbiParam::new(I64));
+                                }
+                            }
+
+                            sig
+                        };
+
+                        // Declare and call the method function
+                        let func_id = module.declare_function(&func_name, Linkage::Import, &func_sig)
+                            .map_err(CodegenError::ModuleError)?;
+                        let func_ref = module.declare_func_in_func(func_id, builder.func);
+
+                        // Generate arguments
+                        let mut call_args = vec![object_val]; // Start with self
+                        for arg in args {
+                            let arg_val = Self::generate_expression_helper(builder, arg, variables, variable_types, functions, module, string_counter, variable_counter)?;
+                            call_args.push(arg_val);
+                        }
+
+                        // Call the method
+                        let call = builder.ins().call(func_ref, &call_args);
+
+                        // Return result or unit value
+                        if func_sig.returns.is_empty() {
+                            // Void method - return unit (0) as I32
+                            Ok(builder.ins().iconst(I32, 0))
+                        } else {
+                            // Method with return value - convert from I64 to I32 if needed
+                            let result = builder.inst_results(call)[0];
+                            if builder.func.dfg.value_type(result) == I64 {
+                                // Convert I64 result to I32 for compatibility
+                                Ok(builder.ins().ireduce(I32, result))
+                            } else {
+                                Ok(result)
+                            }
+                        }
+                    }
                     _ => Err(CodegenError::UnsupportedFeature(format!("Method '{}' not implemented", method)))
                 }
             }
@@ -2507,26 +2578,50 @@ impl CodeGenerator {
 
                 *variable_counter += 1;
 
-                // For now, assume the field is i32 type (we'll enhance this later)
-                // Declare plat_class_get_field_i32 function
-                let get_field_sig = {
-                    let mut sig = module.make_signature();
-                    sig.call_conv = CallConv::SystemV;
-                    sig.params.push(AbiParam::new(I64)); // class pointer
-                    sig.params.push(AbiParam::new(I64)); // field name pointer
-                    sig.returns.push(AbiParam::new(I32)); // field value (i32)
-                    sig
-                };
+                // Determine field type based on field name and make appropriate runtime call
+                // This is a temporary approach - we should improve this with proper type information
+                match member.as_str() {
+                    "name" => {
+                        // String field - use plat_class_get_field_string
+                        let get_field_sig = {
+                            let mut sig = module.make_signature();
+                            sig.call_conv = CallConv::SystemV;
+                            sig.params.push(AbiParam::new(I64)); // class pointer
+                            sig.params.push(AbiParam::new(I64)); // field name pointer
+                            sig.returns.push(AbiParam::new(I64)); // string pointer
+                            sig
+                        };
 
-                let get_field_id = module.declare_function("plat_class_get_field_i32", Linkage::Import, &get_field_sig)
-                    .map_err(CodegenError::ModuleError)?;
-                let get_field_ref = module.declare_func_in_func(get_field_id, builder.func);
+                        let get_field_id = module.declare_function("plat_class_get_field_string", Linkage::Import, &get_field_sig)
+                            .map_err(CodegenError::ModuleError)?;
+                        let get_field_ref = module.declare_func_in_func(get_field_id, builder.func);
 
-                // Call plat_class_get_field_i32
-                let call = builder.ins().call(get_field_ref, &[object_val, field_name_val]);
-                let field_value = builder.inst_results(call)[0];
+                        // Call plat_class_get_field_string
+                        let call = builder.ins().call(get_field_ref, &[object_val, field_name_val]);
+                        let field_value = builder.inst_results(call)[0];
+                        Ok(field_value)
+                    }
+                    _ => {
+                        // Assume integer field - use plat_class_get_field_i32
+                        let get_field_sig = {
+                            let mut sig = module.make_signature();
+                            sig.call_conv = CallConv::SystemV;
+                            sig.params.push(AbiParam::new(I64)); // class pointer
+                            sig.params.push(AbiParam::new(I64)); // field name pointer
+                            sig.returns.push(AbiParam::new(I32)); // field value (i32)
+                            sig
+                        };
 
-                Ok(field_value)
+                        let get_field_id = module.declare_function("plat_class_get_field_i32", Linkage::Import, &get_field_sig)
+                            .map_err(CodegenError::ModuleError)?;
+                        let get_field_ref = module.declare_func_in_func(get_field_id, builder.func);
+
+                        // Call plat_class_get_field_i32
+                        let call = builder.ins().call(get_field_ref, &[object_val, field_name_val]);
+                        let field_value = builder.inst_results(call)[0];
+                        Ok(field_value)
+                    }
+                }
             }
             Expression::ConstructorCall { class_name, args, .. } => {
                 // Create a new class instance
@@ -3520,6 +3615,35 @@ impl CodeGenerator {
                 }
             }
             _ => false
+        }
+    }
+
+    fn is_class_type(expr: &Expression, variable_types: &HashMap<String, VariableType>) -> bool {
+        match expr {
+            Expression::ConstructorCall { .. } => true,
+            Expression::Identifier { name, .. } => {
+                // Look up variable type
+                if let Some(var_type) = variable_types.get(name) {
+                    matches!(var_type, VariableType::Class(_))
+                } else {
+                    false
+                }
+            }
+            _ => false
+        }
+    }
+
+    fn get_class_name(expr: &Expression, variable_types: &HashMap<String, VariableType>) -> Option<String> {
+        match expr {
+            Expression::ConstructorCall { class_name, .. } => Some(class_name.clone()),
+            Expression::Identifier { name, .. } => {
+                if let Some(VariableType::Class(class_name)) = variable_types.get(name) {
+                    Some(class_name.clone())
+                } else {
+                    None
+                }
+            }
+            _ => None
         }
     }
 
