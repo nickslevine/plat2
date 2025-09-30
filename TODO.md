@@ -1,19 +1,3 @@
-- [x] Enums (COMPLETE! unit variants, data variants, multi-field variants, pattern binding)
-- [x] Option type (COMPLETE! Some/None with pattern matching and data extraction)
-- [x] Result type (COMPLETE! Ok/Err with pattern matching and data extraction)
-- [x] Dict/HashMap (COMPLETE! Dict[K, V] with type safety and JSON-like syntax)
-- [x] String methods
-- [x] List methods
-- [x] Dict methods
-- [x] Set methods
-
-- [x] Classes (COMPLETE! Object-oriented programming with custom classes, constructors, methods, and field mutability)
-- [x] Generic Classes (COMPLETE! Generic class declarations with type parameter support)
-
-- [x] member access (COMPLETE! Field reading from class instances, including string fields)
-- [x] constructor calls (COMPLETE! Class instantiation with named arguments)
-- [x] class instantiation (COMPLETE! Runtime object creation and field assignment)
-- [x] method calls (COMPLETE! Instance methods with void, i32, and object return types)
 - [ ] type substitution for generic classes (Parser support exists, runtime instantiation needed)
 - [ ] inheritance and polymorphism (Base classes, virtual methods, super calls) 
 *  - Runtime codegen for inheritance (vtables for dynamic
@@ -22,6 +6,7 @@
 * enforce type annotations everywhere
 * for in
 
+* floats
 * regex
 * if expressions? 
 * for ranges

@@ -24,7 +24,7 @@ pub enum VariableType {
     I32,
     I64,
     String,
-    Array,
+    Array(Box<VariableType>), // Array with element type
     Dict,
     Set,
     Class(String), // class name
@@ -92,12 +92,90 @@ impl CodeGenerator {
         // Fallback to specific type detection
         match &arms[0].body {
             Expression::Literal(Literal::Bool(_, _)) => VariableType::Bool,
-            Expression::Literal(Literal::Array(_, _)) => VariableType::Array,
+            Expression::Literal(Literal::Array(_, _)) => VariableType::Array(Box::new(VariableType::I32)),
             Expression::Literal(Literal::Dict(_, _)) => VariableType::Dict,
             Expression::Literal(Literal::Set(_, _)) => VariableType::Set,
             Expression::EnumConstructor { enum_name, .. } => VariableType::Enum(enum_name.clone()),
             Expression::ConstructorCall { class_name, .. } => VariableType::Class(class_name.clone()),
             _ => VariableType::I32,
+        }
+    }
+
+    /// Infer the element type from an iterable expression (array)
+    /// This looks at the expression structure to determine what type of elements it contains
+    fn infer_element_type(iterable: &Expression, variable_types: &HashMap<String, VariableType>) -> VariableType {
+        match iterable {
+            // Direct array literal: look at first element to infer type
+            Expression::Literal(Literal::Array(elements, _)) => {
+                if elements.is_empty() {
+                    return VariableType::I32; // Default for empty arrays
+                }
+                match &elements[0] {
+                    Expression::Literal(Literal::Bool(_, _)) => VariableType::Bool,
+                    Expression::Literal(Literal::Integer(_, _)) => VariableType::I32,
+                    Expression::Literal(Literal::String(_, _)) => VariableType::String,
+                    Expression::Literal(Literal::InterpolatedString(_, _)) => VariableType::String,
+                    Expression::EnumConstructor { enum_name, .. } => VariableType::Enum(enum_name.clone()),
+                    Expression::ConstructorCall { class_name, .. } => VariableType::Class(class_name.clone()),
+                    Expression::Literal(Literal::Array(_, _)) => VariableType::Array(Box::new(VariableType::I32)),
+                    Expression::Literal(Literal::Dict(_, _)) => VariableType::Dict,
+                    Expression::Literal(Literal::Set(_, _)) => VariableType::Set,
+                    Expression::Identifier { name, .. } => {
+                        // Look up the variable's type
+                        variable_types.get(name).cloned().unwrap_or(VariableType::I32)
+                    }
+                    _ => VariableType::I32,
+                }
+            }
+            // Variable reference: look up its type in variable_types
+            Expression::Identifier { name, .. } => {
+                // For arrays stored in variables, extract the element type from Array(element_type)
+                match variable_types.get(name) {
+                    Some(VariableType::Array(element_type)) => *element_type.clone(),
+                    _ => VariableType::I32, // Default if not found or not an array
+                }
+            }
+            // Method call that returns an array
+            Expression::MethodCall { .. } => {
+                VariableType::I32 // Default assumption
+            }
+            // Function call that returns an array
+            Expression::Call { .. } => {
+                VariableType::I32 // Default assumption
+            }
+            _ => VariableType::I32,
+        }
+    }
+
+    /// Convert a VariableType to the corresponding Cranelift Type
+    fn variable_type_to_cranelift_type(var_type: &VariableType) -> Type {
+        match var_type {
+            VariableType::Bool => I32,      // Booleans are represented as i32
+            VariableType::I32 => I32,
+            VariableType::I64 => I64,
+            VariableType::String => I64,    // Strings are pointers
+            VariableType::Array(_) => I64,  // Arrays are pointers
+            VariableType::Dict => I64,      // Dicts are pointers
+            VariableType::Set => I64,       // Sets are pointers
+            VariableType::Class(_) => I64,  // Class instances are pointers
+            VariableType::Enum(_) => I64,   // Enums are 64-bit values (discriminant + data)
+        }
+    }
+
+    /// Convert an AST type to a VariableType
+    fn ast_type_to_variable_type(ast_type: &AstType) -> VariableType {
+        match ast_type {
+            AstType::Bool => VariableType::Bool,
+            AstType::I32 => VariableType::I32,
+            AstType::I64 => VariableType::I64,
+            AstType::String => VariableType::String,
+            AstType::List(element_type) => {
+                let element_var_type = Self::ast_type_to_variable_type(element_type);
+                VariableType::Array(Box::new(element_var_type))
+            }
+            AstType::Dict(_, _) => VariableType::Dict,
+            AstType::Set(_) => VariableType::Set,
+            AstType::Named(type_name, _) => VariableType::Class(type_name.clone()),
         }
     }
     pub fn new() -> Result<Self, CodegenError> {
@@ -398,16 +476,7 @@ impl CodeGenerator {
             variables.insert(param.name.clone(), var);
 
             // Track parameter type based on AST type
-            let var_type = match &param.ty {
-                AstType::String => VariableType::String,
-                AstType::I64 => VariableType::I64,
-                AstType::I32 => VariableType::I32,
-                AstType::Bool => VariableType::Bool,
-                AstType::List(_) => VariableType::Array,
-                AstType::Dict(_, _) => VariableType::Dict,
-                AstType::Set(_) => VariableType::Set,
-                AstType::Named(type_name, _) => VariableType::Class(type_name.clone()), // Custom types are classes
-            };
+            let var_type = Self::ast_type_to_variable_type(&param.ty);
             variable_types.insert(param.name.clone(), var_type);
         }
 
@@ -477,14 +546,29 @@ impl CodeGenerator {
                 let var = Variable::from_u32(*variable_counter);
                 *variable_counter += 1;
 
-                // Determine Cranelift type and Plat type based on expression
-                let (cranelift_type, plat_type) = match value {
+                // Determine Cranelift type and Plat type based on type annotation or expression
+                let (cranelift_type, plat_type) = if let Some(ast_ty) = ty {
+                    // Use the type annotation if available
+                    let var_type = Self::ast_type_to_variable_type(ast_ty);
+                    let cran_type = Self::variable_type_to_cranelift_type(&var_type);
+                    (cran_type, var_type)
+                } else {
+                    // Fall back to inferring from the expression
+                    match value {
                     Expression::Literal(Literal::String(_, _)) => (I64, VariableType::String),
                     Expression::Literal(Literal::InterpolatedString(_, _)) => (I64, VariableType::String),
-                    Expression::Literal(Literal::Array(_, _)) => (I64, VariableType::Array),
+                    Expression::Literal(Literal::Array(_, _)) => {
+                        let elem_type = Self::infer_element_type(value, variable_types);
+                        (I64, VariableType::Array(Box::new(elem_type)))
+                    }
                     Expression::Literal(Literal::Dict(_, _)) => (I64, VariableType::Dict),
                     Expression::Literal(Literal::Set(_, _)) => (I64, VariableType::Set),
-                    Expression::Index { .. } => (I32, VariableType::I32), // Array indexing returns i32 elements
+                    Expression::Index { object, .. } => {
+                        // Determine the element type from the array being indexed
+                        let element_type = Self::infer_element_type(object, variable_types);
+                        let cranelift_type = Self::variable_type_to_cranelift_type(&element_type);
+                        (cranelift_type, element_type)
+                    }
                     Expression::MethodCall { object, method, .. } => {
                         // Check if this is a class method
                         if Self::is_class_type(object, variable_types) {
@@ -513,14 +597,14 @@ impl CodeGenerator {
                                 "remove" => (I64, VariableType::I64), // Returns removed value
                                 "clear" | "merge" => (I32, VariableType::I32), // Void
                                 "length" => (I32, VariableType::I32),
-                                "keys" | "values" => (I64, VariableType::Array),
+                                "keys" | "values" => (I64, VariableType::Array(Box::new(VariableType::String))),
                                 _ => (I32, VariableType::I32),
                             }
                         } else {
                             match method.as_str() {
                                 "len" | "length" | "count" => (I32, VariableType::I32),
                                 "concat" | "trim" | "trim_left" | "trim_right" | "replace" | "replace_all" => (I64, VariableType::String),
-                                "split" | "slice" => (I64, VariableType::Array),
+                                "split" | "slice" => (I64, VariableType::Array(Box::new(VariableType::String))),
                                 "contains" | "starts_with" | "ends_with" | "is_alpha" | "is_numeric" | "is_alphanumeric" | "all" | "any" => (I32, VariableType::Bool),
                                 "get" | "remove_at" | "index_of" => (I64, VariableType::Enum("Option".to_string())), // Returns Option<T>
                                 "set" | "append" | "insert_at" | "clear" => (I32, VariableType::I32), // Returns unit/void, represented as i32
@@ -534,12 +618,22 @@ impl CodeGenerator {
                     Expression::Match { arms, .. } => {
                         let match_type = Self::determine_match_return_type(arms, variable_types);
                         let cranelift_type = match match_type {
-                            VariableType::String | VariableType::Array | VariableType::Enum(_) | VariableType::Class(_) => I64,
+                            VariableType::String | VariableType::Array(_) | VariableType::Enum(_) | VariableType::Class(_) => I64,
                             _ => I32,
                         };
                         (cranelift_type, match_type)
                     }
+                    Expression::Identifier { name, .. } => {
+                        // Look up the variable's type
+                        if let Some(var_type) = variable_types.get(name) {
+                            let cranelift_type = Self::variable_type_to_cranelift_type(var_type);
+                            (cranelift_type, var_type.clone())
+                        } else {
+                            (I32, VariableType::I32)
+                        }
+                    }
                     _ => (I32, VariableType::I32),
+                    }
                 };
 
                 builder.declare_var(var, cranelift_type);
@@ -553,14 +647,29 @@ impl CodeGenerator {
                 let var = Variable::from_u32(*variable_counter);
                 *variable_counter += 1;
 
-                // Determine Cranelift type and Plat type based on expression
-                let (cranelift_type, plat_type) = match value {
+                // Determine Cranelift type and Plat type based on type annotation or expression
+                let (cranelift_type, plat_type) = if let Some(ast_ty) = ty {
+                    // Use the type annotation if available
+                    let var_type = Self::ast_type_to_variable_type(ast_ty);
+                    let cran_type = Self::variable_type_to_cranelift_type(&var_type);
+                    (cran_type, var_type)
+                } else {
+                    // Fall back to inferring from the expression
+                    match value {
                     Expression::Literal(Literal::String(_, _)) => (I64, VariableType::String),
                     Expression::Literal(Literal::InterpolatedString(_, _)) => (I64, VariableType::String),
-                    Expression::Literal(Literal::Array(_, _)) => (I64, VariableType::Array),
+                    Expression::Literal(Literal::Array(_, _)) => {
+                        let elem_type = Self::infer_element_type(value, variable_types);
+                        (I64, VariableType::Array(Box::new(elem_type)))
+                    }
                     Expression::Literal(Literal::Dict(_, _)) => (I64, VariableType::Dict),
                     Expression::Literal(Literal::Set(_, _)) => (I64, VariableType::Set),
-                    Expression::Index { .. } => (I32, VariableType::I32), // Array indexing returns i32 elements
+                    Expression::Index { object, .. } => {
+                        // Determine the element type from the array being indexed
+                        let element_type = Self::infer_element_type(object, variable_types);
+                        let cranelift_type = Self::variable_type_to_cranelift_type(&element_type);
+                        (cranelift_type, element_type)
+                    }
                     Expression::MethodCall { object, method, .. } => {
                         // Check if this is a class method
                         if Self::is_class_type(object, variable_types) {
@@ -589,14 +698,14 @@ impl CodeGenerator {
                                 "remove" => (I64, VariableType::I64), // Returns removed value
                                 "clear" | "merge" => (I32, VariableType::I32), // Void
                                 "length" => (I32, VariableType::I32),
-                                "keys" | "values" => (I64, VariableType::Array),
+                                "keys" | "values" => (I64, VariableType::Array(Box::new(VariableType::String))),
                                 _ => (I32, VariableType::I32),
                             }
                         } else {
                             match method.as_str() {
                                 "len" | "length" | "count" => (I32, VariableType::I32),
                                 "concat" | "trim" | "trim_left" | "trim_right" | "replace" | "replace_all" => (I64, VariableType::String),
-                                "split" | "slice" => (I64, VariableType::Array),
+                                "split" | "slice" => (I64, VariableType::Array(Box::new(VariableType::String))),
                                 "contains" | "starts_with" | "ends_with" | "is_alpha" | "is_numeric" | "is_alphanumeric" | "all" | "any" => (I32, VariableType::Bool),
                                 "get" | "remove_at" | "index_of" => (I64, VariableType::Enum("Option".to_string())), // Returns Option<T>
                                 "set" | "append" | "insert_at" | "clear" => (I32, VariableType::I32), // Returns unit/void, represented as i32
@@ -610,12 +719,22 @@ impl CodeGenerator {
                     Expression::Match { arms, .. } => {
                         let match_type = Self::determine_match_return_type(arms, variable_types);
                         let cranelift_type = match match_type {
-                            VariableType::String | VariableType::Array | VariableType::Enum(_) | VariableType::Class(_) => I64,
+                            VariableType::String | VariableType::Array(_) | VariableType::Enum(_) | VariableType::Class(_) => I64,
                             _ => I32,
                         };
                         (cranelift_type, match_type)
                     }
+                    Expression::Identifier { name, .. } => {
+                        // Look up the variable's type
+                        if let Some(var_type) = variable_types.get(name) {
+                            let cranelift_type = Self::variable_type_to_cranelift_type(var_type);
+                            (cranelift_type, var_type.clone())
+                        } else {
+                            (I32, VariableType::I32)
+                        }
+                    }
                     _ => (I32, VariableType::I32),
+                    }
                 };
 
                 builder.declare_var(var, cranelift_type);
@@ -756,6 +875,10 @@ impl CodeGenerator {
                 Ok(false) // while loops don't guarantee return
             }
             Statement::For { variable, iterable, body, .. } => {
+                // Infer the element type from the iterable expression
+                let element_type = Self::infer_element_type(iterable, variable_types);
+                let element_cranelift_type = Self::variable_type_to_cranelift_type(&element_type);
+
                 // Evaluate iterable
                 let array_val = Self::generate_expression_helper(builder, iterable, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
 
@@ -783,14 +906,14 @@ impl CodeGenerator {
                 let zero = builder.ins().iconst(I32, 0);
                 builder.def_var(index_var, zero);
 
-                // Create loop variable for element
+                // Create loop variable for element with correct Cranelift type
                 let element_var = Variable::from_u32(*variable_counter);
                 *variable_counter += 1;
-                builder.declare_var(element_var, I32);
+                builder.declare_var(element_var, element_cranelift_type);
 
-                // Store in variables map
+                // Store in variables map with proper element type
                 let old_variable = variables.insert(variable.clone(), element_var);
-                let old_type = variable_types.insert(variable.clone(), VariableType::I32);
+                let old_type = variable_types.insert(variable.clone(), element_type.clone());
 
                 // Create blocks
                 let loop_header = builder.create_block();
@@ -827,9 +950,21 @@ impl CodeGenerator {
                 let call = builder.ins().call(get_ref, &[array_val, index_i64]);
                 let element_val_i64 = builder.inst_results(call)[0];
 
-                // For now, convert back to i32 for compatibility
-                // TODO: Make this type-aware based on array element type
-                let element_val = builder.ins().ireduce(I32, element_val_i64);
+                // Convert the i64 value to the appropriate type based on element_type
+                let element_val = match element_cranelift_type {
+                    I32 => {
+                        // For i32 types (bool, i32), reduce from i64 to i32
+                        builder.ins().ireduce(I32, element_val_i64)
+                    }
+                    I64 => {
+                        // For i64 types (string, arrays, objects, enums), keep as i64
+                        element_val_i64
+                    }
+                    _ => {
+                        // Fallback for any other types
+                        element_val_i64
+                    }
+                };
 
                 // Set loop variable to current element
                 builder.def_var(element_var, element_val);
@@ -1388,9 +1523,24 @@ impl CodeGenerator {
                 let call = builder.ins().call(get_ref, &[object_val, index_i64]);
                 let result_i64 = builder.inst_results(call)[0];
 
-                // For now, convert back to i32 for compatibility
-                // TODO: Make this type-aware based on array element type
-                let result = builder.ins().ireduce(I32, result_i64);
+                // Convert the result based on the element type
+                let element_type = Self::infer_element_type(object, variable_types);
+                let element_cranelift_type = Self::variable_type_to_cranelift_type(&element_type);
+
+                let result = match element_cranelift_type {
+                    I32 => {
+                        // For i32 types (bool, i32), reduce from i64 to i32
+                        builder.ins().ireduce(I32, result_i64)
+                    }
+                    I64 => {
+                        // For i64 types (string, arrays, objects, enums), keep as i64
+                        result_i64
+                    }
+                    _ => {
+                        // Fallback for any other types
+                        result_i64
+                    }
+                };
 
                 Ok(result)
             }
@@ -2508,7 +2658,7 @@ impl CodeGenerator {
                         Expression::Literal(Literal::Dict(_, _)) => true,
                         Expression::Literal(Literal::Set(_, _)) => true,
                         Expression::Identifier { name, .. } => {
-                            matches!(variable_types.get(name), Some(VariableType::String) | Some(VariableType::Array) | Some(VariableType::Dict) | Some(VariableType::Set) | Some(VariableType::Class(_)))
+                            matches!(variable_types.get(name), Some(VariableType::String) | Some(VariableType::Array(_)) | Some(VariableType::Dict) | Some(VariableType::Set) | Some(VariableType::Class(_)))
                         }
                         _ => false,
                     };
@@ -2644,7 +2794,7 @@ impl CodeGenerator {
                 // Determine the return type for the match expression early
                 let match_return_type = Self::determine_match_return_type(arms, variable_types);
                 let cont_param_type = match match_return_type {
-                    VariableType::String | VariableType::Array | VariableType::Enum(_) | VariableType::Class(_) => I64,
+                    VariableType::String | VariableType::Array(_) | VariableType::Enum(_) | VariableType::Class(_) => I64,
                     _ => I32,
                 };
 
@@ -3155,7 +3305,7 @@ impl CodeGenerator {
                                     // String variable, use directly
                                     expr_val
                                 }
-                                Some(VariableType::Array) => {
+                                Some(VariableType::Array(_)) => {
                                     // Array variable, convert to string representation
                                     let convert_sig = {
                                         let mut sig = module.make_signature();
@@ -3732,7 +3882,7 @@ impl CodeGenerator {
             Expression::Identifier { name, .. } => {
                 // Look up variable type
                 if let Some(var_type) = variable_types.get(name) {
-                    matches!(var_type, VariableType::Array)
+                    matches!(var_type, VariableType::Array(_))
                 } else {
                     false
                 }
