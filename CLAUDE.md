@@ -227,8 +227,9 @@ Deliver a working `plat` CLI binary that:
   - [x] Array interpolation and display formatting
   - [x] Indexing operations: `arr[0]` with bounds checking
   - [x] Methods: `.len()` for all types
-  - [x] Iteration: `for (item in array)` support
+  - [x] Iteration: `for (item in array)` support for all types including custom classes
   - [x] AST type annotation integration for type determination
+  - [x] Custom class array support: `List[Point]` with proper pointer storage and retrieval
 
 - [x] **Dict[K, V]**: Key-value dictionary collections with type safety
   - [x] Type-safe creation: `Dict[string, i32]`, `Dict[string, string]`
@@ -605,7 +606,10 @@ fn main() -> i32 {
 - [x] **🎉 NEW WORKING**: `virtual fn make_sound() -> string` → virtual method declarations ✅
 - [x] **🎉 NEW WORKING**: `override fn make_sound() -> string` → method overriding ✅
 - [x] **🎉 NEW WORKING**: `super.init(name, age)` → super method calls ✅
-- [x] **🏆 ACHIEVEMENT**: Complete object-oriented programming + algebraic data types + generic collections + dictionaries + sets + **generics + inheritance** ready for production!
+- [x] **🎉 NEW WORKING**: `let points: List[Point] = [p1, p2, p3]` → arrays of custom classes ✅
+- [x] **🎉 NEW WORKING**: `let first = points[0]; first.get_x()` → indexing and method calls on class arrays ✅
+- [x] **🎉 NEW WORKING**: `for (point in points) { point.method() }` → iteration over class arrays ✅
+- [x] **🏆 ACHIEVEMENT**: Complete object-oriented programming + algebraic data types + generic collections + dictionaries + sets + **generics + inheritance + class arrays** ready for production!
 
 ### 📝 **Complete Working Examples (Production Ready!)**
 
@@ -744,6 +748,55 @@ fn main() {
     // Bool arrays use 1 byte per element
     // i32 arrays use 4 bytes per element
     // String arrays use 8 bytes per pointer
+}
+```
+
+```plat
+// ✅ COMPLETE: Arrays of custom classes with full support
+class Point {
+  let x: i32;
+  let y: i32;
+
+  init(x: i32, y: i32) -> Point {
+    self.x = x;
+    self.y = y;
+    return self;
+  }
+
+  fn get_x() -> i32 {
+    return self.x;
+  }
+
+  fn get_y() -> i32 {
+    return self.y;
+  }
+}
+
+fn main() -> i32 {
+  let p1 = Point(x = 10, y = 20);
+  let p2 = Point(x = 30, y = 40);
+  let p3 = Point(x = 50, y = 60);
+
+  // Create array of custom class instances
+  let points: List[Point] = [p1, p2, p3];
+
+  // Array indexing works correctly with class pointers
+  let first = points[0];
+  print("First point x: ${first.get_x()}");  // Outputs: "First point x: 10"
+
+  // Iteration over class arrays fully functional
+  print("Iterating over points:");
+  for (point in points) {
+    let x_val = point.get_x();
+    let y_val = point.get_y();
+    print("Point: (${x_val}, ${y_val})");
+  }
+  // Outputs:
+  // Point: (10, 20)
+  // Point: (30, 40)
+  // Point: (50, 60)
+
+  return 0;
 }
 ```
 

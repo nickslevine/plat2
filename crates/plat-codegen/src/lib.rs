@@ -3047,7 +3047,8 @@ impl CodeGenerator {
                 AstType::I32 => "plat_array_create_i32",
                 AstType::I64 => "plat_array_create_i64",
                 AstType::String => "plat_array_create_string",
-                _ => "plat_array_create_i32", // fallback
+                AstType::Named(_, _) => "plat_array_create_class", // Custom class types
+                _ => "plat_array_create_i32", // fallback for unknown types
             };
 
             let create_sig = {
@@ -3095,6 +3096,7 @@ impl CodeGenerator {
             AstType::I32 => (std::mem::size_of::<i32>(), "plat_array_create_i32"),
             AstType::I64 => (std::mem::size_of::<i64>(), "plat_array_create_i64"),
             AstType::String => (std::mem::size_of::<*const u8>(), "plat_array_create_string"),
+            AstType::Named(_, _) => (std::mem::size_of::<*const u8>(), "plat_array_create_class"), // Custom class pointers
             _ => (std::mem::size_of::<i32>(), "plat_array_create_i32"), // fallback
         };
 

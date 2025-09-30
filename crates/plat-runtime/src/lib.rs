@@ -772,6 +772,7 @@ pub const ARRAY_TYPE_I32: u8 = 0;
 pub const ARRAY_TYPE_I64: u8 = 1;
 pub const ARRAY_TYPE_BOOL: u8 = 2;
 pub const ARRAY_TYPE_STRING: u8 = 3;
+pub const ARRAY_TYPE_CLASS: u8 = 4; // Custom class pointers (8 bytes like strings)
 
 /// Array structure for runtime (C-compatible)
 /// Generic data pointer that can hold any type
@@ -806,6 +807,12 @@ pub extern "C" fn plat_array_create_bool(elements: *const bool, count: usize) ->
 #[no_mangle]
 pub extern "C" fn plat_array_create_string(elements: *const *const c_char, count: usize) -> *mut RuntimeArray {
     create_typed_array(elements as *const u8, count, std::mem::size_of::<*const c_char>(), ARRAY_TYPE_STRING)
+}
+
+/// Create a new class array on the GC heap (custom class pointers)
+#[no_mangle]
+pub extern "C" fn plat_array_create_class(elements: *const *const u8, count: usize) -> *mut RuntimeArray {
+    create_typed_array(elements as *const u8, count, std::mem::size_of::<*const u8>(), ARRAY_TYPE_CLASS)
 }
 
 /// Generic array creation helper
@@ -892,6 +899,10 @@ pub extern "C" fn plat_array_get(array_ptr: *const RuntimeArray, index: usize) -
                 let data_ptr = array.data as *const *const c_char;
                 *data_ptr.add(index) as i64
             },
+            ARRAY_TYPE_CLASS => {
+                let data_ptr = array.data as *const *const u8;
+                *data_ptr.add(index) as i64
+            },
             _ => 0,
         }
     }
@@ -963,6 +974,12 @@ pub extern "C" fn plat_array_to_string(array_ptr: *const RuntimeArray) -> *const
                         } else {
                             result.push_str("\"<null>\"");
                         }
+                    },
+                    ARRAY_TYPE_CLASS => {
+                        let data_ptr = array.data as *const *const u8;
+                        let class_ptr = *data_ptr.add(i);
+                        // For class instances, show pointer address
+                        result.push_str(&format!("<instance@{:p}>", class_ptr));
                     },
                     _ => {
                         result.push_str("<unknown>");
@@ -2465,6 +2482,10 @@ pub extern "C" fn plat_array_get_safe(array_ptr: *const RuntimeArray, index: i32
                 let data_ptr = array.data as *const *const c_char;
                 *data_ptr.add(index) as i64
             },
+            ARRAY_TYPE_CLASS => {
+                let data_ptr = array.data as *const *const u8;
+                *data_ptr.add(index) as i64
+            },
             _ => return (false, 0),
         };
 
@@ -2503,6 +2524,10 @@ pub extern "C" fn plat_array_set(array_ptr: *mut RuntimeArray, index: i32, value
             ARRAY_TYPE_STRING => {
                 let data_ptr = array.data as *mut *const c_char;
                 *data_ptr.add(index) = value as *const c_char;
+            },
+            ARRAY_TYPE_CLASS => {
+                let data_ptr = array.data as *mut *const u8;
+                *data_ptr.add(index) = value as *const u8;
             },
             _ => return false,
         };
@@ -2558,6 +2583,10 @@ pub extern "C" fn plat_array_append(array_ptr: *mut RuntimeArray, value: i64) ->
             ARRAY_TYPE_STRING => {
                 let data_ptr = array.data as *mut *const c_char;
                 *data_ptr.add(array.length) = value as *const c_char;
+            },
+            ARRAY_TYPE_CLASS => {
+                let data_ptr = array.data as *mut *const u8;
+                *data_ptr.add(array.length) = value as *const u8;
             },
             _ => return false,
         };
@@ -2622,6 +2651,10 @@ pub extern "C" fn plat_array_insert_at(array_ptr: *mut RuntimeArray, index: i32,
                     let data_ptr = array.data as *mut *const c_char;
                     std::ptr::copy(data_ptr.add(index), data_ptr.add(index + 1), elements_to_move);
                 },
+                ARRAY_TYPE_CLASS => {
+                    let data_ptr = array.data as *mut *const u8;
+                    std::ptr::copy(data_ptr.add(index), data_ptr.add(index + 1), elements_to_move);
+                },
                 _ => return false,
             }
         }
@@ -2643,6 +2676,10 @@ pub extern "C" fn plat_array_insert_at(array_ptr: *mut RuntimeArray, index: i32,
             ARRAY_TYPE_STRING => {
                 let data_ptr = array.data as *mut *const c_char;
                 *data_ptr.add(index) = value as *const c_char;
+            },
+            ARRAY_TYPE_CLASS => {
+                let data_ptr = array.data as *mut *const u8;
+                *data_ptr.add(index) = value as *const u8;
             },
             _ => return false,
         };
@@ -2685,6 +2722,10 @@ pub extern "C" fn plat_array_remove_at(array_ptr: *mut RuntimeArray, index: i32)
                 let data_ptr = array.data as *const *const c_char;
                 *data_ptr.add(index) as i64
             },
+            ARRAY_TYPE_CLASS => {
+                let data_ptr = array.data as *const *const u8;
+                *data_ptr.add(index) as i64
+            },
             _ => return (false, 0),
         };
 
@@ -2706,6 +2747,10 @@ pub extern "C" fn plat_array_remove_at(array_ptr: *mut RuntimeArray, index: i32)
                 },
                 ARRAY_TYPE_STRING => {
                     let data_ptr = array.data as *mut *const c_char;
+                    std::ptr::copy(data_ptr.add(index + 1), data_ptr.add(index), elements_to_move);
+                },
+                ARRAY_TYPE_CLASS => {
+                    let data_ptr = array.data as *mut *const u8;
                     std::ptr::copy(data_ptr.add(index + 1), data_ptr.add(index), elements_to_move);
                 },
                 _ => return (false, 0),
@@ -2762,7 +2807,11 @@ pub extern "C" fn plat_array_contains(array_ptr: *const RuntimeArray, value: i64
                     let data_ptr = array.data as *const *const c_char;
                     *data_ptr.add(i) as i64
                 },
-                _ => continue,
+            ARRAY_TYPE_CLASS => {
+                let data_ptr = array.data as *const *const u8;
+                *data_ptr.add(i) as i64
+            },
+            _ => continue,
             };
 
             if element_value == value {
@@ -2805,7 +2854,11 @@ pub extern "C" fn plat_array_index_of(array_ptr: *const RuntimeArray, value: i64
                     let data_ptr = array.data as *const *const c_char;
                     *data_ptr.add(i) as i64
                 },
-                _ => continue,
+            ARRAY_TYPE_CLASS => {
+                let data_ptr = array.data as *const *const u8;
+                *data_ptr.add(i) as i64
+            },
+            _ => continue,
             };
 
             if element_value == value {
@@ -2849,7 +2902,11 @@ pub extern "C" fn plat_array_count(array_ptr: *const RuntimeArray, value: i64) -
                     let data_ptr = array.data as *const *const c_char;
                     *data_ptr.add(i) as i64
                 },
-                _ => continue,
+            ARRAY_TYPE_CLASS => {
+                let data_ptr = array.data as *const *const u8;
+                *data_ptr.add(i) as i64
+            },
+            _ => continue,
             };
 
             if element_value == value {
@@ -2896,6 +2953,10 @@ pub extern "C" fn plat_array_slice(array_ptr: *const RuntimeArray, start: i32, e
             ARRAY_TYPE_STRING => {
                 let data_ptr = array.data as *const *const c_char;
                 plat_array_create_string(data_ptr.add(start), slice_length)
+            },
+            ARRAY_TYPE_CLASS => {
+                let data_ptr = array.data as *const *const u8;
+                plat_array_create_class(data_ptr.add(start), slice_length)
             },
             _ => std::ptr::null_mut(),
         }
@@ -2994,6 +3055,11 @@ pub extern "C" fn plat_array_all_truthy(array_ptr: *const RuntimeArray) -> bool 
                     let str_ptr = *data_ptr.add(i);
                     if str_ptr.is_null() { 0 } else { 1 }
                 },
+                ARRAY_TYPE_CLASS => {
+                    let data_ptr = array.data as *const *const u8;
+                    let class_ptr = *data_ptr.add(i);
+                    if class_ptr.is_null() { 0 } else { 1 }
+                },
                 _ => 0,
             };
 
@@ -3037,6 +3103,11 @@ pub extern "C" fn plat_array_any_truthy(array_ptr: *const RuntimeArray) -> bool 
                     let data_ptr = array.data as *const *const c_char;
                     let str_ptr = *data_ptr.add(i);
                     if str_ptr.is_null() { 0 } else { 1 }
+                },
+                ARRAY_TYPE_CLASS => {
+                    let data_ptr = array.data as *const *const u8;
+                    let class_ptr = *data_ptr.add(i);
+                    if class_ptr.is_null() { 0 } else { 1 }
                 },
                 _ => 0,
             };
