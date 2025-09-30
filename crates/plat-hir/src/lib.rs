@@ -439,6 +439,46 @@ impl TypeChecker {
         Ok(())
     }
 
+    /// Check if derived_class is a subclass of base_class (including transitive inheritance)
+    fn is_derived_from(&self, derived_class: &str, base_class: &str) -> bool {
+        if derived_class == base_class {
+            return true;
+        }
+
+        let mut current = Some(derived_class.to_string());
+        while let Some(class_name) = current {
+            if class_name == base_class {
+                return true;
+            }
+            current = self.classes.get(&class_name)
+                .and_then(|info| info.parent_class.clone());
+        }
+
+        false
+    }
+
+    /// Check if value_type can be assigned to expected_type (with upcasting support)
+    fn is_assignable(&self, expected_type: &HirType, value_type: &HirType) -> bool {
+        // Exact match is always assignable
+        if expected_type == value_type {
+            return true;
+        }
+
+        // Check for class upcasting: derived class -> base class
+        match (expected_type, value_type) {
+            (HirType::Class(base_name, base_type_args), HirType::Class(derived_name, derived_type_args)) => {
+                // For now, require type arguments to match exactly (no variance)
+                // In the future, we could support covariant type parameters
+                if base_type_args == derived_type_args {
+                    self.is_derived_from(derived_name, base_name)
+                } else {
+                    false
+                }
+            }
+            _ => false
+        }
+    }
+
     fn collect_function_signature(&mut self, function: &Function) -> Result<(), DiagnosticError> {
         self.collect_function_signature_with_name(&function.name, function)
     }
@@ -505,15 +545,21 @@ impl TypeChecker {
             Statement::Let { name, ty, value, .. } => {
                 let value_type = self.check_expression(value)?;
 
-                // Check if explicit type matches inferred type
-                if let Some(explicit_type) = ty {
+                // Determine the static type to store in the symbol table
+                let stored_type = if let Some(explicit_type) = ty {
                     let explicit_hir_type = self.ast_type_to_hir_type(explicit_type)?;
-                    if explicit_hir_type != value_type {
+                    // Check if value type is compatible with explicit type (allows upcasting)
+                    if !self.is_assignable(&explicit_hir_type, &value_type) {
                         return Err(DiagnosticError::Type(
                             format!("Type mismatch: expected {:?}, found {:?}", explicit_hir_type, value_type)
                         ));
                     }
-                }
+                    // Store the explicit (static) type, not the value's dynamic type
+                    explicit_hir_type
+                } else {
+                    // No explicit type annotation, use inferred type
+                    value_type
+                };
 
                 // Check for shadowing (not allowed with let)
                 if self.scopes.last().unwrap().contains_key(name) {
@@ -522,20 +568,26 @@ impl TypeChecker {
                     ));
                 }
 
-                self.scopes.last_mut().unwrap().insert(name.clone(), value_type);
+                self.scopes.last_mut().unwrap().insert(name.clone(), stored_type);
             }
             Statement::Var { name, ty, value, .. } => {
                 let value_type = self.check_expression(value)?;
 
-                // Check if explicit type matches inferred type
-                if let Some(explicit_type) = ty {
+                // Determine the static type to store in the symbol table
+                let stored_type = if let Some(explicit_type) = ty {
                     let explicit_hir_type = self.ast_type_to_hir_type(explicit_type)?;
-                    if explicit_hir_type != value_type {
+                    // Check if value type is compatible with explicit type (allows upcasting)
+                    if !self.is_assignable(&explicit_hir_type, &value_type) {
                         return Err(DiagnosticError::Type(
                             format!("Type mismatch: expected {:?}, found {:?}", explicit_hir_type, value_type)
                         ));
                     }
-                }
+                    // Store the explicit (static) type, not the value's dynamic type
+                    explicit_hir_type
+                } else {
+                    // No explicit type annotation, use inferred type
+                    value_type
+                };
 
                 // Check for shadowing (not allowed with var)
                 if self.scopes.last().unwrap().contains_key(name) {
@@ -544,7 +596,7 @@ impl TypeChecker {
                     ));
                 }
 
-                self.scopes.last_mut().unwrap().insert(name.clone(), value_type);
+                self.scopes.last_mut().unwrap().insert(name.clone(), stored_type);
             }
             Statement::Expression(expr) => {
                 self.check_expression(expr)?;
@@ -677,7 +729,8 @@ impl TypeChecker {
                     Expression::Identifier { name, .. } => {
                         let variable_type = self.lookup_variable(name)?;
 
-                        if value_type != variable_type {
+                        // Check if assignment is type-compatible (allows upcasting)
+                        if !self.is_assignable(&variable_type, &value_type) {
                             return Err(DiagnosticError::Type(
                                 format!("Assignment type mismatch: variable '{}' has type {:?}, assigned {:?}", name, variable_type, value_type)
                             ));
@@ -706,7 +759,8 @@ impl TypeChecker {
                                             format!("Cannot assign to immutable field '{}.{}'", class_name, member)
                                         ));
                                     }
-                                    if value_type != field_info.ty {
+                                    // Check if assignment is type-compatible (allows upcasting)
+                                    if !self.is_assignable(&field_info.ty, &value_type) {
                                         return Err(DiagnosticError::Type(
                                             format!("Assignment type mismatch: field '{}.{}' has type {:?}, assigned {:?}",
                                                    class_name, member, field_info.ty, value_type)
@@ -1778,7 +1832,8 @@ impl TypeChecker {
                         let arg_type = self.check_expression(&arg.value)?;
                         let expected_type = field_info.ty.substitute_types(&substitution);
 
-                        if arg_type != expected_type {
+                        // Check if argument type is compatible with field type (allows upcasting)
+                        if !self.is_assignable(&expected_type, &arg_type) {
                             return Err(DiagnosticError::Type(
                                 format!("Constructor argument '{}' has type {:?}, expected {:?}",
                                        arg.name, arg_type, expected_type)

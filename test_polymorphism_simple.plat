@@ -1,0 +1,68 @@
+class Animal {
+  let species: string;
+
+  init(species: string) -> Animal {
+    self.species = species;
+    return self;
+  }
+
+  fn get_species() -> string {
+    return self.species;
+  }
+}
+
+class Dog : Animal {
+  let species: string;
+  let breed: string;
+
+  init(species: string, breed: string) -> Dog {
+    self.species = species;
+    self.breed = breed;
+    return self;
+  }
+
+  fn get_breed() -> string {
+    return self.breed;
+  }
+}
+
+class Cat : Animal {
+  let species: string;
+  let color: string;
+
+  init(species: string, color: string) -> Cat {
+    self.species = species;
+    self.color = color;
+    return self;
+  }
+
+  fn get_color() -> string {
+    return self.color;
+  }
+}
+
+fn main() -> i32 {
+  // Polymorphic assignment: Store derived types in base type variable
+  print("Creating Dog as Animal...");
+  let animal1: Animal = Dog(species = "Canine", breed = "Golden Retriever");
+  print("Dog created successfully!");
+
+  print("Creating Cat as Animal...");
+  let animal2: Animal = Cat(species = "Feline", color = "Orange");
+  print("Cat created successfully!");
+
+  // Access base class methods
+  print("Animal 1 species: ${animal1.get_species()}");
+  print("Animal 2 species: ${animal2.get_species()}");
+
+  // Reassignment with different derived types
+  print("Testing reassignment...");
+  var pet: Animal = Dog(species = "Canine", breed = "Beagle");
+  print("First pet assigned!");
+
+  pet = Cat(species = "Feline", color = "Black");
+  print("Pet reassigned successfully!");
+
+  print("Polymorphism working perfectly!");
+  return 0;
+}

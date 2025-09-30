@@ -869,4 +869,275 @@ mod tests {
 
         assert!(type_check(input).is_ok());
     }
+
+    #[test]
+    fn test_polymorphic_assignment_let() {
+        let input = r#"
+            class Animal {
+                let species: string;
+
+                init(species: string) -> Animal {
+                    self.species = species;
+                    return self;
+                }
+
+                virtual fn make_sound() -> string {
+                    return "Generic animal sound";
+                }
+            }
+
+            class Dog : Animal {
+                let species: string;
+                let breed: string;
+
+                init(species: string, breed: string) -> Dog {
+                    self.species = species;
+                    self.breed = breed;
+                    return self;
+                }
+
+                override fn make_sound() -> string {
+                    return "Woof!";
+                }
+            }
+
+            fn main() -> i32 {
+                let animal: Animal = Dog(species = "Canine", breed = "Golden");
+                print("Animal created");
+                return 0;
+            }
+        "#;
+
+        let result = type_check(input);
+        if let Err(e) = &result {
+            eprintln!("Error: {}", e);
+        }
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_polymorphic_assignment_var() {
+        let input = r#"
+            class Animal {
+                let name: string;
+
+                init(name: string) -> Animal {
+                    self.name = name;
+                    return self;
+                }
+            }
+
+            class Cat : Animal {
+                let name: string;
+
+                init(name: string) -> Cat {
+                    self.name = name;
+                    return self;
+                }
+            }
+
+            fn main() -> i32 {
+                var animal: Animal = Cat(name = "Whiskers");
+                print("Cat created as Animal");
+                return 0;
+            }
+        "#;
+
+        assert!(type_check(input).is_ok());
+    }
+
+    #[test]
+    fn test_polymorphic_assignment_transitive() {
+        let input = r#"
+            class Animal {
+                let name: string;
+
+                init(name: string) -> Animal {
+                    self.name = name;
+                    return self;
+                }
+            }
+
+            class Mammal : Animal {
+                let name: string;
+
+                init(name: string) -> Mammal {
+                    self.name = name;
+                    return self;
+                }
+            }
+
+            class Dog : Mammal {
+                let name: string;
+
+                init(name: string) -> Dog {
+                    self.name = name;
+                    return self;
+                }
+            }
+
+            fn main() -> i32 {
+                let animal: Animal = Dog(name = "Rex");
+                let mammal: Mammal = Dog(name = "Spot");
+                print("Transitive inheritance works!");
+                return 0;
+            }
+        "#;
+
+        assert!(type_check(input).is_ok());
+    }
+
+    #[test]
+    fn test_polymorphic_assignment_field() {
+        let input = r#"
+            class Animal {
+                let name: string;
+
+                init(name: string) -> Animal {
+                    self.name = name;
+                    return self;
+                }
+            }
+
+            class Dog : Animal {
+                let name: string;
+
+                init(name: string) -> Dog {
+                    self.name = name;
+                    return self;
+                }
+            }
+
+            class AnimalContainer {
+                var animal: Animal;
+
+                init(animal: Animal) -> AnimalContainer {
+                    self.animal = animal;
+                    return self;
+                }
+
+                fn set_animal(animal: Animal) {
+                    self.animal = animal;
+                }
+            }
+
+            fn main() -> i32 {
+                let dog = Dog(name = "Buddy");
+                let container = AnimalContainer(animal = dog);
+                print("Dog stored in Animal field");
+                return 0;
+            }
+        "#;
+
+        let result = type_check(input);
+        if let Err(e) = &result {
+            eprintln!("Field test error: {}", e);
+        }
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_polymorphic_assignment_invalid_upcast() {
+        let input = r#"
+            class Animal {
+                let name: string;
+
+                init(name: string) -> Animal {
+                    self.name = name;
+                    return self;
+                }
+            }
+
+            class Dog : Animal {
+                let name: string;
+
+                init(name: string) -> Dog {
+                    self.name = name;
+                    return self;
+                }
+            }
+
+            fn main() -> i32 {
+                let dog: Dog = Animal(name = "Generic");
+                return 0;
+            }
+        "#;
+
+        let result = type_check(input);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Type mismatch"));
+    }
+
+    #[test]
+    fn test_polymorphic_assignment_unrelated_classes() {
+        let input = r#"
+            class Animal {
+                let name: string;
+
+                init(name: string) -> Animal {
+                    self.name = name;
+                    return self;
+                }
+            }
+
+            class Vehicle {
+                let model: string;
+
+                init(model: string) -> Vehicle {
+                    self.model = model;
+                    return self;
+                }
+            }
+
+            fn main() -> i32 {
+                let animal: Animal = Vehicle(model = "Car");
+                return 0;
+            }
+        "#;
+
+        let result = type_check(input);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Type mismatch"));
+    }
+
+    #[test]
+    fn test_polymorphic_assignment_variable_reassignment() {
+        let input = r#"
+            class Animal {
+                let name: string;
+
+                init(name: string) -> Animal {
+                    self.name = name;
+                    return self;
+                }
+            }
+
+            class Dog : Animal {
+                let name: string;
+
+                init(name: string) -> Dog {
+                    self.name = name;
+                    return self;
+                }
+            }
+
+            class Cat : Animal {
+                let name: string;
+
+                init(name: string) -> Cat {
+                    self.name = name;
+                    return self;
+                }
+            }
+
+            fn main() -> i32 {
+                var animal: Animal = Dog(name = "Buddy");
+                animal = Cat(name = "Whiskers");
+                print("Can reassign different derived types to base type variable");
+                return 0;
+            }
+        "#;
+
+        assert!(type_check(input).is_ok());
+    }
 }

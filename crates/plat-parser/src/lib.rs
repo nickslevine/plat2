@@ -667,7 +667,12 @@ impl Parser {
         if self.match_token(&Token::Super) {
             let start = self.previous_span().start;
             self.consume(Token::Dot, "Expected '.' after 'super'")?;
-            let method = self.consume_identifier("Expected method name after 'super.'")?;
+            // Allow 'init' keyword as a method name in super calls
+            let method = if self.match_token(&Token::Init) {
+                "init".to_string()
+            } else {
+                self.consume_identifier("Expected method name after 'super.'")?
+            };
             self.consume(Token::LeftParen, "Expected '(' after super method name")?;
             let args = self.parse_arguments()?;
             self.consume(Token::RightParen, "Expected ')' after super method arguments")?;

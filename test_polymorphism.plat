@@ -1,0 +1,78 @@
+class Animal {
+  let species: string;
+
+  init(species: string) -> Animal {
+    self.species = species;
+    return self;
+  }
+
+  virtual fn make_sound() -> string {
+    return "Generic animal sound";
+  }
+
+  fn get_species() -> string {
+    return self.species;
+  }
+}
+
+class Dog : Animal {
+  let species: string;
+  let breed: string;
+
+  init(species: string, breed: string) -> Dog {
+    self.species = species;
+    self.breed = breed;
+    return self;
+  }
+
+  override fn make_sound() -> string {
+    return "Woof!";
+  }
+
+  fn get_breed() -> string {
+    return self.breed;
+  }
+}
+
+class Cat : Animal {
+  let species: string;
+  let color: string;
+
+  init(species: string, color: string) -> Cat {
+    self.species = species;
+    self.color = color;
+    return self;
+  }
+
+  override fn make_sound() -> string {
+    return "Meow!";
+  }
+
+  fn get_color() -> string {
+    return self.color;
+  }
+}
+
+fn main() -> i32 {
+  // Polymorphic assignment: Store derived types in base type variable
+  let animal1: Animal = Dog(species = "Canine", breed = "Golden Retriever");
+  let animal2: Animal = Cat(species = "Feline", color = "Orange");
+
+  // Access base class methods
+  print("Animal 1 species: ${animal1.get_species()}");
+  print("Animal 2 species: ${animal2.get_species()}");
+
+  // Virtual method dispatch works through polymorphic references
+  print("Animal 1 says: ${animal1.make_sound()}");
+  print("Animal 2 says: ${animal2.make_sound()}");
+
+  // Reassignment with different derived types
+  var pet: Animal = Dog(species = "Canine", breed = "Beagle");
+  print("Pet says: ${pet.make_sound()}");
+
+  pet = Cat(species = "Feline", color = "Black");
+  print("Pet now says: ${pet.make_sound()}");
+
+  print("Polymorphism working perfectly!");
+  return 0;
+}

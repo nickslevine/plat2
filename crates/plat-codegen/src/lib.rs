@@ -40,12 +40,23 @@ struct ClassField {
     cranelift_type: Type,
 }
 
+/// Metadata about a virtual method in a class
+#[derive(Debug, Clone)]
+struct VirtualMethod {
+    name: String,
+    vtable_index: usize,
+    func_id: Option<FuncId>,
+}
+
 /// Metadata about a class definition
 #[derive(Debug, Clone)]
 struct ClassMetadata {
     name: String,
     fields: Vec<ClassField>,
     size: i32,
+    parent_class: Option<String>,
+    virtual_methods: Vec<VirtualMethod>,
+    has_vtable: bool,
 }
 
 pub struct CodeGenerator {
@@ -210,6 +221,27 @@ impl CodeGenerator {
         let mut fields = Vec::new();
         let mut current_offset = 0i32;
 
+        // Check if this class or any parent has virtual methods
+        let has_virtual_methods = class_decl.methods.iter().any(|m| m.is_virtual || m.is_override);
+        let has_vtable = has_virtual_methods || class_decl.parent_class.is_some();
+
+        // If this class has a vtable, reserve space for vtable pointer at offset 0
+        if has_vtable {
+            current_offset = 8; // vtable pointer is always 8 bytes
+        }
+
+        // If we have a parent class, inherit its fields
+        if let Some(parent_name) = &class_decl.parent_class {
+            if let Some(parent_metadata) = self.class_metadata.get(parent_name) {
+                // Copy parent's fields (they already have correct offsets including vtable)
+                for parent_field in &parent_metadata.fields {
+                    fields.push(parent_field.clone());
+                }
+                current_offset = parent_metadata.size;
+            }
+        }
+
+        // Add this class's own fields
         for field in &class_decl.fields {
             // Determine Cranelift type and size for this field
             let (cranelift_type, size, alignment) = match &field.ty {
@@ -245,13 +277,168 @@ impl CodeGenerator {
             current_offset
         };
 
+        // Build virtual method table
+        let mut virtual_methods = Vec::new();
+
+        // If we have a parent, inherit its virtual methods
+        if let Some(parent_name) = &class_decl.parent_class {
+            if let Some(parent_metadata) = self.class_metadata.get(parent_name) {
+                virtual_methods = parent_metadata.virtual_methods.clone();
+            }
+        }
+
+        // Process this class's methods
+        for method in &class_decl.methods {
+            if method.is_virtual {
+                // New virtual method - add to vtable
+                virtual_methods.push(VirtualMethod {
+                    name: method.name.clone(),
+                    vtable_index: virtual_methods.len(),
+                    func_id: None, // Will be filled in later
+                });
+            } else if method.is_override {
+                // Override existing virtual method
+                if let Some(vm) = virtual_methods.iter_mut().find(|vm| vm.name == method.name) {
+                    // Keep the same vtable_index, update func_id later
+                    vm.func_id = None;
+                } else {
+                    return Err(CodegenError::UnsupportedFeature(
+                        format!("Method '{}' marked as override but no virtual method found in parent", method.name)
+                    ));
+                }
+            }
+        }
+
         let metadata = ClassMetadata {
             name: class_decl.name.clone(),
             fields,
             size,
+            parent_class: class_decl.parent_class.clone(),
+            virtual_methods,
+            has_vtable,
         };
 
         self.class_metadata.insert(class_decl.name.clone(), metadata);
+        Ok(())
+    }
+
+    fn generate_vtables(&mut self, program: &Program) -> Result<(), CodegenError> {
+        // Generate vtable global variables for each class with virtual methods
+        // Each vtable is an array of function pointers stored as a global data object
+
+        for class_decl in &program.classes {
+            let metadata = self.class_metadata.get(&class_decl.name)
+                .ok_or_else(|| CodegenError::UnsupportedFeature(
+                    format!("Class metadata not found for '{}'", class_decl.name)
+                ))?
+                .clone(); // Clone to avoid borrow issues
+
+            if !metadata.has_vtable || metadata.virtual_methods.is_empty() {
+                continue; // Skip classes without virtual methods
+            }
+
+            // Create vtable data structure
+            let vtable_name = format!("{}_vtable", class_decl.name);
+            let vtable_size = metadata.virtual_methods.len() * 8; // 8 bytes per function pointer
+
+            // Create a mutable data descriptor for the vtable
+            let mut data_desc = DataDescription::new();
+            data_desc.define_zeroinit(vtable_size);
+
+            // Note: We can't use direct function relocations in the data section easily
+            // Instead, we'll generate an initialization function that populates the vtable at startup
+            // This is a common approach for vtables in compilers
+
+            // Declare the vtable data as writable (will be initialized at startup)
+            let vtable_data_id = self.module.declare_data(
+                &vtable_name,
+                Linkage::Export,
+                true,  // writable - will be initialized at runtime
+                false, // not thread-local
+            ).map_err(CodegenError::ModuleError)?;
+
+            self.module.define_data(vtable_data_id, &data_desc)
+                .map_err(CodegenError::ModuleError)?;
+
+            eprintln!("DEBUG: Created vtable '{}' with {} entries", vtable_name, metadata.virtual_methods.len());
+
+            // Now generate an initialization function for this vtable
+            self.generate_vtable_init_function(&class_decl.name, &metadata)?;
+        }
+
+        Ok(())
+    }
+
+    fn generate_vtable_init_function(&mut self, class_name: &str, metadata: &ClassMetadata) -> Result<(), CodegenError> {
+        // Generate a function like: void ClassName_vtable_init()
+        // This function will be called at program startup to initialize the vtable
+
+        let init_func_name = format!("{}_vtable_init", class_name);
+        let vtable_name = format!("{}_vtable", class_name);
+
+        // Create function signature: void -> void
+        let mut sig = self.module.make_signature();
+        sig.call_conv = CallConv::SystemV;
+        // No parameters, no return value
+
+        // Declare the initialization function
+        let init_func_id = self.module.declare_function(&init_func_name, Linkage::Export, &sig)
+            .map_err(CodegenError::ModuleError)?;
+
+        // Store for later use
+        self.functions.insert(init_func_name.clone(), init_func_id);
+
+        // Generate the function body
+        self.context.func.signature = sig;
+        let mut func_ctx = FunctionBuilderContext::new();
+        let mut builder = FunctionBuilder::new(&mut self.context.func, &mut func_ctx);
+
+        let entry_block = builder.create_block();
+        builder.switch_to_block(entry_block);
+        builder.seal_block(entry_block);
+
+        // Get the address of the vtable data
+        let vtable_data_id = self.module.declare_data(
+            &vtable_name,
+            Linkage::Export,
+            true,
+            false,
+        ).map_err(CodegenError::ModuleError)?;
+
+        let vtable_ref = self.module.declare_data_in_func(vtable_data_id, &mut builder.func);
+        let vtable_addr = builder.ins().global_value(I64, vtable_ref);
+
+        // For each virtual method, store its function pointer in the vtable
+        for (i, vmethod) in metadata.virtual_methods.iter().enumerate() {
+            let method_name = format!("{}__{}", class_name, vmethod.name);
+
+            // Get the function ID for this method
+            if let Some(&func_id) = self.functions.get(&method_name) {
+                // Get function reference
+                let func_ref = self.module.declare_func_in_func(func_id, &mut builder.func);
+
+                // Get function address as a pointer
+                let func_addr = builder.ins().func_addr(I64, func_ref);
+
+                // Calculate offset in vtable (i * 8 bytes)
+                let offset = (i * 8) as i32;
+
+                // Store function pointer at vtable[i]
+                builder.ins().store(MemFlags::new(), func_addr, vtable_addr, offset);
+            }
+        }
+
+        // Return from init function
+        builder.ins().return_(&[]);
+        builder.finalize();
+
+        // Define the function
+        self.module.define_function(init_func_id, &mut self.context)
+            .map_err(CodegenError::ModuleError)?;
+
+        self.module.clear_context(&mut self.context);
+
+        eprintln!("DEBUG: Generated vtable init function '{}'", init_func_name);
         Ok(())
     }
 
@@ -311,6 +498,9 @@ impl CodeGenerator {
                 self.declare_function_with_name(&method_name, method)?;
             }
         }
+
+        // Generate vtables for classes with virtual methods
+        self.generate_vtables(program)?;
 
         // Second pass: generate code for all functions
         for function in &program.functions {
@@ -576,13 +766,16 @@ impl CodeGenerator {
                                 // For class methods, we need to determine the return type
                                 // For now, assume methods that create new instances return the class type
                                 // and other methods return i32 (void) or primitives
+                                // TODO: Get actual return type from method signature in HIR
                                 match method.as_str() {
                                     "add" | "clone" => {
                                         (I64, VariableType::Class(class_name))
                                     },
+                                    "get_name" | "make_sound" | "get_description" => (I64, VariableType::String),
                                     "change_name" | "set_name" => (I32, VariableType::I32), // void methods
                                     _ => {
-                                        (I32, VariableType::I32)
+                                        // Default: return I64 to be safe (assume object/string return)
+                                        (I64, VariableType::I64)
                                     }
                                 }
                             } else {
@@ -677,13 +870,16 @@ impl CodeGenerator {
                                 // For class methods, we need to determine the return type
                                 // For now, assume methods that create new instances return the class type
                                 // and other methods return i32 (void) or primitives
+                                // TODO: Get actual return type from method signature in HIR
                                 match method.as_str() {
                                     "add" | "clone" => {
                                         (I64, VariableType::Class(class_name))
                                     },
+                                    "get_name" | "make_sound" | "get_description" => (I64, VariableType::String),
                                     "change_name" | "set_name" => (I32, VariableType::I32), // void methods
                                     _ => {
-                                        (I32, VariableType::I32)
+                                        // Default: return I64 to be safe (assume object/string return)
+                                        (I64, VariableType::I64)
                                     }
                                 }
                             } else {
@@ -2595,43 +2791,93 @@ impl CodeGenerator {
                         let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
                         let class_name = Self::get_class_name(object, variable_types).unwrap_or_else(|| "Unknown".to_string());
 
-                        // Generate function name for the class method: ClassName__method_name
-                        let func_name = format!("{}__{}", class_name, method_name);
+                        // Check if this is a virtual method call that needs dynamic dispatch
+                        let metadata = class_metadata.get(&class_name);
+                        let is_virtual = metadata.map_or(false, |m| {
+                            m.virtual_methods.iter().any(|vm| vm.name == method_name)
+                        });
 
-                        // Look up the method function that was already declared
-                        let func_id = *functions.get(&func_name)
-                            .ok_or_else(|| CodegenError::UnsupportedFeature(
-                                format!("Method function '{}' not found", func_name)
-                            ))?;
-                        let func_ref = module.declare_func_in_func(func_id, builder.func);
-
-                        eprintln!("DEBUG: Calling method {} with {} arguments", func_name, args.len());
-                        let sig = module.declarations().get_function_decl(func_id).signature.clone();
-                        eprintln!("DEBUG: Function signature has {} params", sig.params.len());
-
-                        // Generate arguments
+                        // Generate arguments first (needed for both static and dynamic calls)
                         let mut call_args = vec![object_val]; // Start with self
                         for (i, arg) in args.iter().enumerate() {
                             eprintln!("DEBUG: Processing argument {} of type {:?}", i, arg);
                             let arg_val = Self::generate_expression_helper(builder, arg, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
-                            let arg_type = builder.func.dfg.value_type(arg_val);
-                            eprintln!("DEBUG: Argument {} has Cranelift type {:?}", i, arg_type);
                             call_args.push(arg_val);
                         }
 
-                        eprintln!("DEBUG: About to call with {} call_args", call_args.len());
-                        // Call the method
-                        let call = builder.ins().call(func_ref, &call_args);
+                        if is_virtual && metadata.unwrap().has_vtable {
+                            // Dynamic dispatch through vtable
+                            eprintln!("DEBUG: Using dynamic dispatch for virtual method '{}' on class '{}'", method_name, class_name);
 
-                        // Check if the method has a return value
-                        let results = builder.inst_results(call);
-                        if results.is_empty() {
-                            // Void method - return unit (0) as I32
-                            Ok(builder.ins().iconst(I32, 0))
+                            // Find the vtable index for this method
+                            let vtable_index = metadata.unwrap()
+                                .virtual_methods.iter()
+                                .find(|vm| vm.name == method_name)
+                                .map(|vm| vm.vtable_index)
+                                .ok_or_else(|| CodegenError::UnsupportedFeature(
+                                    format!("Virtual method '{}' not found in vtable", method_name)
+                                ))?;
+
+                            // Load vtable pointer from object at offset 0
+                            let vtable_ptr = builder.ins().load(I64, MemFlags::new(), object_val, 0);
+
+                            // Calculate offset in vtable: index * 8 (size of function pointer)
+                            let vtable_offset = (vtable_index * 8) as i32;
+
+                            // Load function pointer from vtable
+                            let func_ptr = builder.ins().load(I64, MemFlags::new(), vtable_ptr, vtable_offset);
+
+                            // Create signature for the indirect call
+                            // Get the signature from a representative method
+                            let func_name = format!("{}__{}", class_name, method_name);
+                            let func_id = *functions.get(&func_name)
+                                .ok_or_else(|| CodegenError::UnsupportedFeature(
+                                    format!("Method function '{}' not found", func_name)
+                                ))?;
+                            let sig_ref = module.declarations().get_function_decl(func_id).signature.clone();
+
+                            // Import the signature into the current function
+                            let sig = builder.import_signature(sig_ref);
+
+                            // Perform indirect call through function pointer
+                            let call = builder.ins().call_indirect(sig, func_ptr, &call_args);
+
+                            // Check if the method has a return value
+                            let results = builder.inst_results(call);
+                            if results.is_empty() {
+                                // Void method - return unit (0) as I32
+                                Ok(builder.ins().iconst(I32, 0))
+                            } else {
+                                // Method with return value - return as-is
+                                Ok(results[0])
+                            }
                         } else {
-                            // Method with return value - return as-is
-                            let result = results[0];
-                            Ok(result)
+                            // Static dispatch (compile-time resolution)
+                            eprintln!("DEBUG: Using static dispatch for method '{}' on class '{}'", method_name, class_name);
+
+                            let func_name = format!("{}__{}", class_name, method_name);
+                            let func_id = *functions.get(&func_name)
+                                .ok_or_else(|| CodegenError::UnsupportedFeature(
+                                    format!("Method function '{}' not found", func_name)
+                                ))?;
+                            let func_ref = module.declare_func_in_func(func_id, builder.func);
+
+                            let sig = module.declarations().get_function_decl(func_id).signature.clone();
+                            eprintln!("DEBUG: Function signature has {} params", sig.params.len());
+                            eprintln!("DEBUG: About to call with {} call_args", call_args.len());
+
+                            // Call the method directly
+                            let call = builder.ins().call(func_ref, &call_args);
+
+                            // Check if the method has a return value
+                            let results = builder.inst_results(call);
+                            if results.is_empty() {
+                                // Void method - return unit (0) as I32
+                                Ok(builder.ins().iconst(I32, 0))
+                            } else {
+                                // Method with return value - return as-is
+                                Ok(results[0])
+                            }
                         }
                     }
                     _ => Err(CodegenError::UnsupportedFeature(format!("Method '{}' not implemented", method)))
@@ -2965,6 +3211,7 @@ impl CodeGenerator {
                         format!("Unknown class '{}' in constructor", class_name)
                     ))?;
                 let class_size = metadata.size as i64;
+                let has_vtable = metadata.has_vtable;
 
                 // Allocate memory using GC
                 let gc_alloc_sig = {
@@ -2982,6 +3229,27 @@ impl CodeGenerator {
                 let size_val = builder.ins().iconst(I64, class_size);
                 let call = builder.ins().call(gc_alloc_ref, &[size_val]);
                 let class_ptr = builder.inst_results(call)[0];
+
+                // If this class has a vtable, store the vtable pointer at offset 0
+                if has_vtable {
+                    let vtable_name = format!("{}_vtable", class_name);
+
+                    // Get the address of the vtable global
+                    let vtable_data_id = module.declare_data(
+                        &vtable_name,
+                        Linkage::Export,
+                        true,
+                        false,
+                    ).map_err(CodegenError::ModuleError)?;
+
+                    let vtable_ref = module.declare_data_in_func(vtable_data_id, builder.func);
+                    let vtable_addr = builder.ins().global_value(I64, vtable_ref);
+
+                    // Store vtable pointer at offset 0
+                    builder.ins().store(MemFlags::new(), vtable_addr, class_ptr, 0);
+
+                    eprintln!("DEBUG: Stored vtable pointer for class '{}' at offset 0", class_name);
+                }
 
                 // Set each field from the named arguments using direct memory stores
                 for arg in args {

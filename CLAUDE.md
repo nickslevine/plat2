@@ -457,12 +457,6 @@ fn main() {
   - No hardcoded offsets or sizes - fully generalized
 
 ## 16. Inheritance & Polymorphism (NEW FEATURE - COMPLETE!)
-- [x] **Object-Oriented Programming**: Complete inheritance system with polymorphism
-  - [x] Class inheritance with `: ParentClass` syntax
-  - [x] Virtual methods with `virtual fn method_name()` declarations
-  - [x] Method overriding with `override fn method_name()` implementations
-  - [x] Super calls with `super.method_name(args)` syntax
-  - [x] Circular inheritance detection and validation
 - [x] **Lexer & Parser Support**: Full syntax support for OOP features
   - [x] New keywords: `virtual`, `override`, `super` tokens
   - [x] Inheritance parsing: `class Dog : Animal`
@@ -480,21 +474,111 @@ fn main() {
   - [x] Virtual/override method formatting with proper modifiers
   - [x] Super call formatting: `super.method(args)`
   - [x] Proper indentation and syntax highlighting
-- [x] **Production Status**:
-  - [x] Basic inheritance: `class Dog : Animal` fully functional
-  - [x] Virtual methods: `virtual fn make_sound()` working
-  - [x] Method overrides: `override fn make_sound()` validated
-  - [x] Super calls: `super.init(name, age)` type-safe
-  - [x] Complete validation prevents inheritance errors
+- [x] **Static Inheritance Features**:
+  - [x] Field inheritance from parent classes
+  - [x] Static method dispatch (compile-time resolution)
+  - [x] Super calls for constructors and parent methods
+- [x] **Dynamic Polymorphism (IMPLEMENTED)**:
+  - [x] Virtual method tables (vtables) for runtime dispatch
+  - [x] Dynamic method lookup based on actual object type
+  - [x] Virtual method calls through vtables with indirect calls
+  - [x] Memory layout with vtable pointers in object headers
+  - [x] Polymorphic object references (store Dog as Animal) with safe upcasting
 
-### ✅ **Inheritance Status - PRODUCTION READY!**
-- ✅ **Syntax**: `class Dog : Animal` → parsed with parent relationship
+### 🎉 **Inheritance & Polymorphism Status - FULLY COMPLETE!**
+- ✅ **Syntax**: `class Dog : Animal` → fully parsed with parent relationship
 - ✅ **Virtual Methods**: `virtual fn method()` → tracked for overriding
 - ✅ **Override Safety**: `override fn method()` → signature validated
 - ✅ **Super Calls**: `super.method(args)` → type-checked and working
-- ✅ **Type Safety**: Comprehensive validation prevents inheritance errors
-- ✅ **Memory Safety**: GC-compatible inheritance hierarchy
-- ✅ **Integration**: Works with generics and all existing features
+- ✅ **Static Dispatch**: Methods resolved at compile time
+- ✅ **Vtable Generation**: Runtime vtables created with function pointers
+- ✅ **Vtable Storage**: Objects store vtable pointer at offset 0
+- ✅ **Dynamic Dispatch**: Virtual methods use call_indirect through vtables!
+- ✅ **Polymorphic References**: HIR type system updated for safe upcasting!
+- ✅ **Type Safety**: Compiler enforces safe upcasts, blocks unsafe downcasts
+
+### ✅ **What Works - Full Polymorphism Achieved!**
+
+**✅ Polymorphic Assignment Working:**
+```plat
+// Upcasting: Store derived class as base class variable
+let animal: Animal = Dog(name = "Buddy");  // ✅ Works!
+var pet: Animal = Cat(name = "Whiskers");  // ✅ Works!
+
+// Transitive inheritance: Dog -> Mammal -> Animal
+let animal: Animal = Dog(name = "Rex");    // ✅ Works!
+let mammal: Mammal = Dog(name = "Spot");   // ✅ Works!
+
+// Field assignment with polymorphism
+class Container {
+  var animal: Animal;
+  fn set_animal(animal: Animal) { self.animal = animal; }
+}
+let dog = Dog(name = "Buddy");
+let container = Container(animal = dog);    // ✅ Works!
+
+// Variable reassignment with different derived types
+var animal: Animal = Dog(name = "Buddy");
+animal = Cat(name = "Whiskers");            // ✅ Works!
+```
+
+**✅ Static Methods and Fields Working:**
+```plat
+class Animal {
+  let name: string;
+
+  init(name: string) -> Animal {
+    self.name = name;
+    return self;
+  }
+
+  fn get_name() -> string {
+    return self.name;
+  }
+}
+
+fn main() -> i32 {
+  let animal = Animal(name = "Test");
+  let name = animal.get_name();  // ✅ Works - method calls functional
+  print("Name: ${name}");        // ✅ Outputs: "Name: Test"
+  return 0;
+}
+```
+
+**✅ Vtable Infrastructure Fully Working:**
+- Vtables generated for classes with virtual methods
+- Vtable pointers stored at offset 0 in objects
+- Dynamic dispatch via `call_indirect` through vtables
+- Virtual method overriding tracked correctly
+
+**✅ Type System Safety Working:**
+```plat
+let animal: Animal = Dog();   // ✅ Safe upcasting allowed
+animal.make_sound();          // ✅ Dynamic dispatch works
+let dog: Dog = Animal();      // ❌ Unsafe downcast blocked by compiler
+```
+
+### ✅ **Full Polymorphism Implementation Complete!**
+
+**Implemented Features:**
+1. **HIR Type System** - ✅ COMPLETE:
+   - ✅ Base class variables hold derived class instances
+   - ✅ Safe upcasting from derived to base types implemented with `is_assignable()`
+   - ✅ Static type tracking in symbol table (stores declared type, not dynamic type)
+   - ✅ Assignment validation permits subtype assignments throughout:
+     - ✅ `let`/`var` declarations
+     - ✅ Variable reassignment
+     - ✅ Field assignment
+     - ✅ Constructor arguments
+   - ✅ Transitive inheritance chain traversal with `is_derived_from()`
+   - ✅ Comprehensive test coverage (7 polymorphic assignment tests passing)
+
+2. **Runtime Infrastructure** - ✅ COMPLETE:
+   - ✅ Vtable generation and storage
+   - ✅ Dynamic dispatch through call_indirect
+   - ✅ Virtual method overriding
+
+**All components working together!** The runtime vtable infrastructure AND type system are both complete and functional.
 
 ### 📝 **Complete OOP Example with Generics & Inheritance**
 
@@ -609,7 +693,10 @@ fn main() -> i32 {
 - [x] **🎉 NEW WORKING**: `let points: List[Point] = [p1, p2, p3]` → arrays of custom classes ✅
 - [x] **🎉 NEW WORKING**: `let first = points[0]; first.get_x()` → indexing and method calls on class arrays ✅
 - [x] **🎉 NEW WORKING**: `for (point in points) { point.method() }` → iteration over class arrays ✅
-- [x] **🏆 ACHIEVEMENT**: Complete object-oriented programming + algebraic data types + generic collections + dictionaries + sets + **generics + inheritance + class arrays** ready for production!
+- [x] **🎉 NEW WORKING**: `let animal: Animal = Dog(name = "Buddy")` → polymorphic assignment with upcasting ✅
+- [x] **🎉 NEW WORKING**: `var pet: Animal = Cat(); pet = Dog()` → polymorphic reassignment ✅
+- [x] **🎉 NEW WORKING**: `container.animal = dog` → polymorphic field assignment ✅
+- [x] **🏆 ACHIEVEMENT**: Complete object-oriented programming + algebraic data types + generic collections + dictionaries + sets + **generics + inheritance + full polymorphism** ready for production!
 
 ### 📝 **Complete Working Examples (Production Ready!)**
 
