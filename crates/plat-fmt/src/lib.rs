@@ -235,6 +235,19 @@ impl Formatter {
         }
         self.write("fn ");
         self.write(&function.name);
+
+        // Format generic type parameters
+        if !function.type_params.is_empty() {
+            self.write("<");
+            for (i, type_param) in function.type_params.iter().enumerate() {
+                if i > 0 {
+                    self.write(", ");
+                }
+                self.write(type_param);
+            }
+            self.write(">");
+        }
+
         self.write("(");
 
         for (i, param) in function.params.iter().enumerate() {

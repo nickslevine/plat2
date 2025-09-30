@@ -51,6 +51,18 @@ impl Parser {
             self.consume_identifier("Expected function name")?
         };
 
+        // Parse optional generic type parameters
+        let mut type_params = Vec::new();
+        if self.match_token(&Token::Less) {
+            loop {
+                type_params.push(self.consume_identifier("Expected type parameter name")?);
+                if !self.match_token(&Token::Comma) {
+                    break;
+                }
+            }
+            self.consume(Token::Greater, "Expected '>' after type parameters")?;
+        }
+
         self.consume(Token::LeftParen, "Expected '('")?;
 
         let params = self.parse_parameters()?;
@@ -68,6 +80,7 @@ impl Parser {
 
         Ok(Function {
             name,
+            type_params,
             params,
             return_type,
             body,

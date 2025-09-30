@@ -34,6 +34,7 @@ pub enum HirType {
 
 #[derive(Debug, Clone)]
 pub struct FunctionSignature {
+    pub type_params: Vec<String>, // Generic type parameters
     pub params: Vec<HirType>,
     pub return_type: HirType,
     pub is_mutable: bool,
@@ -236,6 +237,7 @@ impl TypeChecker {
             };
 
             let signature = FunctionSignature {
+                type_params: method.type_params.clone(), // Store generic type parameters
                 params: param_types?,
                 return_type,
                 is_mutable: method.is_mutable,
@@ -318,6 +320,7 @@ impl TypeChecker {
             };
 
             let signature = FunctionSignature {
+                type_params: method.type_params.clone(), // Store generic type parameters
                 params: param_types,
                 return_type,
                 is_mutable: method.is_mutable,
@@ -484,6 +487,10 @@ impl TypeChecker {
     }
 
     fn collect_function_signature_with_name(&mut self, name: &str, function: &Function) -> Result<(), DiagnosticError> {
+        // Add function type parameters to scope temporarily
+        let old_type_params = self.type_parameters.clone();
+        self.type_parameters.extend(function.type_params.iter().cloned());
+
         let param_types: Result<Vec<HirType>, DiagnosticError> = function.params
             .iter()
             .map(|param| self.ast_type_to_hir_type(&param.ty))
@@ -494,7 +501,11 @@ impl TypeChecker {
             None => HirType::Unit,
         };
 
+        // Restore old type parameters
+        self.type_parameters = old_type_params;
+
         let signature = FunctionSignature {
+            type_params: function.type_params.clone(), // Store generic type parameters
             params: param_types?,
             return_type,
             is_mutable: function.is_mutable,
@@ -510,6 +521,10 @@ impl TypeChecker {
     }
 
     fn check_function(&mut self, function: &Function) -> Result<(), DiagnosticError> {
+        // Add function type parameters to scope
+        let old_type_params = self.type_parameters.clone();
+        self.type_parameters.extend(function.type_params.iter().cloned());
+
         // Set up function scope
         self.push_scope();
 
@@ -530,6 +545,9 @@ impl TypeChecker {
 
         self.pop_scope();
         self.current_function_return_type = None;
+
+        // Restore old type parameters
+        self.type_parameters = old_type_params;
         Ok(())
     }
 
@@ -2393,6 +2411,7 @@ impl TypeSubstitutable for FieldInfo {
 impl TypeSubstitutable for FunctionSignature {
     fn substitute_types(&self, substitution: &TypeSubstitution) -> Self {
         FunctionSignature {
+            type_params: self.type_params.clone(), // Type params don't need substitution
             params: self.params.iter().map(|t| t.substitute_types(substitution)).collect(),
             return_type: self.return_type.substitute_types(substitution),
             is_mutable: self.is_mutable,
@@ -2409,6 +2428,7 @@ pub struct Monomorphizer {
     /// Generated specialized types
     specialized_classes: HashMap<String, ClassInfo>,
     specialized_enums: HashMap<String, EnumInfo>,
+    specialized_functions: HashMap<String, FunctionSignature>,
 
     /// Counter for generating unique specialized names
     specialization_counter: usize,
@@ -2420,6 +2440,7 @@ impl Monomorphizer {
             instantiations: HashMap::new(),
             specialized_classes: HashMap::new(),
             specialized_enums: HashMap::new(),
+            specialized_functions: HashMap::new(),
             specialization_counter: 0,
         }
     }
@@ -2539,6 +2560,58 @@ impl Monomorphizer {
         Ok(specialized_name)
     }
 
+    /// Get or create a specialized version of a generic function
+    pub fn specialize_function(&mut self, func_sig: &FunctionSignature, func_name: &str, type_args: &[HirType]) -> Result<String, DiagnosticError> {
+        // If not generic, return original name
+        if func_sig.type_params.is_empty() {
+            return Ok(func_name.to_string());
+        }
+
+        // Check if we already specialized this combination
+        let key = (func_name.to_string(), type_args.to_vec());
+        if let Some(specialized_name) = self.instantiations.get(&key) {
+            return Ok(specialized_name.clone());
+        }
+
+        // Validate type argument count
+        if func_sig.type_params.len() != type_args.len() {
+            return Err(DiagnosticError::Type(
+                format!("Function '{}' expects {} type arguments, got {}",
+                    func_name, func_sig.type_params.len(), type_args.len())
+            ));
+        }
+
+        // Create type substitution map
+        let mut substitution = TypeSubstitution::new();
+        for (param_name, concrete_type) in func_sig.type_params.iter().zip(type_args.iter()) {
+            substitution.insert(param_name.clone(), concrete_type.clone());
+        }
+
+        // Generate specialized name
+        let specialized_name = format!("{}$specialized${}", func_name, self.specialization_counter);
+        self.specialization_counter += 1;
+
+        // Create specialized function signature
+        let specialized_params: Vec<HirType> = func_sig.params.iter()
+            .map(|ty| ty.substitute_types(&substitution))
+            .collect();
+
+        let specialized_return = func_sig.return_type.substitute_types(&substitution);
+
+        let specialized_func = FunctionSignature {
+            type_params: vec![], // Specialized functions are not generic
+            params: specialized_params,
+            return_type: specialized_return,
+            is_mutable: func_sig.is_mutable,
+        };
+
+        // Store the specialized function
+        self.specialized_functions.insert(specialized_name.clone(), specialized_func);
+        self.instantiations.insert(key, specialized_name.clone());
+
+        Ok(specialized_name)
+    }
+
     /// Get all specialized classes generated so far
     pub fn get_specialized_classes(&self) -> &HashMap<String, ClassInfo> {
         &self.specialized_classes
@@ -2548,12 +2621,17 @@ impl Monomorphizer {
     pub fn get_specialized_enums(&self) -> &HashMap<String, EnumInfo> {
         &self.specialized_enums
     }
+
+    /// Get all specialized functions generated so far
+    pub fn get_specialized_functions(&self) -> &HashMap<String, FunctionSignature> {
+        &self.specialized_functions
+    }
 }
 
 impl TypeChecker {
     /// Get the monomorphized types after type checking
-    pub fn get_monomorphized_types(self) -> (HashMap<String, ClassInfo>, HashMap<String, EnumInfo>) {
-        (self.monomorphizer.specialized_classes, self.monomorphizer.specialized_enums)
+    pub fn get_monomorphized_types(self) -> (HashMap<String, ClassInfo>, HashMap<String, EnumInfo>, HashMap<String, FunctionSignature>) {
+        (self.monomorphizer.specialized_classes, self.monomorphizer.specialized_enums, self.monomorphizer.specialized_functions)
     }
 
     /// Get a reference to the monomorphizer for debugging

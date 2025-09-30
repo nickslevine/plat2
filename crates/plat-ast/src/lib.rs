@@ -10,6 +10,7 @@ pub struct Program {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Function {
     pub name: String,
+    pub type_params: Vec<String>, // Generic type parameters, e.g., <T, U>
     pub params: Vec<Parameter>,
     pub return_type: Option<Type>,
     pub body: Block,

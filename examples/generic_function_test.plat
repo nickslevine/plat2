@@ -1,0 +1,25 @@
+// Test generic functions with type inference
+fn identity<T>(value: T) -> T {
+  return value;
+}
+
+fn create_pair<T, U>(first: T, second: U) -> i32 {
+  print("Created pair");
+  return 42;
+}
+
+fn main() -> i32 {
+  // Test with i32 - type inferred from argument
+  let x = identity(10);
+  print("Identity i32: ${x}");
+
+  // Test with string - type inferred from argument
+  let name = identity("hello");
+  print("Identity string: ${name}");
+
+  // Test with multiple type parameters - inferred from both arguments
+  let result = create_pair(100, "world");
+  print("Pair result: ${result}");
+
+  return 0;
+}
