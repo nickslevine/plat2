@@ -665,14 +665,22 @@ impl TypeChecker {
                 self.pop_scope();
             }
             Statement::For { variable, iterable, body, .. } => {
-                let iterable_type = self.check_expression(iterable)?;
+                // Check if the iterable is a Range expression
+                let element_type = if let Expression::Range { .. } = iterable {
+                    // Range expressions yield integers, get the type from the range
+                    let range_type = self.check_expression(iterable)?;
+                    range_type // The range returns its element type (I32 or I64)
+                } else {
+                    // Regular collection iteration
+                    let iterable_type = self.check_expression(iterable)?;
 
-                // Extract element type from List
-                let element_type = match iterable_type {
-                    HirType::List(element_type) => *element_type,
-                    _ => return Err(DiagnosticError::Type(
-                        format!("For loop can only iterate over List types, found {:?}", iterable_type)
-                    )),
+                    // Extract element type from List
+                    match iterable_type {
+                        HirType::List(element_type) => *element_type,
+                        _ => return Err(DiagnosticError::Type(
+                            format!("For loop can only iterate over List or Range types, found {:?}", iterable_type)
+                        )),
+                    }
                 };
 
                 // Create new scope for loop body and add loop variable
@@ -1920,6 +1928,34 @@ impl TypeChecker {
                 }
 
                 Ok(parent_method_signature.return_type)
+            }
+            Expression::Range { start, end, .. } => {
+                let start_type = self.check_expression(start)?;
+                let end_type = self.check_expression(end)?;
+
+                // Both start and end must be integers (i32 or i64)
+                if !matches!(start_type, HirType::I32 | HirType::I64) {
+                    return Err(DiagnosticError::Type(
+                        format!("Range start must be an integer type, got {:?}", start_type)
+                    ));
+                }
+
+                if !matches!(end_type, HirType::I32 | HirType::I64) {
+                    return Err(DiagnosticError::Type(
+                        format!("Range end must be an integer type, got {:?}", end_type)
+                    ));
+                }
+
+                // For simplicity, require both to be the same type
+                if start_type != end_type {
+                    return Err(DiagnosticError::Type(
+                        format!("Range start and end must have the same type: {:?} vs {:?}", start_type, end_type)
+                    ));
+                }
+
+                // A range expression is not directly usable except in for loops
+                // We return the element type (the integer type)
+                Ok(start_type)
             }
         }
     }

@@ -158,6 +158,42 @@ impl CodeGenerator {
         }
     }
 
+    fn infer_expression_type(expr: &Expression, variable_types: &HashMap<String, VariableType>) -> VariableType {
+        match expr {
+            Expression::Literal(Literal::Bool(_, _)) => VariableType::Bool,
+            Expression::Literal(Literal::Integer(val, _)) => {
+                // Use i32 for smaller values, i64 for larger
+                if *val >= i32::MIN as i64 && *val <= i32::MAX as i64 {
+                    VariableType::I32
+                } else {
+                    VariableType::I64
+                }
+            }
+            Expression::Literal(Literal::String(_, _)) => VariableType::String,
+            Expression::Literal(Literal::InterpolatedString(_, _)) => VariableType::String,
+            Expression::Identifier { name, .. } => {
+                variable_types.get(name).cloned().unwrap_or(VariableType::I32)
+            }
+            Expression::Binary { left, op, right, .. } => {
+                // For arithmetic operations, infer from operands
+                match op {
+                    BinaryOp::Add | BinaryOp::Subtract | BinaryOp::Multiply | BinaryOp::Divide | BinaryOp::Modulo => {
+                        let left_type = Self::infer_expression_type(left, variable_types);
+                        let right_type = Self::infer_expression_type(right, variable_types);
+                        // If either is I64, result is I64
+                        if left_type == VariableType::I64 || right_type == VariableType::I64 {
+                            VariableType::I64
+                        } else {
+                            VariableType::I32
+                        }
+                    }
+                    _ => VariableType::Bool, // Comparison and logical operations return bool
+                }
+            }
+            _ => VariableType::I32, // Default
+        }
+    }
+
     /// Convert a VariableType to the corresponding Cranelift Type
     fn variable_type_to_cranelift_type(var_type: &VariableType) -> Type {
         match var_type {
@@ -1071,6 +1107,16 @@ impl CodeGenerator {
                 Ok(false) // while loops don't guarantee return
             }
             Statement::For { variable, iterable, body, .. } => {
+                // Check if this is a range-based for loop
+                if let Expression::Range { start, end, inclusive, .. } = iterable {
+                    // Range-based for loop
+                    return Self::generate_range_for_loop(
+                        builder, variable, start, end, *inclusive, body,
+                        variables, variable_types, variable_counter, functions, module, string_counter, class_metadata
+                    );
+                }
+
+                // Array-based for loop (existing code)
                 // Infer the element type from the iterable expression
                 let element_type = Self::infer_element_type(iterable, variable_types);
                 let element_cranelift_type = Self::variable_type_to_cranelift_type(&element_type);
@@ -1205,6 +1251,116 @@ impl CodeGenerator {
                 Ok(false) // for loops don't guarantee return
             }
         }
+    }
+
+    fn generate_range_for_loop(
+        builder: &mut FunctionBuilder,
+        variable: &str,
+        start: &Expression,
+        end: &Expression,
+        inclusive: bool,
+        body: &Block,
+        variables: &mut HashMap<String, Variable>,
+        variable_types: &mut HashMap<String, VariableType>,
+        variable_counter: &mut u32,
+        functions: &HashMap<String, FuncId>,
+        module: &mut ObjectModule,
+        string_counter: &mut usize,
+        class_metadata: &HashMap<String, ClassMetadata>
+    ) -> Result<bool, CodegenError> {
+        // Evaluate start and end expressions
+        let start_val = Self::generate_expression_helper(builder, start, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
+        let end_val = Self::generate_expression_helper(builder, end, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
+
+        // Infer the integer type from start expression (both should be same type due to HIR check)
+        let int_type = Self::infer_expression_type(start, variable_types);
+        let cranelift_type = Self::variable_type_to_cranelift_type(&int_type);
+
+        // Create loop variable
+        let loop_var = Variable::from_u32(*variable_counter);
+        *variable_counter += 1;
+        builder.declare_var(loop_var, cranelift_type);
+        builder.def_var(loop_var, start_val);
+
+        // Store in variables map
+        let old_variable = variables.insert(variable.to_string(), loop_var);
+        let old_type = variable_types.insert(variable.to_string(), int_type);
+
+        // Create blocks
+        let loop_header = builder.create_block();
+        let loop_body = builder.create_block();
+        let loop_exit = builder.create_block();
+
+        // Jump to loop header
+        builder.ins().jump(loop_header, &[]);
+
+        // Loop header: check condition
+        builder.switch_to_block(loop_header);
+        let current_val = builder.use_var(loop_var);
+
+        // For inclusive ranges (..=), condition is: current_val <= end_val
+        // For exclusive ranges (..), condition is: current_val < end_val
+        let condition = if inclusive {
+            if cranelift_type == I32 {
+                builder.ins().icmp(IntCC::SignedLessThanOrEqual, current_val, end_val)
+            } else {
+                builder.ins().icmp(IntCC::SignedLessThanOrEqual, current_val, end_val)
+            }
+        } else {
+            if cranelift_type == I32 {
+                builder.ins().icmp(IntCC::SignedLessThan, current_val, end_val)
+            } else {
+                builder.ins().icmp(IntCC::SignedLessThan, current_val, end_val)
+            }
+        };
+
+        builder.ins().brif(condition, loop_body, &[], loop_exit, &[]);
+
+        // Loop body: execute statements
+        builder.switch_to_block(loop_body);
+
+        let mut body_has_return = false;
+        for stmt in &body.statements {
+            body_has_return |= Self::generate_statement_helper(
+                builder, stmt, variables, variable_types, variable_counter,
+                functions, module, string_counter, class_metadata
+            )?;
+        }
+
+        // Increment loop variable
+        if !body_has_return {
+            let current_val = builder.use_var(loop_var);
+            let one = if cranelift_type == I32 {
+                builder.ins().iconst(I32, 1)
+            } else {
+                builder.ins().iconst(I64, 1)
+            };
+            let next_val = builder.ins().iadd(current_val, one);
+            builder.def_var(loop_var, next_val);
+            builder.ins().jump(loop_header, &[]);
+        }
+
+        // Seal blocks
+        builder.seal_block(loop_header);
+        builder.seal_block(loop_body);
+
+        // Loop exit
+        builder.switch_to_block(loop_exit);
+        builder.seal_block(loop_exit);
+
+        // Restore old variable binding if it existed
+        if let Some(old_var) = old_variable {
+            variables.insert(variable.to_string(), old_var);
+        } else {
+            variables.remove(variable);
+        }
+        if let Some(old_typ) = old_type {
+            variable_types.insert(variable.to_string(), old_typ);
+        } else {
+            variable_types.remove(variable);
+        }
+
+        Ok(false) // for loops don't guarantee return
     }
 
     fn generate_expression_with_expected_type(

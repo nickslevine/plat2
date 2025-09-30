@@ -242,4 +242,37 @@ mod tests {
         let tokens = tokenize(input);
         assert_eq!(tokens, vec![Token::Eof]);
     }
+
+    #[test]
+    fn test_range_operators() {
+        let input = "0..5";
+        let tokens = tokenize(input);
+        assert_eq!(tokens, vec![
+            Token::IntLiteral(0),
+            Token::DotDot,
+            Token::IntLiteral(5),
+            Token::Eof,
+        ]);
+
+        let input = "0..=10";
+        let tokens = tokenize(input);
+        assert_eq!(tokens, vec![
+            Token::IntLiteral(0),
+            Token::DotDotEq,
+            Token::IntLiteral(10),
+            Token::Eof,
+        ]);
+
+        // Ensure regular dot still works
+        let input = "x.len()";
+        let tokens = tokenize(input);
+        assert_eq!(tokens, vec![
+            Token::Ident("x".to_string()),
+            Token::Dot,
+            Token::Ident("len".to_string()),
+            Token::LeftParen,
+            Token::RightParen,
+            Token::Eof,
+        ]);
+    }
 }

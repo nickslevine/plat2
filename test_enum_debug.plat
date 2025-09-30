@@ -1,8 +1,0 @@
-enum Message {
-    Move(i32)
-}
-
-fn main() {
-    let msg = Message::Move(42);
-    print("Created enum successfully");
-}

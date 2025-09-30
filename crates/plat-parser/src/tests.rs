@@ -362,8 +362,13 @@ mod tests {
         assert_eq!(statements.len(), 3);
 
         match &statements[1] {
-            Statement::Expression(Expression::Assignment { name, .. }) => {
-                assert_eq!(name, "x");
+            Statement::Expression(Expression::Assignment { target, .. }) => {
+                match target.as_ref() {
+                    Expression::Identifier { name, .. } => {
+                        assert_eq!(name, "x");
+                    }
+                    _ => panic!("Expected identifier as assignment target"),
+                }
             }
             _ => panic!("Expected assignment expression"),
         }
@@ -629,5 +634,39 @@ mod tests {
         assert_eq!(program.functions.len(), 1);
         assert_eq!(program.functions[0].name, "update");
         assert_eq!(program.functions[0].is_mutable, true);
+    }
+
+    #[test]
+    fn test_range_expression() {
+        let input = r#"
+            fn test() {
+                let x = 0..5;
+                let y = 10..=20;
+            }
+        "#;
+
+        let parser = Parser::new(input).unwrap();
+        let program = parser.parse().unwrap();
+
+        assert_eq!(program.functions.len(), 1);
+        assert_eq!(program.functions[0].body.statements.len(), 2);
+    }
+
+    #[test]
+    fn test_for_range_loop() {
+        let input = r#"
+            fn main() -> i32 {
+                for (i in 0..5) {
+                    let x = i;
+                }
+                return 0;
+            }
+        "#;
+
+        let parser = Parser::new(input).unwrap();
+        let program = parser.parse().unwrap();
+
+        assert_eq!(program.functions.len(), 1);
+        assert_eq!(program.functions[0].name, "main");
     }
 }

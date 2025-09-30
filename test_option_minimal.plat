@@ -1,9 +1,0 @@
-fn main() {
-    // Test just Option::Some
-    let some_int = Option::Some(42);
-    print("Created Option::Some(42)");
-
-    // Test just Result::Ok
-    let ok_result = Result::Ok(200);
-    print("Created Result::Ok(200)");
-}

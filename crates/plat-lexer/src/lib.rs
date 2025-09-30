@@ -65,7 +65,19 @@ impl Lexer {
                         self.add_token(Token::Colon, start);
                     }
                 }
-                '.' => self.add_token(Token::Dot, start),
+                '.' => {
+                    if self.peek() == Some('.') {
+                        self.advance();
+                        if self.peek() == Some('=') {
+                            self.advance();
+                            self.add_token(Token::DotDotEq, start);
+                        } else {
+                            self.add_token(Token::DotDot, start);
+                        }
+                    } else {
+                        self.add_token(Token::Dot, start);
+                    }
+                }
                 '=' => {
                     if self.peek() == Some('=') {
                         self.advance();

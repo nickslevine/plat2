@@ -160,6 +160,12 @@ pub enum Expression {
         args: Vec<Expression>,
         span: Span,
     },
+    Range {
+        start: Box<Expression>,
+        end: Box<Expression>,
+        inclusive: bool, // true for ..=, false for ..
+        span: Span,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -1,8 +1,0 @@
-fn main() {
-    let some_val = Option::Some(42);
-    let result = match some_val {
-        Option::Some(x) -> x,
-        Option::None -> 0
-    };
-    print("Result: ${result}");
-}

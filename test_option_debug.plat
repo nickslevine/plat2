@@ -1,4 +1,0 @@
-fn main() {
-    let some_str = Option::Some("Hello");
-    print("Created Option");
-}

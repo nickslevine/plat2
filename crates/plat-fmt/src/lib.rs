@@ -532,6 +532,15 @@ impl Formatter {
                 }
                 self.write(")");
             }
+            Expression::Range { start, end, inclusive, .. } => {
+                self.format_expression(start);
+                if *inclusive {
+                    self.write("..=");
+                } else {
+                    self.write("..");
+                }
+                self.format_expression(end);
+            }
         }
     }
 

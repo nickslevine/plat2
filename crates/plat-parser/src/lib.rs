@@ -412,6 +412,7 @@ impl Parser {
                     Expression::MemberAccess { span, .. } => span.start,
                     Expression::ConstructorCall { span, .. } => span.start,
                     Expression::SuperCall { span, .. } => span.start,
+                    Expression::Range { span, .. } => span.start,
                 },
                 self.previous_span().end,
             );
@@ -467,7 +468,7 @@ impl Parser {
     }
 
     fn parse_comparison(&mut self) -> Result<Expression, DiagnosticError> {
-        let mut expr = self.parse_term()?;
+        let mut expr = self.parse_range()?;
 
         while let Some(op) = self.match_tokens(&[
             Token::Greater, Token::GreaterEq, Token::Less, Token::LessEq
@@ -479,7 +480,7 @@ impl Parser {
                 Token::LessEq => BinaryOp::LessEqual,
                 _ => unreachable!(),
             };
-            let right = Box::new(self.parse_term()?);
+            let right = Box::new(self.parse_range()?);
             let span = self.get_expression_span(&expr, self.previous_span().end);
             expr = Expression::Binary {
                 left: Box::new(expr),
@@ -490,6 +491,26 @@ impl Parser {
         }
 
         Ok(expr)
+    }
+
+    fn parse_range(&mut self) -> Result<Expression, DiagnosticError> {
+        let start_expr = self.parse_term()?;
+
+        // Check for range operators
+        if let Some(token) = self.match_tokens(&[Token::DotDot, Token::DotDotEq]) {
+            let inclusive = token == Token::DotDotEq;
+            let end_expr = self.parse_term()?;
+            let span = self.get_expression_span(&start_expr, self.previous_span().end);
+
+            return Ok(Expression::Range {
+                start: Box::new(start_expr),
+                end: Box::new(end_expr),
+                inclusive,
+                span,
+            });
+        }
+
+        Ok(start_expr)
     }
 
     fn parse_term(&mut self) -> Result<Expression, DiagnosticError> {
@@ -815,6 +836,7 @@ impl Parser {
             Expression::MemberAccess { span, .. } => span.start,
             Expression::ConstructorCall { span, .. } => span.start,
             Expression::SuperCall { span, .. } => span.start,
+            Expression::Range { span, .. } => span.start,
         };
         Span::new(start, end)
     }

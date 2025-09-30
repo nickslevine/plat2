@@ -1,9 +1,0 @@
-fn main() {
-    // Test Option with strings
-    let some_str = Option::Some("Hello");
-    let str_result = match some_str {
-        Option::Some(s) -> s,
-        Option::None -> "Nothing"
-    };
-    print("String result: ${str_result}");
-}

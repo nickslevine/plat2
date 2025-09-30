@@ -682,7 +682,88 @@ fn main() -> i32 {
 }
 ```
 
-## 18. Stretch Goals (post-MVP)
+## 18. Range-Based For Loops (COMPLETE!)
+- [x] **Lexer Support**: `..` and `..=` range operators
+  - [x] `DotDot` token for exclusive ranges (e.g., `0..5`)
+  - [x] `DotDotEq` token for inclusive ranges (e.g., `0..=5`)
+  - [x] Proper tokenization without conflicts with method chaining (`.`)
+- [x] **AST Extensions**: Range expression variant
+  - [x] `Expression::Range` with start, end, and inclusive flag
+  - [x] Full span tracking for error reporting
+- [x] **Parser Implementation**: Range expression parsing
+  - [x] Parse range operators in expression precedence chain
+  - [x] Integration with for-loop statement parsing: `for (i in 0..5)`
+  - [x] Comprehensive parser tests for ranges
+- [x] **Type System & HIR**: Range type checking
+  - [x] Validate start and end are integer types (i32 or i64)
+  - [x] Ensure both operands have the same type
+  - [x] Extended for-loop type checking to handle Range expressions
+  - [x] Helpful error messages for type mismatches
+- [x] **Code Generation**: Efficient loop compilation
+  - [x] `generate_range_for_loop()` function for native code generation
+  - [x] Exclusive ranges use `<` comparison
+  - [x] Inclusive ranges use `<=` comparison
+  - [x] Proper loop variable initialization and increment
+  - [x] Full integration with Cranelift IR generation
+- [x] **Formatter Support**: Pretty printing for range syntax
+  - [x] Format `..` and `..=` operators correctly
+  - [x] Proper spacing and indentation
+- [x] **End-to-End Testing**: Comprehensive validation
+  - [x] Exclusive range loops: `for (i in 0..5)` → 0, 1, 2, 3, 4
+  - [x] Inclusive range loops: `for (i in 0..=5)` → 0, 1, 2, 3, 4, 5
+  - [x] Nested range loops working correctly
+  - [x] Variable range expressions: `for (i in start..end)`
+  - [x] Complex computations in loop bodies
+
+### ✅ **Range For Loops Status - PRODUCTION READY!**
+- ✅ **Exclusive Ranges**: `for (i in 0..10)` → iterates 0 through 9
+- ✅ **Inclusive Ranges**: `for (i in 0..=10)` → iterates 0 through 10
+- ✅ **Type Safety**: Compiler enforces integer types with helpful errors
+- ✅ **Performance**: Native code generation with efficient loop constructs
+- ✅ **Testing**: All tests pass with correct output
+- ✅ **Integration**: Seamless integration with existing for-loop infrastructure
+
+### 📝 **Complete Range For Loop Example (Production Ready!)**
+
+```plat
+fn main() -> i32 {
+  // Exclusive range (doesn't include end value)
+  var sum1 = 0;
+  for (i in 0..10) {
+    sum1 = sum1 + i;
+  }
+  print("Sum of 0..10: ${sum1}");  // Outputs: "Sum of 0..10: 45"
+
+  // Inclusive range (includes end value)
+  var sum2 = 0;
+  for (i in 0..=10) {
+    sum2 = sum2 + i;
+  }
+  print("Sum of 0..=10: ${sum2}");  // Outputs: "Sum of 0..=10: 55"
+
+  // Range with variables
+  let start = 5;
+  let end = 10;
+  var product = 1;
+  for (i in start..end) {
+    product = product * i;
+  }
+  print("Product of 5..10: ${product}");  // Outputs: "Product of 5..10: 15120"
+
+  // Nested ranges
+  var count = 0;
+  for (i in 1..4) {
+    for (j in 1..4) {
+      count = count + 1;
+    }
+  }
+  print("Nested count: ${count}");  // Outputs: "Nested count: 9"
+
+  return 0;
+}
+```
+
+## 19. Stretch Goals (post-MVP)
 - [ ] Imports & modules
 - [ ] More operators & advanced pattern matching
 - [ ] Incremental compilation & caching
@@ -752,7 +833,10 @@ fn main() -> i32 {
 - [x] **🎉 NEW WORKING**: `fn identity<T>(value: T) -> T { return value; }` → generic function declarations ✅
 - [x] **🎉 NEW WORKING**: `fn create_pair<T, U>(first: T, second: U)` → multi-parameter generic functions ✅
 - [x] **🎉 NEW WORKING**: `let x = identity(10)` → generic function calls with type inference ✅
-- [x] **🏆 ACHIEVEMENT**: Complete object-oriented programming + algebraic data types + generic collections + dictionaries + sets + **generics + inheritance + full polymorphism + generic functions** ready for production!
+- [x] **🎉 NEW WORKING**: `for (i in 0..5) { }` → exclusive range for loops (iterates 0-4) ✅
+- [x] **🎉 NEW WORKING**: `for (i in 0..=5) { }` → inclusive range for loops (iterates 0-5) ✅
+- [x] **🎉 NEW WORKING**: `for (i in start..end) { }` → range with variables ✅
+- [x] **🏆 ACHIEVEMENT**: Complete object-oriented programming + algebraic data types + generic collections + dictionaries + sets + **generics + inheritance + full polymorphism + generic functions + range-based for loops** ready for production!
 
 ### 📝 **Complete Working Examples (Production Ready!)**
 

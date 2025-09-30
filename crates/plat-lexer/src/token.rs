@@ -49,6 +49,8 @@ pub enum Token {
     Greater,
     GreaterEq,
     Question,
+    DotDot,      // .. (exclusive range)
+    DotDotEq,    // ..= (inclusive range)
 
     // Punctuation
     LeftParen,
