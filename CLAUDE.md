@@ -353,7 +353,8 @@ fn main() {
 - ✅ **Member Access**: Both property access (`obj.field`) and assignment (`obj.field = value`)
 - ✅ **Named Constructors**: Constructor calls with explicit parameter names
 - ✅ **Generic Support**: Parser and type system ready for generic classes
-- ✅ **Code Generation**: Basic compilation support (member access assignment pending)
+- ✅ **Code Generation**: Full compilation support with dynamic class metadata system
+- ✅ **Dynamic Field Layout**: Proper field offset computation from class declarations
 - ✅ **Formatter Integration**: Beautiful code formatting with proper indentation
 
 ### 📝 **Complete Classes Example (Production Ready!)**
@@ -447,8 +448,12 @@ fn main() {
 - ✅ **HIR**: `Container<i32>` → specialized to `Container$specialized$0`
 - ✅ **Type Safety**: Generic constraints and usage validated
 - ✅ **Memory Safety**: GC-compatible with proper type tracking
-- ✅ **Code Generation**: Ready for native compilation
+- ✅ **Code Generation**: Full native compilation with dynamic metadata
 - ✅ **Integration**: Works seamlessly with inheritance and existing features
+- ✅ **Class Metadata System**: Dynamic field layout computation from declarations
+  - Field offset calculation with proper alignment
+  - Class size computation based on actual field types
+  - No hardcoded offsets or sizes - fully generalized
 
 ## 16. Inheritance & Polymorphism (NEW FEATURE - COMPLETE!)
 - [x] **Object-Oriented Programming**: Complete inheritance system with polymorphism

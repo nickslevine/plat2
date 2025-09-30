@@ -1,0 +1,20 @@
+class Point {
+  let x: i32;
+  let y: i32;
+
+  init(x: i32, y: i32) -> Point {
+    self.x = x;
+    self.y = y;
+    return self;
+  }
+
+  fn get_magnitude() -> i32 {
+    return self.x * self.x + self.y * self.y;
+  }
+}
+
+fn main() {
+  let p1 = Point(x = 10, y = 20);
+  let magnitude = p1.get_magnitude();
+  print("Magnitude: ${magnitude}");
+}

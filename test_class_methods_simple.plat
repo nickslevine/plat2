@@ -1,0 +1,29 @@
+class Point {
+  let x: i32;
+  let y: i32;
+
+  init(x: i32, y: i32) -> Point {
+    self.x = x;
+    self.y = y;
+    return self;
+  }
+
+  fn add(other: Point) -> Point {
+    return Point(x = self.x + other.x, y = self.y + other.y);
+  }
+
+  fn get_magnitude() -> i32 {
+    return self.x * self.x + self.y * self.y;
+  }
+}
+
+fn main() {
+  let p1 = Point(x = 10, y = 20);
+  let mag = p1.get_magnitude();
+  print("P1 magnitude: ${mag}");
+
+  let p2 = Point(x = 5, y = 15);
+  let sum = p1.add(p2);
+  let sum_mag = sum.get_magnitude();
+  print("Sum magnitude: ${sum_mag}");
+}
