@@ -1,8 +1,7 @@
-fix all compilation warnings. 
-
-  ☐ Update CLI for module compilation modes
-  ☐ Update codegen for multi-module programs
-  ☐ Write end-to-end module tests
+  - Global symbol table across all modules
+  - Type checker loading imported module symbols
+  - Code generator exporting/importing symbols
+  - Object file linking for multi-module programs
 
 * error handling
 * modules
@@ -22,6 +21,7 @@ fix all compilation warnings.
 * concurrency
 * number formatting with underscores
 * enforce type annotations everywhere
+* classes - heap vs struct. questions? 
 
 * plat cli niceties
   * spinner
@@ -30,4 +30,7 @@ fix all compilation warnings.
 * syntax highlighting
 * config 
 * any module is automatically a cli
+* first-class pandas, numpy, pytorch
+* ffi
 
+enforce snake case for variables and function/method names, TitleCase for classes / enums 

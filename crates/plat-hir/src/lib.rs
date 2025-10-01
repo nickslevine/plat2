@@ -93,6 +93,7 @@ pub struct TypeChecker {
     type_parameters: Vec<String>, // Track current type parameters in scope (like T, U)
     monomorphizer: Monomorphizer, // For generic type specialization
     module_table: ModuleSymbolTable, // Module-aware symbol table
+    require_main: bool, // Whether to require a main function (false for library modules)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -169,6 +170,7 @@ impl TypeChecker {
             type_parameters: Vec::new(),
             monomorphizer: Monomorphizer::new(),
             module_table: ModuleSymbolTable::new(module_path),
+            require_main: true, // Default: require main function
         };
 
         // Register built-in Option<T> type
@@ -178,6 +180,155 @@ impl TypeChecker {
         checker.register_builtin_result();
 
         checker
+    }
+
+    /// Create a TypeChecker with pre-populated global symbols
+    pub fn with_symbols(module_table: ModuleSymbolTable) -> Self {
+        let mut checker = Self {
+            scopes: vec![HashMap::new()], // Global scope
+            functions: HashMap::new(),
+            enums: HashMap::new(),
+            classes: HashMap::new(),
+            current_function_return_type: None,
+            current_class_context: None,
+            current_method_is_init: false,
+            type_parameters: Vec::new(),
+            monomorphizer: Monomorphizer::new(),
+            module_table,
+            require_main: false, // Multi-module: don't require main in every module
+        };
+
+        // Register built-in Option<T> type
+        checker.register_builtin_option();
+
+        // Register built-in Result<T, E> type
+        checker.register_builtin_result();
+
+        // Load all symbols from the module table into local maps
+        checker.load_symbols_from_module_table();
+
+        checker
+    }
+
+    /// Load symbols from the module table into local type checker maps
+    /// Only loads symbols from the current module and imported modules
+    fn load_symbols_from_module_table(&mut self) {
+        let current_module = &self.module_table.current_module;
+        let imports = &self.module_table.imports;
+
+        for (qualified_name, symbol) in &self.module_table.global_symbols {
+            // Check if this symbol is from the current module or an imported module
+            let should_load = if current_module.is_empty() {
+                // Root module: load all unqualified symbols
+                !qualified_name.contains("::")
+            } else {
+                // Check if symbol is from current module or imported modules
+                qualified_name.starts_with(&format!("{}::", current_module))
+                    || imports.iter().any(|imp| qualified_name.starts_with(&format!("{}::", imp)))
+            };
+
+            if should_load {
+                match symbol {
+                    Symbol::Function(sig) => {
+                        self.functions.insert(qualified_name.clone(), sig.clone());
+                    }
+                    Symbol::Enum(info) => {
+                        self.enums.insert(qualified_name.clone(), info.clone());
+                    }
+                    Symbol::Class(info) => {
+                        self.classes.insert(qualified_name.clone(), info.clone());
+                    }
+                }
+            }
+        }
+    }
+
+    /// Add an import to the module table
+    pub fn add_import(&mut self, module_path: String) {
+        self.module_table.add_import(module_path);
+    }
+
+    /// Collect all top-level symbols from a program into the module symbol table
+    pub fn collect_symbols_from_program(
+        &mut self,
+        program: &Program,
+        module_path: &str,
+        global_symbols: &mut ModuleSymbolTable,
+    ) -> Result<(), DiagnosticError> {
+        // Update the module table's current module
+        global_symbols.current_module = module_path.to_string();
+
+        // Collect all function declarations
+        for func in &program.functions {
+            // Build function signature
+            let params: Result<Vec<HirType>, _> = func.params.iter()
+                .map(|p| self.ast_type_to_hir_type(&p.ty))
+                .collect();
+            let params = params?;
+
+            let return_type = if let Some(ref rt) = func.return_type {
+                self.ast_type_to_hir_type(rt)?
+            } else {
+                HirType::Unit
+            };
+
+            let sig = FunctionSignature {
+                type_params: func.type_params.clone(),
+                params,
+                return_type,
+                is_mutable: func.is_mutable,
+            };
+
+            global_symbols.register(&func.name, Symbol::Function(sig));
+        }
+
+        // Collect all enum declarations
+        for enum_decl in &program.enums {
+            // Build enum info (simplified for now)
+            let mut variants = HashMap::new();
+            for variant in &enum_decl.variants {
+                let field_types: Result<Vec<HirType>, _> = variant.fields.iter()
+                    .map(|f| self.ast_type_to_hir_type(f))
+                    .collect();
+                let field_types = field_types?;
+                variants.insert(variant.name.clone(), field_types);
+            }
+
+            let enum_info = EnumInfo {
+                name: enum_decl.name.clone(),
+                type_params: enum_decl.type_params.clone(),
+                variants,
+                methods: HashMap::new(), // Methods will be populated later
+            };
+
+            global_symbols.register(&enum_decl.name, Symbol::Enum(enum_info));
+        }
+
+        // Collect all class declarations
+        for class_decl in &program.classes {
+            // Build class info (simplified for now)
+            let mut fields = HashMap::new();
+            for field in &class_decl.fields {
+                let field_info = FieldInfo {
+                    ty: self.ast_type_to_hir_type(&field.ty)?,
+                    is_mutable: field.is_mutable,
+                };
+                fields.insert(field.name.clone(), field_info);
+            }
+
+            let class_info = ClassInfo {
+                name: class_decl.name.clone(),
+                type_params: class_decl.type_params.clone(),
+                parent_class: class_decl.parent_class.clone(),
+                fields,
+                methods: HashMap::new(), // Methods will be populated later
+                virtual_methods: HashMap::new(),
+            };
+
+            global_symbols.register(&class_decl.name, Symbol::Class(class_info));
+        }
+
+        Ok(())
     }
 
     fn register_builtin_option(&mut self) {
@@ -261,25 +412,27 @@ impl TypeChecker {
         // Note: Class method signatures are already collected in collect_class_info
         // to ensure type parameters are properly scoped
 
-        // Check that main function exists
-        if !self.functions.contains_key("main") {
+        // Check that main function exists (only if required)
+        if self.require_main && !self.functions.contains_key("main") {
             return Err(DiagnosticError::Type(
                 "Program must have a main function".to_string()
             ));
         }
 
-        // Validate main function signature
-        let main_sig = &self.functions["main"];
-        if !main_sig.params.is_empty() {
-            return Err(DiagnosticError::Type(
-                "Main function must have no parameters".to_string()
-            ));
-        }
-        // Main can return either Unit or i32 (for exit code)
-        if main_sig.return_type != HirType::Unit && main_sig.return_type != HirType::I32 {
-            return Err(DiagnosticError::Type(
-                "Main function must return either nothing or i32".to_string()
-            ));
+        // Validate main function signature (only if main exists)
+        if self.functions.contains_key("main") {
+            let main_sig = &self.functions["main"];
+            if !main_sig.params.is_empty() {
+                return Err(DiagnosticError::Type(
+                    "Main function must have no parameters".to_string()
+                ));
+            }
+            // Main can return either Unit or i32 (for exit code)
+            if main_sig.return_type != HirType::Unit && main_sig.return_type != HirType::I32 {
+                return Err(DiagnosticError::Type(
+                    "Main function must return either nothing or i32".to_string()
+                ));
+            }
         }
 
         // Third pass: type check all functions
@@ -583,6 +736,20 @@ impl TypeChecker {
     }
 
     fn collect_function_signature_with_name(&mut self, name: &str, function: &Function) -> Result<(), DiagnosticError> {
+        // In multi-module mode, skip if function is already registered from global symbol table
+        // In single-module mode, we need to check for duplicates
+        if self.functions.contains_key(name) {
+            if !self.require_main {
+                // Multi-module compilation: function is from global symbol table, skip
+                return Ok(());
+            } else {
+                // Single-module compilation: duplicate definition error
+                return Err(DiagnosticError::Type(
+                    format!("Function '{}' is defined multiple times", name)
+                ));
+            }
+        }
+
         // Add function type parameters to scope temporarily
         let old_type_params = self.type_parameters.clone();
         self.type_parameters.extend(function.type_params.iter().cloned());
@@ -607,11 +774,7 @@ impl TypeChecker {
             is_mutable: function.is_mutable,
         };
 
-        if self.functions.insert(name.to_string(), signature).is_some() {
-            return Err(DiagnosticError::Type(
-                format!("Function '{}' is defined multiple times", name)
-            ));
-        }
+        self.functions.insert(name.to_string(), signature);
 
         Ok(())
     }

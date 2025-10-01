@@ -179,14 +179,159 @@ fn build_project() -> Result<()> {
             .collect::<Vec<_>>()
             .join(" → "));
 
-    // For now, compile each file separately
-    // TODO: In the future, we'll merge all modules into a single compilation unit
-    for file in &ordered_files {
-        println!("\n  {} Compiling {}", "→".cyan(), file.display());
-        build_single_file(file.clone())?;
-    }
+    // Build all modules together with cross-module symbol resolution
+    build_multi_module(&ordered_files)?;
 
     println!("\n{} Project built successfully", "✓".green().bold());
+
+    Ok(())
+}
+
+/// Build multiple modules together with cross-module symbol resolution
+fn build_multi_module(ordered_files: &[PathBuf]) -> Result<()> {
+    // Phase 1: Parse all modules
+    println!("\n  {} Parsing all modules...", "→".cyan());
+    let mut modules = Vec::new();
+    for file in ordered_files {
+        let source = fs::read_to_string(file)
+            .with_context(|| format!("Failed to read file: {}", file.display()))?;
+
+        let parser = plat_parser::Parser::new(&source)
+            .with_context(|| "Failed to create parser")?;
+        let program = parser.parse()
+            .with_context(|| "Failed to parse program")?;
+
+        modules.push((file.clone(), program));
+    }
+
+    // Phase 2: Build global symbol table from all modules
+    println!("  {} Building global symbol table...", "→".cyan());
+    let mut global_symbols = plat_hir::ModuleSymbolTable::new(String::new());
+
+    for (file_path, program) in &modules {
+        let module_path = program.module_decl
+            .as_ref()
+            .map(|m| m.path.join("::"))
+            .unwrap_or_default();
+
+        // Register all top-level symbols from this module
+        let mut temp_checker = plat_hir::TypeChecker::new();
+        temp_checker.collect_symbols_from_program(program, &module_path, &mut global_symbols)?;
+    }
+
+    // Phase 3: Type check all modules with access to global symbols
+    println!("  {} Type checking all modules...", "→".cyan());
+    for (file_path, program) in &modules {
+        let module_path = program.module_decl
+            .as_ref()
+            .map(|m| m.path.join("::"))
+            .unwrap_or_default();
+
+        // Clone the global symbols and set the current module
+        let mut module_symbols = global_symbols.clone();
+        module_symbols.current_module = module_path.clone();
+
+        // Add imports for this module
+        for use_decl in &program.use_decls {
+            let import_path = use_decl.path.join("::");
+            module_symbols.add_import(import_path);
+        }
+
+        let type_checker = plat_hir::TypeChecker::with_symbols(module_symbols);
+
+        if let Err(e) = type_checker.check_program(program) {
+            println!("Type checking error in {}: {:?}", file_path.display(), e);
+            anyhow::bail!("Type checking failed in {}: {:?}", file_path.display(), e);
+        }
+    }
+
+    // Phase 4: Generate object files for all modules
+    println!("  {} Generating code for all modules...", "→".cyan());
+    let mut object_files = Vec::new();
+
+    for (file_path, program) in &modules {
+        let codegen = plat_codegen::CodeGenerator::new()
+            .with_context(|| "Failed to initialize code generator")?;
+
+        let object_bytes = codegen.generate_code(program)
+            .with_context(|| format!("Code generation failed for {}", file_path.display()))?;
+
+        let object_file = file_path.with_extension("o");
+        std::fs::write(&object_file, &object_bytes)
+            .with_context(|| format!("Failed to write object file: {}", object_file.display()))?;
+
+        object_files.push(object_file);
+    }
+
+    // Phase 5: Link all object files together
+    println!("  {} Linking {} object file(s)...", "→".cyan(), object_files.len());
+
+    // Build the runtime library first
+    let build_result = Command::new("cargo")
+        .args(&["build", "--lib", "--package", "plat-runtime"])
+        .current_dir(get_project_root()?)
+        .output()
+        .with_context(|| "Failed to build runtime library")?;
+
+    if !build_result.status.success() {
+        anyhow::bail!("Runtime library build failed: {}",
+            String::from_utf8_lossy(&build_result.stderr));
+    }
+
+    // Find the built runtime library
+    let target_dir = get_project_root()?.join("target").join("debug");
+    let runtime_lib = if cfg!(target_os = "macos") {
+        target_dir.join("libplat_runtime.dylib")
+    } else if cfg!(target_os = "windows") {
+        target_dir.join("plat_runtime.dll")
+    } else {
+        target_dir.join("libplat_runtime.so")
+    };
+
+    // Find the main module (the one with main() function)
+    let main_file = ordered_files.iter()
+        .find(|f| {
+            if let Ok(src) = fs::read_to_string(f) {
+                src.contains("fn main(")
+            } else {
+                false
+            }
+        })
+        .ok_or_else(|| anyhow::anyhow!("No main() function found in any module"))?;
+
+    let output_path = get_output_path(main_file);
+
+    // Create output directory if it doesn't exist
+    if let Some(parent) = output_path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("Failed to create output directory: {}", parent.display()))?;
+    }
+
+    // Link all object files together
+    let mut link_command = Command::new("cc");
+    link_command.arg("-o").arg(&output_path);
+
+    for obj_file in &object_files {
+        link_command.arg(obj_file);
+    }
+
+    link_command.arg(&runtime_lib);
+
+    let link_result = link_command
+        .output()
+        .with_context(|| "Failed to run linker")?;
+
+    if !link_result.status.success() {
+        let stderr = String::from_utf8_lossy(&link_result.stderr);
+        anyhow::bail!("Linking failed:\n{}", stderr);
+    }
+
+    // Clean up object files
+    for obj_file in &object_files {
+        std::fs::remove_file(obj_file).ok();
+    }
+
+    println!("{} Generated executable: {}", "✓".green().bold(), output_path.display());
 
     Ok(())
 }
