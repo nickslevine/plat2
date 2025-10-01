@@ -1,0 +1,11 @@
+mod utils;
+
+use math;
+
+fn double(x: i32) -> i32 {
+  return math::add(x, x);
+}
+
+fn square(x: i32) -> i32 {
+  return math::multiply(x, x);
+}

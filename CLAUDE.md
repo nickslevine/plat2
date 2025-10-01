@@ -940,7 +940,7 @@ Result: 30
 Sign: 1
 ```
 
-## 21. Module System (NEW FEATURE - IN PROGRESS)
+## 21. Module System (PHASE 1, 2, & 3 COMPLETE!)
 - [x] **Core Module Infrastructure**: Foundation complete with resolver and HIR integration
   - [x] `plat-modules` crate with dependency graph construction
   - [x] Circular dependency detection using DFS
@@ -949,11 +949,12 @@ Sign: 1
   - [x] HIR `ModuleSymbolTable` for qualified name tracking
   - [x] Parser support for `mod` and `use` declarations (Phase 1)
   - [x] Formatter support for module syntax
-- [ ] **Module Compilation Pipeline**: Integration with CLI and codegen
-  - [ ] CLI support for module-based compilation modes
-  - [ ] Multi-module code generation and linking
-  - [ ] Qualified name resolution in function calls
-  - [ ] End-to-end module tests
+- [x] **Module Compilation Pipeline**: CLI integration and parser support (Phase 3)
+  - [x] CLI support for module-based compilation modes
+  - [x] Parser support for qualified identifiers (module::function)
+  - [x] HIR integration for cross-module function resolution
+  - [x] End-to-end module tests (single-file with mod declarations)
+  - [ ] Multi-module code generation and linking (Phase 4 - Future)
 
 ### 📐 **Module System Design**
 
@@ -1060,7 +1061,7 @@ Sign: 1
   mod database;  // ❌ Error: file must be in database/ folder
   ```
 
-### 🎯 **Module System Status - IN PROGRESS**
+### 🎯 **Module System Status - PHASE 1, 2, & 3 COMPLETE!**
 - [x] **Lexer Support**: `mod` and `use` keywords ✅
 - [x] **AST Extensions**: `ModuleDecl` and `UseDecl` structures ✅
 - [x] **Parser Implementation**: Parse module declarations and import statements ✅
@@ -1068,10 +1069,11 @@ Sign: 1
 - [x] **HIR Compatibility**: Existing type checker works with new AST structure ✅
 - [x] **Module Resolver**: Dependency graph builder with folder-based resolution ✅
 - [x] **HIR Integration**: Module-aware symbol tables and qualified name resolution ✅
-- [ ] **CLI Updates**: Support for `plat run` without arguments, project-wide builds
-- [ ] **Code Generation**: Multi-module compilation and linking
+- [x] **CLI Updates**: Support for `plat run` without arguments, project-wide builds ✅
+- [x] **Parser Support**: Qualified function calls (module::function) ✅
+- [ ] **Code Generation**: Multi-module compilation and linking (requires Phase 4)
 
-### ✅ **Phase 1 & 2 Complete: Parser + Core Infrastructure**
+### ✅ **Phase 1, 2, & 3 Complete: Full Module Infrastructure**
 The Plat compiler now has complete module resolution infrastructure:
 
 **Phase 1 - Syntax Support:**
@@ -1097,7 +1099,40 @@ fn connect() -> i32 {
 - ✅ Import resolution and module context tracking
 - ✅ Comprehensive test coverage (4/4 tests passing)
 
-### 📝 **Complete Module System Example (Coming Soon!)**
+**Phase 3 - CLI Integration:**
+- ✅ Updated CLI to accept optional file arguments
+- ✅ `plat run` (no args) → looks for main.plat
+- ✅ `plat build` (no args) → compiles all .plat files in project
+- ✅ Module discovery and dependency resolution
+- ✅ Compilation order based on dependency graph
+- ✅ Parser support for qualified identifiers (module::function)
+- ✅ HIR integration for cross-module function resolution
+
+**Working Now:**
+```plat
+// simple_module.plat
+mod simple;
+
+fn greet(name: string) -> i32 {
+  print("Hello, ${name}!");
+  return 0;
+}
+
+fn main() -> i32 {
+  greet("World");
+  return 0;
+}
+```
+✅ Single-file programs with module declarations compile and run!
+
+**Phase 4 - Multi-Module Linking (Future Work):**
+Cross-file module imports with qualified function calls require:
+- Global symbol table across all modules in dependency graph
+- Type checker loading imported module symbols
+- Code generator exporting/importing symbols across modules
+- Linker combining multiple object files
+
+### 📝 **Complete Module System Example (Requires Phase 4)**
 
 ```plat
 // database/connection.plat

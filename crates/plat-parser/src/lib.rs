@@ -803,19 +803,41 @@ impl Parser {
 
         if let Some(Token::Ident(name)) = self.match_if(|t| matches!(t, Token::Ident(_))) {
             let span = self.previous_span();
-            // Check for enum constructor (EnumName::Variant)
+            // Check for qualified name (module::item or EnumName::Variant)
             if self.match_token(&Token::DoubleColon) {
-                let variant = self.consume_identifier("Expected variant name after ':'")?;
-                let mut args = Vec::new();
-                if self.match_token(&Token::LeftParen) {
-                    args = self.parse_arguments()?;
+                let second_part = self.consume_identifier("Expected identifier after '::'")?;
+
+                // Use a simple heuristic: if the first part starts with uppercase, treat as enum
+                // Otherwise, treat as qualified function/identifier (module::function)
+                let is_likely_enum = name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false);
+
+                // Check if this is an enum constructor with arguments
+                if is_likely_enum && self.match_token(&Token::LeftParen) {
+                    let args = self.parse_arguments()?;
                     self.consume(Token::RightParen, "Expected ')' after enum constructor arguments")?;
+                    let end = self.previous_span().end;
+                    return Ok(Expression::EnumConstructor {
+                        enum_name: name,
+                        variant: second_part,
+                        args,
+                        span: Span::new(span.start, end),
+                    });
+                } else if is_likely_enum && !self.check(&Token::LeftParen) {
+                    // Enum variant without arguments
+                    let end = self.previous_span().end;
+                    return Ok(Expression::EnumConstructor {
+                        enum_name: name,
+                        variant: second_part,
+                        args: vec![],
+                        span: Span::new(span.start, end),
+                    });
                 }
+
+                // Otherwise, it's a qualified identifier (module::function)
+                let qualified_name = format!("{}::{}", name, second_part);
                 let end = self.previous_span().end;
-                return Ok(Expression::EnumConstructor {
-                    enum_name: name,
-                    variant,
-                    args,
+                return Ok(Expression::Identifier {
+                    name: qualified_name,
                     span: Span::new(span.start, end),
                 });
             }

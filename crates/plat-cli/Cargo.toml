@@ -22,6 +22,7 @@ plat-codegen = { path = "../plat-codegen" }
 plat-runtime = { path = "../plat-runtime" }
 plat-fmt = { path = "../plat-fmt" }
 plat-diags = { path = "../plat-diags" }
+plat-modules = { path = "../plat-modules" }
 
 [dev-dependencies]
 tempfile.workspace = true

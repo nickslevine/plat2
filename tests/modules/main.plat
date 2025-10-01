@@ -1,0 +1,15 @@
+use math;
+use utils;
+
+fn main() -> i32 {
+  let x = math::add(10, 20);
+  print("10 + 20 = ${x}");
+
+  let y = utils::double(15);
+  print("double(15) = ${y}");
+
+  let z = utils::square(5);
+  print("square(5) = ${z}");
+
+  return 0;
+}

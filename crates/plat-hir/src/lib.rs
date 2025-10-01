@@ -823,9 +823,20 @@ impl TypeChecker {
                 self.check_unary_op(op, &operand_type)
             }
             Expression::Call { function, args, .. } => {
-                let signature = self.functions.get(function)
-                    .ok_or_else(|| DiagnosticError::Type(format!("Unknown function '{}'", function)))?
-                    .clone();
+                // Try to resolve the function name (handles both local and qualified names)
+                let resolved_name = self.module_table.resolve(function)
+                    .unwrap_or_else(|| function.clone());
+
+                // Look up in local functions first, then try global symbols
+                let signature = if let Some(sig) = self.functions.get(&resolved_name) {
+                    sig.clone()
+                } else if let Some(sig) = self.functions.get(function) {
+                    sig.clone()
+                } else if let Some(Symbol::Function(sig)) = self.module_table.global_symbols.get(&resolved_name) {
+                    sig.clone()
+                } else {
+                    return Err(DiagnosticError::Type(format!("Unknown function '{}'", function)));
+                };
 
                 if args.len() != signature.params.len() {
                     return Err(DiagnosticError::Type(

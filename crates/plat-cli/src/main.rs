@@ -4,6 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{self, Command};
 use anyhow::{Context, Result};
+use plat_modules::{ModuleResolver, ModuleError};
 
 #[derive(Parser)]
 #[command(name = "plat")]
@@ -17,13 +18,13 @@ struct Cli {
 enum Commands {
     /// Build a Plat source file into an executable
     Build {
-        /// The Plat source file to build
-        file: PathBuf,
+        /// The Plat source file to build (optional - builds all .plat files in current directory if not specified)
+        file: Option<PathBuf>,
     },
     /// Run a Plat source file
     Run {
-        /// The Plat source file to run
-        file: PathBuf,
+        /// The Plat source file to run (optional - looks for main.plat if not specified)
+        file: Option<PathBuf>,
     },
     /// Format a Plat source file
     Fmt {
@@ -49,7 +50,14 @@ fn run() -> Result<()> {
     }
 }
 
-fn build_command(file: PathBuf) -> Result<()> {
+fn build_command(file: Option<PathBuf>) -> Result<()> {
+    match file {
+        Some(f) => build_single_file(f),
+        None => build_project(),
+    }
+}
+
+fn build_single_file(file: PathBuf) -> Result<()> {
     validate_plat_file(&file)?;
 
     let source = fs::read_to_string(&file)
@@ -145,16 +153,66 @@ fn build_command(file: PathBuf) -> Result<()> {
     Ok(())
 }
 
-fn run_command(file: PathBuf) -> Result<()> {
-    validate_plat_file(&file)?;
+fn build_project() -> Result<()> {
+    println!("{} Building project (all .plat files)", "Building".green().bold());
 
-    println!("{} {}", "Running".green().bold(), file.display());
+    let current_dir = std::env::current_dir()
+        .with_context(|| "Failed to get current directory")?;
+
+    // Discover all .plat files
+    println!("  {} Discovering modules...", "→".cyan());
+    let files = discover_plat_files(&current_dir)?;
+
+    if files.is_empty() {
+        anyhow::bail!("No .plat files found in current directory");
+    }
+
+    println!("  {} Found {} module(s)", "→".cyan(), files.len());
+
+    // Resolve module dependencies
+    println!("  {} Resolving dependencies...", "→".cyan());
+    let ordered_files = resolve_modules(&files, &current_dir)?;
+
+    println!("  {} Compilation order: {}", "→".cyan(),
+        ordered_files.iter()
+            .map(|f| f.file_name().unwrap().to_string_lossy())
+            .collect::<Vec<_>>()
+            .join(" → "));
+
+    // For now, compile each file separately
+    // TODO: In the future, we'll merge all modules into a single compilation unit
+    for file in &ordered_files {
+        println!("\n  {} Compiling {}", "→".cyan(), file.display());
+        build_single_file(file.clone())?;
+    }
+
+    println!("\n{} Project built successfully", "✓".green().bold());
+
+    Ok(())
+}
+
+fn run_command(file: Option<PathBuf>) -> Result<()> {
+    let file_to_run = match file {
+        Some(f) => f,
+        None => {
+            // Look for main.plat in current directory
+            let main_file = PathBuf::from("main.plat");
+            if !main_file.exists() {
+                anyhow::bail!("No file specified and main.plat not found in current directory");
+            }
+            main_file
+        }
+    };
+
+    validate_plat_file(&file_to_run)?;
+
+    println!("{} {}", "Running".green().bold(), file_to_run.display());
 
     // First build the file
-    build_command(file.clone())?;
+    build_command(Some(file_to_run.clone()))?;
 
     // Then execute the output
-    let output_path = get_output_path(&file);
+    let output_path = get_output_path(&file_to_run);
 
     println!("{} Executing {}", "→".cyan(), output_path.display());
 
@@ -241,6 +299,79 @@ fn get_project_root() -> Result<PathBuf> {
             anyhow::bail!("Could not find workspace root (Cargo.toml with [workspace])");
         }
     }
+}
+
+/// Parse a single .plat file and extract its module declaration and imports
+fn parse_module_info(file_path: &Path) -> Result<(String, Vec<String>)> {
+    let source = fs::read_to_string(file_path)
+        .with_context(|| format!("Failed to read file: {}", file_path.display()))?;
+
+    let parser = plat_parser::Parser::new(&source)
+        .with_context(|| "Failed to create parser")?;
+    let program = parser.parse()
+        .with_context(|| "Failed to parse program")?;
+
+    let module_path = program.module_decl
+        .as_ref()
+        .map(|m| m.path.join("::"))
+        .unwrap_or_default();
+
+    let imports: Vec<String> = program.use_decls
+        .iter()
+        .map(|u| u.path.join("::"))
+        .collect();
+
+    Ok((module_path, imports))
+}
+
+/// Discover all .plat files in the current directory tree
+fn discover_plat_files(root: &Path) -> Result<Vec<PathBuf>> {
+    let mut files = Vec::new();
+
+    fn visit_dirs(dir: &Path, files: &mut Vec<PathBuf>) -> Result<()> {
+        if dir.is_dir() {
+            for entry in fs::read_dir(dir)? {
+                let entry = entry?;
+                let path = entry.path();
+                if path.is_dir() {
+                    visit_dirs(&path, files)?;
+                } else if path.extension() == Some(std::ffi::OsStr::new("plat")) {
+                    files.push(path);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    visit_dirs(root, &mut files)?;
+    Ok(files)
+}
+
+/// Build module dependency graph and get compilation order
+fn resolve_modules(files: &[PathBuf], root_dir: &Path) -> Result<Vec<PathBuf>> {
+    let mut resolver = ModuleResolver::new(root_dir.to_path_buf());
+
+    // Register all modules
+    for file in files {
+        let (module_path, imports) = parse_module_info(file)?;
+        resolver.register_module(file.clone(), &module_path)
+            .map_err(|e| anyhow::anyhow!("{}", e))?;
+        resolver.add_dependencies(&module_path, imports);
+    }
+
+    // Get compilation order
+    let order = resolver.compilation_order()
+        .map_err(|e| anyhow::anyhow!("{}", e))?;
+
+    // Map module names back to file paths
+    let mut ordered_files = Vec::new();
+    for module_name in order {
+        if let Ok(module_id) = resolver.resolve_module(&module_name) {
+            ordered_files.push(module_id.file_path.clone());
+        }
+    }
+
+    Ok(ordered_files)
 }
 
 #[cfg(test)]
