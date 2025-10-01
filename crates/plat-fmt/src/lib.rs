@@ -25,6 +25,36 @@ impl Formatter {
     }
 
     fn format_program(&mut self, program: &Program) {
+        // Format module declaration first
+        if let Some(module_decl) = &program.module_decl {
+            self.write("mod ");
+            for (i, part) in module_decl.path.iter().enumerate() {
+                if i > 0 {
+                    self.write("::");
+                }
+                self.write(part);
+            }
+            self.write_line(";");
+            self.write_line("");
+        }
+
+        // Format use declarations
+        for use_decl in &program.use_decls {
+            self.write("use ");
+            for (i, part) in use_decl.path.iter().enumerate() {
+                if i > 0 {
+                    self.write("::");
+                }
+                self.write(part);
+            }
+            self.write_line(";");
+        }
+
+        // Add blank line after use declarations if there are any
+        if !program.use_decls.is_empty() {
+            self.write_line("");
+        }
+
         let mut items_written = 0;
 
         // Format enums first

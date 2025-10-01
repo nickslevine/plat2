@@ -18,6 +18,19 @@ impl Parser {
     }
 
     pub fn parse(mut self) -> Result<Program, DiagnosticError> {
+        // Parse optional module declaration
+        let module_decl = if self.check(&Token::Mod) {
+            Some(self.parse_module_decl()?)
+        } else {
+            None
+        };
+
+        // Parse use declarations
+        let mut use_decls = Vec::new();
+        while self.check(&Token::Use) {
+            use_decls.push(self.parse_use_decl()?);
+        }
+
         let mut functions = Vec::new();
         let mut enums = Vec::new();
         let mut classes = Vec::new();
@@ -32,7 +45,49 @@ impl Parser {
             }
         }
 
-        Ok(Program { functions, enums, classes })
+        Ok(Program { module_decl, use_decls, functions, enums, classes })
+    }
+
+    fn parse_module_decl(&mut self) -> Result<ModuleDecl, DiagnosticError> {
+        let start = self.current_span().start;
+        self.consume(Token::Mod, "Expected 'mod'")?;
+
+        let mut path = Vec::new();
+        path.push(self.consume_identifier("Expected module name")?);
+
+        // Parse nested module path (database::connection)
+        while self.match_token(&Token::DoubleColon) {
+            path.push(self.consume_identifier("Expected module name after '::'")?);
+        }
+
+        self.consume(Token::Semicolon, "Expected ';' after module declaration")?;
+        let end = self.previous_span().end;
+
+        Ok(ModuleDecl {
+            path,
+            span: Span::new(start, end),
+        })
+    }
+
+    fn parse_use_decl(&mut self) -> Result<UseDecl, DiagnosticError> {
+        let start = self.current_span().start;
+        self.consume(Token::Use, "Expected 'use'")?;
+
+        let mut path = Vec::new();
+        path.push(self.consume_identifier("Expected module name")?);
+
+        // Parse nested module path (database::connection)
+        while self.match_token(&Token::DoubleColon) {
+            path.push(self.consume_identifier("Expected module name after '::'")?);
+        }
+
+        self.consume(Token::Semicolon, "Expected ';' after use declaration")?;
+        let end = self.previous_span().end;
+
+        Ok(UseDecl {
+            path,
+            span: Span::new(start, end),
+        })
     }
 
     fn parse_function(&mut self) -> Result<Function, DiagnosticError> {

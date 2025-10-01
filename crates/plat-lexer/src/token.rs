@@ -25,6 +25,8 @@ pub enum Token {
     Virtual,
     Override,
     Super,
+    Mod,
+    Use,
 
     // Identifiers and literals
     Ident(String),
@@ -110,6 +112,8 @@ impl Token {
             "virtual" => Some(Token::Virtual),
             "override" => Some(Token::Override),
             "super" => Some(Token::Super),
+            "mod" => Some(Token::Mod),
+            "use" => Some(Token::Use),
             "and" => Some(Token::And),
             "or" => Some(Token::Or),
             "not" => Some(Token::Not),

@@ -1,12 +1,13 @@
 * error handling
+* modules
+  * private vs public. 
 
 * regex
-* safe vs unsafe arithmetic 
 * testing
 * benchmarking
 * type alias
 * newtype
-* modules
+
 * visibility 
 
 * parallel loops
@@ -14,10 +15,11 @@
 * number formatting with underscores
 * enforce type annotations everywhere
 
-* cli niceties
+* plat cli niceties
   * spinner
   * ai docs
 * LSP
 * syntax highlighting
 * config 
+* any module is automatically a cli
 

@@ -940,8 +940,185 @@ Result: 30
 Sign: 1
 ```
 
-## 21. Stretch Goals (post-MVP)
-- [ ] Imports & modules
+## 21. Module System (NEW FEATURE - IN PROGRESS)
+- [ ] **Module Declarations & Imports**: Complete module system with namespace management
+  - [ ] `mod module_name;` declarations at file top
+  - [ ] Nested modules: `mod database::connection;`
+  - [ ] Folder structure matches module path for fast compilation
+  - [ ] Multi-file modules: multiple files with same `mod` declaration
+  - [ ] Import statements: `use database;` for namespace imports
+  - [ ] Qualified access: `database::connect()` for cross-module calls
+  - [ ] No circular dependencies validation
+  - [ ] All module members public by default
+
+### 📐 **Module System Design**
+
+**Syntax & Structure:**
+- **Module Declarations**: Every `.plat` file must declare its module at the top:
+  ```plat
+  mod database;
+
+  fn connect() -> i32 {
+      return 1;
+  }
+  ```
+- **Nested Modules**: Use double-colon for module hierarchy:
+  ```plat
+  mod database::connection;
+
+  fn establish_connection() -> bool {
+      return true;
+  }
+  ```
+- **Folder Structure**: Must match module path (enforced for fast compilation):
+  - `database/connection.plat` → `mod database::connection;` ✅
+  - `src/connection.plat` → `mod database::connection;` ❌ (error)
+- **Multi-file Modules**: Multiple files can share the same module:
+  ```plat
+  // database/connection.plat
+  mod database;
+  fn connect() -> i32 { return 1; }
+
+  // database/query.plat
+  mod database;
+  fn execute_query() -> string { return "ok"; }
+  ```
+  Both files are part of the `database` module and can access each other's functions directly.
+
+**Imports & Access:**
+- **Use Statements**: Import namespaces (not individual members):
+  ```plat
+  use database;
+
+  fn main() -> i32 {
+      let result = database::connect();  // Must qualify with module name
+      return result;
+  }
+  ```
+- **Within Module**: Sibling members accessible without qualification:
+  ```plat
+  mod database;
+
+  fn connect() -> i32 { return 1; }
+
+  fn initialize() {
+      let result = connect();  // Direct access within same module
+      print("Connected: ${result}");
+  }
+  ```
+- **Across Modules**: Must use qualified names after `use`:
+  ```plat
+  use database;
+  use auth;
+
+  fn main() {
+      database::connect();
+      auth::login("user");
+  }
+  ```
+
+**Entry Points:**
+- `plat run file.plat` → Executes `main()` function from that file's declared module
+- `plat run` (no file specified) → Looks for `main.plat` in current directory
+- `main.plat` typically has no `mod` declaration (implicit root module) or `mod main;`
+
+**Compilation Modes:**
+- `plat run file.plat` → Compile only that file + dependencies (follows `use` chain)
+- `plat build file.plat` → Compile to executable, same dependency resolution
+- `plat build` (no args) → Compile all `.plat` files in directory tree (project mode)
+
+**Module Resolution (Fast Compilation):**
+- When compiler sees `use database;`, it looks for `database/` folder
+- Scans only `.plat` files in that folder for `mod database;` declarations
+- For `use database::connection;`, looks for `database/connection.plat` or `database/connection/` folder
+- No need to scan entire project tree - folder structure determines module location
+
+**Validation & Errors:**
+- **Circular Dependencies**: Compiler detects and errors on circular `use` chains
+  ```plat
+  // auth.plat
+  mod auth;
+  use database;  // ❌ Error if database uses auth
+  ```
+- **Duplicate Definitions**: Error if same function/class/enum defined multiple times within a module
+  ```plat
+  // database/a.plat
+  mod database;
+  fn connect() { }  // ✅ First definition
+
+  // database/b.plat
+  mod database;
+  fn connect() { }  // ❌ Error: duplicate definition
+  ```
+- **Module Path Mismatch**: Error if `mod` declaration doesn't match file location
+  ```plat
+  // Located at: src/utils.plat
+  mod database;  // ❌ Error: file must be in database/ folder
+  ```
+
+### 🎯 **Module System Status - IN PROGRESS**
+- [ ] **Lexer Support**: `mod` and `use` keywords
+- [ ] **AST Extensions**: `ModuleDecl` and `UseDecl` structures
+- [ ] **Parser Implementation**: Parse module declarations and import statements
+- [ ] **Module Resolver**: Dependency graph builder with folder-based resolution
+- [ ] **HIR Integration**: Module-aware symbol tables and qualified name resolution
+- [ ] **CLI Updates**: Support for `plat run` without arguments, project-wide builds
+- [ ] **Code Generation**: Multi-module compilation and linking
+- [ ] **Formatter Support**: Pretty printing for module declarations
+
+### 📝 **Complete Module System Example (Coming Soon!)**
+
+```plat
+// database/connection.plat
+mod database;
+
+fn connect(host: string) -> i32 {
+    print("Connecting to ${host}");
+    return 1;
+}
+
+// database/query.plat
+mod database;
+
+fn execute(sql: string) -> string {
+    let conn_id = connect("localhost");  // Direct access - same module
+    print("Executing: ${sql}");
+    return "ok";
+}
+
+// auth/users.plat
+mod auth;
+
+use database;
+
+fn authenticate(username: string) -> bool {
+    database::connect("auth-server");  // Qualified access - different module
+    let result = database::execute("SELECT * FROM users");
+    return true;
+}
+
+// main.plat
+use database;
+use auth;
+
+fn main() -> i32 {
+    let authed = auth::authenticate("alice");
+    if (authed) {
+        database::execute("SELECT * FROM posts");
+    }
+    return 0;
+}
+```
+
+**Output:**
+```
+Connecting to auth-server
+Executing: SELECT * FROM users
+Connecting to localhost
+Executing: SELECT * FROM posts
+```
+
+## 22. Stretch Goals (post-MVP)
 - [ ] More operators & advanced pattern matching
 - [ ] Incremental compilation & caching
 - [ ] Multiple inheritance or interfaces

@@ -2,9 +2,23 @@ use plat_lexer::Span;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Program {
+    pub module_decl: Option<ModuleDecl>,
+    pub use_decls: Vec<UseDecl>,
     pub functions: Vec<Function>,
     pub enums: Vec<EnumDecl>,
     pub classes: Vec<ClassDecl>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ModuleDecl {
+    pub path: Vec<String>, // e.g., ["database", "connection"] for "mod database::connection;"
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct UseDecl {
+    pub path: Vec<String>, // e.g., ["database"] for "use database;"
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq)]
