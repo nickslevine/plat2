@@ -1,0 +1,38 @@
+fn main() -> i32 {
+  // Basic float literals
+  let pi: f64 = 3.14159;
+  let e: f64 = 2.71828;
+
+  print("Pi: ${pi}");
+  print("E: ${e}");
+
+  // Float arithmetic
+  let radius: f64 = 5.0;
+  let area: f64 = pi * radius * radius;
+  print("Circle area with radius ${radius}: ${area}");
+
+  // Float comparisons
+  let x: f64 = 10.5;
+  let y: f64 = 20.3;
+
+  if (x < y) {
+    print("${x} is less than ${y}");
+  }
+
+  if (x > 5.0) {
+    print("${x} is greater than 5.0");
+  }
+
+  // Mixed operations
+  let sum: f64 = 100.5 + 50.25;
+  let difference: f64 = 100.5 - 50.25;
+  let product: f64 = 10.5 * 2.0;
+  let quotient: f64 = 100.0 / 4.0;
+
+  print("Sum: ${sum}");
+  print("Difference: ${difference}");
+  print("Product: ${product}");
+  print("Quotient: ${quotient}");
+
+  return 0;
+}

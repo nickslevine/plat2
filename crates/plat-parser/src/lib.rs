@@ -160,6 +160,8 @@ impl Parser {
             "bool" => Ok(Type::Bool),
             "i32" => Ok(Type::I32),
             "i64" => Ok(Type::I64),
+            "f32" => Ok(Type::F32),
+            "f64" => Ok(Type::F64),
             "string" => Ok(Type::String),
             _ => Ok(Type::Named(type_name, vec![])),
         }
@@ -395,7 +397,7 @@ impl Parser {
                     Expression::Binary { span, .. } => span.start,
                     Expression::Unary { span, .. } => span.start,
                     Expression::Literal(lit) => match lit {
-                        Literal::Bool(_, s) | Literal::Integer(_, s) |
+                        Literal::Bool(_, s) | Literal::Integer(_, s) | Literal::Float(_, _, s) |
                         Literal::String(_, s) | Literal::InterpolatedString(_, s) |
                         Literal::Array(_, s) | Literal::Dict(_, s) | Literal::Set(_, s) => s.start,
                     },
@@ -682,6 +684,15 @@ impl Parser {
             return Ok(Expression::Literal(Literal::Integer(n, span)));
         }
 
+        if let Some(Token::FloatLiteral(value, float_type)) = self.match_if(|t| matches!(t, Token::FloatLiteral(_, _))) {
+            let span = self.previous_span();
+            let ast_float_type = match float_type {
+                plat_lexer::FloatType::F32 => FloatType::F32,
+                plat_lexer::FloatType::F64 => FloatType::F64,
+            };
+            return Ok(Expression::Literal(Literal::Float(value, ast_float_type, span)));
+        }
+
         if let Some(Token::StringLiteral(s)) = self.match_if(|t| matches!(t, Token::StringLiteral(_))) {
             let span = self.previous_span();
             return Ok(Expression::Literal(Literal::String(s, span)));
@@ -819,7 +830,7 @@ impl Parser {
             Expression::Binary { span, .. } => span.start,
             Expression::Unary { span, .. } => span.start,
             Expression::Literal(lit) => match lit {
-                Literal::Bool(_, s) | Literal::Integer(_, s) |
+                Literal::Bool(_, s) | Literal::Integer(_, s) | Literal::Float(_, _, s) |
                 Literal::String(_, s) | Literal::InterpolatedString(_, s) |
                 Literal::Array(_, s) | Literal::Dict(_, s) | Literal::Set(_, s) => s.start,
             },

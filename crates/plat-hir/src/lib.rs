@@ -22,6 +22,8 @@ pub enum HirType {
     Bool,
     I32,
     I64,
+    F32,
+    F64,
     String,
     List(Box<HirType>),
     Dict(Box<HirType>, Box<HirType>), // key type, value type
@@ -701,7 +703,7 @@ impl TypeChecker {
                 let value_type = self.check_expression(value)?;
                 // Print accepts any type (will be converted to string)
                 match value_type {
-                    HirType::Bool | HirType::I32 | HirType::I64 | HirType::String => {},
+                    HirType::Bool | HirType::I32 | HirType::I64 | HirType::F32 | HirType::F64 | HirType::String => {},
                     _ => return Err(DiagnosticError::Type(
                         format!("Cannot print value of type {:?}", value_type)
                     )),
@@ -1964,6 +1966,12 @@ impl TypeChecker {
         match literal {
             Literal::Bool(_, _) => Ok(HirType::Bool),
             Literal::Integer(_, _) => Ok(HirType::I32), // Default integer type
+            Literal::Float(_, float_type, _) => {
+                match float_type {
+                    FloatType::F32 => Ok(HirType::F32),
+                    FloatType::F64 => Ok(HirType::F64),
+                }
+            }
             Literal::String(_, _) => Ok(HirType::String),
             Literal::InterpolatedString(_, _) => Ok(HirType::String),
             Literal::Array(elements, _) => {
@@ -2047,13 +2055,25 @@ impl TypeChecker {
 
     fn check_binary_op(&self, op: &BinaryOp, left: &HirType, right: &HirType) -> Result<HirType, DiagnosticError> {
         match op {
-            BinaryOp::Add | BinaryOp::Subtract | BinaryOp::Multiply | BinaryOp::Divide | BinaryOp::Modulo => {
+            BinaryOp::Add | BinaryOp::Subtract | BinaryOp::Multiply | BinaryOp::Divide => {
                 match (left, right) {
                     (HirType::I32, HirType::I32) => Ok(HirType::I32),
                     (HirType::I64, HirType::I64) => Ok(HirType::I64),
+                    (HirType::F32, HirType::F32) => Ok(HirType::F32),
+                    (HirType::F64, HirType::F64) => Ok(HirType::F64),
                     (HirType::String, HirType::String) if matches!(op, BinaryOp::Add) => Ok(HirType::String),
                     _ => Err(DiagnosticError::Type(
                         format!("Cannot apply {:?} to types {:?} and {:?}", op, left, right)
+                    ))
+                }
+            }
+            BinaryOp::Modulo => {
+                // Modulo only works with integers, not floats
+                match (left, right) {
+                    (HirType::I32, HirType::I32) => Ok(HirType::I32),
+                    (HirType::I64, HirType::I64) => Ok(HirType::I64),
+                    _ => Err(DiagnosticError::Type(
+                        format!("Modulo operator requires integer operands, got {:?} and {:?}", left, right)
                     ))
                 }
             }
@@ -2068,7 +2088,8 @@ impl TypeChecker {
             }
             BinaryOp::Less | BinaryOp::LessEqual | BinaryOp::Greater | BinaryOp::GreaterEqual => {
                 match (left, right) {
-                    (HirType::I32, HirType::I32) | (HirType::I64, HirType::I64) => Ok(HirType::Bool),
+                    (HirType::I32, HirType::I32) | (HirType::I64, HirType::I64) |
+                    (HirType::F32, HirType::F32) | (HirType::F64, HirType::F64) => Ok(HirType::Bool),
                     _ => Err(DiagnosticError::Type(
                         format!("Cannot compare types {:?} and {:?}", left, right)
                     ))
@@ -2112,6 +2133,8 @@ impl TypeChecker {
             Type::Bool => Ok(HirType::Bool),
             Type::I32 => Ok(HirType::I32),
             Type::I64 => Ok(HirType::I64),
+            Type::F32 => Ok(HirType::F32),
+            Type::F64 => Ok(HirType::F64),
             Type::String => Ok(HirType::String),
             Type::List(element_type) => {
                 let element_hir_type = self.ast_type_to_hir_type(element_type)?;
@@ -2428,7 +2451,7 @@ impl TypeSubstitutable for HirType {
                 )
             }
             // Primitive types don't need substitution
-            HirType::Bool | HirType::I32 | HirType::I64 | HirType::String | HirType::Unit => {
+            HirType::Bool | HirType::I32 | HirType::I64 | HirType::F32 | HirType::F64 | HirType::String | HirType::Unit => {
                 self.clone()
             }
         }

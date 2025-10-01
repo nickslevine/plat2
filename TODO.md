@@ -1,8 +1,5 @@
-* floats
-* for ranges
 * error handling
 * if expressions? 
-
 
 
 * regex

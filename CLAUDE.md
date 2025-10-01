@@ -763,13 +763,116 @@ fn main() -> i32 {
 }
 ```
 
-## 19. Stretch Goals (post-MVP)
+## 19. Float Support (COMPLETE!)
+- [x] **Lexer Support**: Float literal tokenization
+  - [x] Parse float literals with decimal point (e.g., `3.14`, `0.5`)
+  - [x] Support scientific notation (e.g., `1.5e10`, `2.3e-5`)
+  - [x] Distinguish f32 and f64 suffix (e.g., `3.14f32`, `3.14f64`)
+  - [x] Handle edge cases and avoid conflicts with range operators
+- [x] **AST Extensions**: Float literal expressions
+  - [x] `Literal::Float` with value and type (f32/f64)
+  - [x] Type annotation support for float types (`Type::F32`, `Type::F64`)
+- [x] **Parser Implementation**: Float literal parsing
+  - [x] Parse float literals in primary expressions
+  - [x] Parse `f32` and `f64` type annotations
+  - [x] Comprehensive parser tests for floats
+- [x] **Type System & HIR**: Float type checking
+  - [x] `HirType::F32` and `HirType::F64` variants
+  - [x] Type checking for float arithmetic operations
+  - [x] Type checking for float comparisons
+  - [x] Type promotion in mixed arithmetic (F64 > F32 > I64 > I32)
+  - [x] Helpful error messages for type mismatches
+- [x] **Code Generation**: Float operations with Cranelift
+  - [x] Float literal compilation (f32const, f64const)
+  - [x] Float arithmetic: `fadd`, `fsub`, `fmul`, `fdiv`
+  - [x] Float comparisons with FloatCC: `==`, `!=`, `<`, `<=`, `>`, `>=`
+  - [x] Dynamic type detection for arithmetic operations
+  - [x] Full integration with Cranelift F32/F64 types
+- [x] **Runtime Support**: Float string conversion
+  - [x] `plat_f32_to_string()` for string interpolation
+  - [x] `plat_f64_to_string()` for string interpolation
+  - [x] GC-managed string allocation
+- [x] **Formatter Support**: Pretty printing for floats
+  - [x] Format float literals correctly
+  - [x] Preserve type suffixes (f32/f64)
+- [x] **End-to-End Testing**: Comprehensive validation
+  - [x] Basic float arithmetic tests (working!)
+  - [x] Float comparison tests (working!)
+  - [x] String interpolation with floats (working!)
+  - [x] Mixed float operations (working!)
+
+### 🎯 **Float Support Goals**
+- ✅ **f32 Type**: 32-bit single precision floats
+- ✅ **f64 Type**: 64-bit double precision floats (default)
+- ✅ **Arithmetic**: All basic operations (+, -, *, /)
+- ✅ **Comparisons**: All comparison operators
+- ✅ **String Interpolation**: Float to string conversion
+- ✅ **Type Safety**: Compile-time float type checking
+
+### 📝 **Complete Float Example (Production Ready!)**
+
+```plat
+fn main() -> i32 {
+  // Float literals (f64 by default with type annotations)
+  let pi: f64 = 3.14159;
+  let e: f64 = 2.71828;
+
+  print("Pi: ${pi}");
+  print("E: ${e}");
+
+  // Float arithmetic
+  let radius: f64 = 5.0;
+  let area: f64 = pi * radius * radius;
+  print("Circle area with radius ${radius}: ${area}");
+
+  // Float comparisons
+  let x: f64 = 10.5;
+  let y: f64 = 20.3;
+
+  if (x < y) {
+    print("${x} is less than ${y}");
+  }
+
+  if (x > 5.0) {
+    print("${x} is greater than 5.0");
+  }
+
+  // Mixed operations
+  let sum: f64 = 100.5 + 50.25;
+  let difference: f64 = 100.5 - 50.25;
+  let product: f64 = 10.5 * 2.0;
+  let quotient: f64 = 100.0 / 4.0;
+
+  print("Sum: ${sum}");
+  print("Difference: ${difference}");
+  print("Product: ${product}");
+  print("Quotient: ${quotient}");
+
+  return 0;
+}
+```
+
+**Output:**
+```
+Pi: 3.14159
+E: 2.71828
+Circle area with radius 5: 78.53975
+10.5 is less than 20.3
+10.5 is greater than 5.0
+Sum: 150.75
+Difference: 50.25
+Product: 21
+Quotient: 25
+```
+
+## 20. Stretch Goals (post-MVP)
 - [ ] Imports & modules
 - [ ] More operators & advanced pattern matching
 - [ ] Incremental compilation & caching
 - [ ] Multiple inheritance or interfaces
 - [ ] Generic constraints (`T: Display`)
 - [ ] Explicit type arguments in calls (`identity<i32>(10)`)
+- [ ] Type casting operators (`as f32`, `as i32`)
 
 ---
 

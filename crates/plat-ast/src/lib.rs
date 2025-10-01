@@ -32,6 +32,8 @@ pub enum Type {
     Bool,
     I32,
     I64,
+    F32,
+    F64,
     String,
     List(Box<Type>),
     Dict(Box<Type>, Box<Type>), // Key type, Value type
@@ -172,11 +174,18 @@ pub enum Expression {
 pub enum Literal {
     Bool(bool, Span),
     Integer(i64, Span),
+    Float(f64, FloatType, Span), // value, type (f32/f64), span
     String(String, Span),
     InterpolatedString(Vec<InterpolationPart>, Span),
     Array(Vec<Expression>, Span),
     Dict(Vec<(Expression, Expression)>, Span), // Key-value pairs
     Set(Vec<Expression>, Span), // Set elements
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum FloatType {
+    F32,
+    F64,
 }
 
 #[derive(Debug, Clone, PartialEq)]

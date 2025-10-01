@@ -1,12 +1,12 @@
 /// Cranelift-based code generation for the Plat language
 /// Generates native machine code from the Plat AST
 
-use plat_ast::{self as ast, BinaryOp, Block, Expression, Function, Literal, MatchArm, Parameter, Pattern, Program, Statement, UnaryOp, EnumDecl, InterpolationPart};
+use plat_ast::{self as ast, BinaryOp, Block, Expression, Function, Literal, MatchArm, Parameter, Pattern, Program, Statement, UnaryOp, EnumDecl, InterpolationPart, FloatType};
 use plat_ast::Type as AstType;
 use cranelift_codegen::ir::types::*;
 use std::os::raw::c_char;
 use cranelift_codegen::ir::{
-    AbiParam, Value, condcodes::IntCC, StackSlotData, StackSlotKind, MemFlags,
+    AbiParam, Value, condcodes::{IntCC, FloatCC}, StackSlotData, StackSlotKind, MemFlags,
 };
 use cranelift_codegen::isa::CallConv;
 use cranelift_codegen::settings::{self, Configurable};
@@ -23,6 +23,8 @@ pub enum VariableType {
     Bool,
     I32,
     I64,
+    F32,
+    F64,
     String,
     Array(Box<VariableType>), // Array with element type
     Dict,
@@ -169,6 +171,12 @@ impl CodeGenerator {
                     VariableType::I64
                 }
             }
+            Expression::Literal(Literal::Float(_, float_type, _)) => {
+                match float_type {
+                    FloatType::F32 => VariableType::F32,
+                    FloatType::F64 => VariableType::F64,
+                }
+            }
             Expression::Literal(Literal::String(_, _)) => VariableType::String,
             Expression::Literal(Literal::InterpolatedString(_, _)) => VariableType::String,
             Expression::Identifier { name, .. } => {
@@ -180,8 +188,12 @@ impl CodeGenerator {
                     BinaryOp::Add | BinaryOp::Subtract | BinaryOp::Multiply | BinaryOp::Divide | BinaryOp::Modulo => {
                         let left_type = Self::infer_expression_type(left, variable_types);
                         let right_type = Self::infer_expression_type(right, variable_types);
-                        // If either is I64, result is I64
-                        if left_type == VariableType::I64 || right_type == VariableType::I64 {
+                        // Priority: F64 > F32 > I64 > I32
+                        if left_type == VariableType::F64 || right_type == VariableType::F64 {
+                            VariableType::F64
+                        } else if left_type == VariableType::F32 || right_type == VariableType::F32 {
+                            VariableType::F32
+                        } else if left_type == VariableType::I64 || right_type == VariableType::I64 {
                             VariableType::I64
                         } else {
                             VariableType::I32
@@ -200,6 +212,8 @@ impl CodeGenerator {
             VariableType::Bool => I32,      // Booleans are represented as i32
             VariableType::I32 => I32,
             VariableType::I64 => I64,
+            VariableType::F32 => F32,
+            VariableType::F64 => F64,
             VariableType::String => I64,    // Strings are pointers
             VariableType::Array(_) => I64,  // Arrays are pointers
             VariableType::Dict => I64,      // Dicts are pointers
@@ -215,6 +229,8 @@ impl CodeGenerator {
             AstType::Bool => VariableType::Bool,
             AstType::I32 => VariableType::I32,
             AstType::I64 => VariableType::I64,
+            AstType::F32 => VariableType::F32,
+            AstType::F64 => VariableType::F64,
             AstType::String => VariableType::String,
             AstType::List(element_type) => {
                 let element_var_type = Self::ast_type_to_variable_type(element_type);
@@ -283,11 +299,13 @@ impl CodeGenerator {
             let (cranelift_type, size, alignment) = match &field.ty {
                 AstType::String => (I64, 8, 8),
                 AstType::I64 => (I64, 8, 8),
+                AstType::F64 => (F64, 8, 8),
                 AstType::List(_) => (I64, 8, 8),
                 AstType::Dict(_, _) => (I64, 8, 8),
                 AstType::Set(_) => (I64, 8, 8),
                 AstType::Named(_, _) => (I64, 8, 8), // Custom types are pointers
                 AstType::I32 => (I32, 4, 4),
+                AstType::F32 => (F32, 4, 4),
                 AstType::Bool => (I32, 4, 4),
             };
 
@@ -589,11 +607,13 @@ impl CodeGenerator {
             let param_type = match &param.ty {
                 AstType::String => I64,
                 AstType::I64 => I64,
+                AstType::F64 => F64,
                 AstType::List(_) => I64,
                 AstType::Dict(_, _) => I64,
                 AstType::Set(_) => I64,
                 AstType::Named(_, _) => I64, // Custom types (classes, enums) are pointers
                 AstType::I32 | AstType::Bool => I32,
+                AstType::F32 => F32,
             };
             sig.params.push(AbiParam::new(param_type));
         }
@@ -604,10 +624,12 @@ impl CodeGenerator {
             let ret_type = match return_type {
                 AstType::String => I64,
                 AstType::I64 => I64,
+                AstType::F64 => F64,
                 AstType::List(_) => I64,
                 AstType::Dict(_, _) => I64,
                 AstType::Set(_) => I64,
                 AstType::Named(_, _) => I64, // Custom types (classes, enums) are pointers
+                AstType::F32 => F32,
                 AstType::I32 | AstType::Bool => I32,
             };
             sig.returns.push(AbiParam::new(ret_type));
@@ -690,11 +712,13 @@ impl CodeGenerator {
             let cranelift_type = match &param.ty {
                 AstType::String => I64,
                 AstType::I64 => I64,
+                AstType::F64 => F64,
                 AstType::List(_) => I64,
                 AstType::Dict(_, _) => I64,
                 AstType::Set(_) => I64,
                 AstType::Named(_, _) => I64, // Custom types (classes, enums) are pointers
                 AstType::I32 | AstType::Bool => I32,
+                AstType::F32 => F32,
             };
 
             builder.declare_var(var, cranelift_type);
@@ -1662,35 +1686,93 @@ impl CodeGenerator {
                         let left_val = Self::generate_expression_helper(builder, left, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
                         let right_val = Self::generate_expression_helper(builder, right, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
 
+                        // Determine if we're working with floats
+                        let left_type = Self::infer_expression_type(left, variable_types);
+                        let is_float = matches!(left_type, VariableType::F32 | VariableType::F64);
+
                         match op {
-                            BinaryOp::Add => Ok(builder.ins().iadd(left_val, right_val)),
-                            BinaryOp::Subtract => Ok(builder.ins().isub(left_val, right_val)),
-                            BinaryOp::Multiply => Ok(builder.ins().imul(left_val, right_val)),
-                            BinaryOp::Divide => Ok(builder.ins().sdiv(left_val, right_val)),
+                            BinaryOp::Add => {
+                                if is_float {
+                                    Ok(builder.ins().fadd(left_val, right_val))
+                                } else {
+                                    Ok(builder.ins().iadd(left_val, right_val))
+                                }
+                            }
+                            BinaryOp::Subtract => {
+                                if is_float {
+                                    Ok(builder.ins().fsub(left_val, right_val))
+                                } else {
+                                    Ok(builder.ins().isub(left_val, right_val))
+                                }
+                            }
+                            BinaryOp::Multiply => {
+                                if is_float {
+                                    Ok(builder.ins().fmul(left_val, right_val))
+                                } else {
+                                    Ok(builder.ins().imul(left_val, right_val))
+                                }
+                            }
+                            BinaryOp::Divide => {
+                                if is_float {
+                                    Ok(builder.ins().fdiv(left_val, right_val))
+                                } else {
+                                    Ok(builder.ins().sdiv(left_val, right_val))
+                                }
+                            }
                             BinaryOp::Modulo => Ok(builder.ins().srem(left_val, right_val)),
                             BinaryOp::Equal => {
-                                let cmp = builder.ins().icmp(IntCC::Equal, left_val, right_val);
-                                Ok(builder.ins().uextend(I32, cmp))
+                                if is_float {
+                                    let cmp = builder.ins().fcmp(FloatCC::Equal, left_val, right_val);
+                                    Ok(builder.ins().uextend(I32, cmp))
+                                } else {
+                                    let cmp = builder.ins().icmp(IntCC::Equal, left_val, right_val);
+                                    Ok(builder.ins().uextend(I32, cmp))
+                                }
                             }
                             BinaryOp::NotEqual => {
-                                let cmp = builder.ins().icmp(IntCC::NotEqual, left_val, right_val);
-                                Ok(builder.ins().uextend(I32, cmp))
+                                if is_float {
+                                    let cmp = builder.ins().fcmp(FloatCC::NotEqual, left_val, right_val);
+                                    Ok(builder.ins().uextend(I32, cmp))
+                                } else {
+                                    let cmp = builder.ins().icmp(IntCC::NotEqual, left_val, right_val);
+                                    Ok(builder.ins().uextend(I32, cmp))
+                                }
                             }
                             BinaryOp::Less => {
-                                let cmp = builder.ins().icmp(IntCC::SignedLessThan, left_val, right_val);
-                                Ok(builder.ins().uextend(I32, cmp))
+                                if is_float {
+                                    let cmp = builder.ins().fcmp(FloatCC::LessThan, left_val, right_val);
+                                    Ok(builder.ins().uextend(I32, cmp))
+                                } else {
+                                    let cmp = builder.ins().icmp(IntCC::SignedLessThan, left_val, right_val);
+                                    Ok(builder.ins().uextend(I32, cmp))
+                                }
                             }
                             BinaryOp::LessEqual => {
-                                let cmp = builder.ins().icmp(IntCC::SignedLessThanOrEqual, left_val, right_val);
-                                Ok(builder.ins().uextend(I32, cmp))
+                                if is_float {
+                                    let cmp = builder.ins().fcmp(FloatCC::LessThanOrEqual, left_val, right_val);
+                                    Ok(builder.ins().uextend(I32, cmp))
+                                } else {
+                                    let cmp = builder.ins().icmp(IntCC::SignedLessThanOrEqual, left_val, right_val);
+                                    Ok(builder.ins().uextend(I32, cmp))
+                                }
                             }
                             BinaryOp::Greater => {
-                                let cmp = builder.ins().icmp(IntCC::SignedGreaterThan, left_val, right_val);
-                                Ok(builder.ins().uextend(I32, cmp))
+                                if is_float {
+                                    let cmp = builder.ins().fcmp(FloatCC::GreaterThan, left_val, right_val);
+                                    Ok(builder.ins().uextend(I32, cmp))
+                                } else {
+                                    let cmp = builder.ins().icmp(IntCC::SignedGreaterThan, left_val, right_val);
+                                    Ok(builder.ins().uextend(I32, cmp))
+                                }
                             }
                             BinaryOp::GreaterEqual => {
-                                let cmp = builder.ins().icmp(IntCC::SignedGreaterThanOrEqual, left_val, right_val);
-                                Ok(builder.ins().uextend(I32, cmp))
+                                if is_float {
+                                    let cmp = builder.ins().fcmp(FloatCC::GreaterThanOrEqual, left_val, right_val);
+                                    Ok(builder.ins().uextend(I32, cmp))
+                                } else {
+                                    let cmp = builder.ins().icmp(IntCC::SignedGreaterThanOrEqual, left_val, right_val);
+                                    Ok(builder.ins().uextend(I32, cmp))
+                                }
                             }
                             _ => unreachable!()
                         }
@@ -3590,6 +3672,12 @@ impl CodeGenerator {
             Literal::Integer(i, _) => {
                 Ok(builder.ins().iconst(I32, *i))
             }
+            Literal::Float(f, float_type, _) => {
+                match float_type {
+                    FloatType::F32 => Ok(builder.ins().f32const(*f as f32)),
+                    FloatType::F64 => Ok(builder.ins().f64const(*f)),
+                }
+            }
             Literal::String(s, _) => {
                 // Allocate string on GC heap
 
@@ -3724,6 +3812,35 @@ impl CodeGenerator {
                         // String literals and variables are already string pointers
                         Expression::Literal(Literal::String(_, _)) => expr_val,
                         Expression::Literal(Literal::InterpolatedString(_, _)) => expr_val,
+                        // Float literals need to be converted to strings
+                        Expression::Literal(Literal::Float(_, FloatType::F32, _)) => {
+                            let convert_sig = {
+                                let mut sig = module.make_signature();
+                                sig.call_conv = CallConv::SystemV;
+                                sig.params.push(AbiParam::new(F32));
+                                sig.returns.push(AbiParam::new(I64));
+                                sig
+                            };
+                            let convert_id = module.declare_function("plat_f32_to_string", Linkage::Import, &convert_sig)
+                                .map_err(CodegenError::ModuleError)?;
+                            let convert_ref = module.declare_func_in_func(convert_id, builder.func);
+                            let call = builder.ins().call(convert_ref, &[expr_val]);
+                            builder.inst_results(call)[0]
+                        }
+                        Expression::Literal(Literal::Float(_, FloatType::F64, _)) => {
+                            let convert_sig = {
+                                let mut sig = module.make_signature();
+                                sig.call_conv = CallConv::SystemV;
+                                sig.params.push(AbiParam::new(F64));
+                                sig.returns.push(AbiParam::new(I64));
+                                sig
+                            };
+                            let convert_id = module.declare_function("plat_f64_to_string", Linkage::Import, &convert_sig)
+                                .map_err(CodegenError::ModuleError)?;
+                            let convert_ref = module.declare_func_in_func(convert_id, builder.func);
+                            let call = builder.ins().call(convert_ref, &[expr_val]);
+                            builder.inst_results(call)[0]
+                        }
                         Expression::Identifier { name, .. } => {
                             // Use the variable type information to determine conversion
                             match variable_types.get(name) {
@@ -3801,6 +3918,36 @@ impl CodeGenerator {
                                         sig
                                     };
                                     let convert_id = module.declare_function("plat_i64_to_string", Linkage::Import, &convert_sig)
+                                        .map_err(CodegenError::ModuleError)?;
+                                    let convert_ref = module.declare_func_in_func(convert_id, builder.func);
+                                    let call = builder.ins().call(convert_ref, &[expr_val]);
+                                    builder.inst_results(call)[0]
+                                }
+                                Some(VariableType::F32) => {
+                                    // F32 variable, convert to string
+                                    let convert_sig = {
+                                        let mut sig = module.make_signature();
+                                        sig.call_conv = CallConv::SystemV;
+                                        sig.params.push(AbiParam::new(F32));
+                                        sig.returns.push(AbiParam::new(I64));
+                                        sig
+                                    };
+                                    let convert_id = module.declare_function("plat_f32_to_string", Linkage::Import, &convert_sig)
+                                        .map_err(CodegenError::ModuleError)?;
+                                    let convert_ref = module.declare_func_in_func(convert_id, builder.func);
+                                    let call = builder.ins().call(convert_ref, &[expr_val]);
+                                    builder.inst_results(call)[0]
+                                }
+                                Some(VariableType::F64) => {
+                                    // F64 variable, convert to string
+                                    let convert_sig = {
+                                        let mut sig = module.make_signature();
+                                        sig.call_conv = CallConv::SystemV;
+                                        sig.params.push(AbiParam::new(F64));
+                                        sig.returns.push(AbiParam::new(I64));
+                                        sig
+                                    };
+                                    let convert_id = module.declare_function("plat_f64_to_string", Linkage::Import, &convert_sig)
                                         .map_err(CodegenError::ModuleError)?;
                                     let convert_ref = module.declare_func_in_func(convert_id, builder.func);
                                     let call = builder.ins().call(convert_ref, &[expr_val]);
@@ -3911,6 +4058,34 @@ impl CodeGenerator {
                             if val_type == I64 {
                                 // Assume it's a string pointer
                                 expr_val
+                            } else if val_type == F32 {
+                                // F32 value, convert to string
+                                let convert_sig = {
+                                    let mut sig = module.make_signature();
+                                    sig.call_conv = CallConv::SystemV;
+                                    sig.params.push(AbiParam::new(F32));
+                                    sig.returns.push(AbiParam::new(I64));
+                                    sig
+                                };
+                                let convert_id = module.declare_function("plat_f32_to_string", Linkage::Import, &convert_sig)
+                                    .map_err(CodegenError::ModuleError)?;
+                                let convert_ref = module.declare_func_in_func(convert_id, builder.func);
+                                let call = builder.ins().call(convert_ref, &[expr_val]);
+                                builder.inst_results(call)[0]
+                            } else if val_type == F64 {
+                                // F64 value, convert to string
+                                let convert_sig = {
+                                    let mut sig = module.make_signature();
+                                    sig.call_conv = CallConv::SystemV;
+                                    sig.params.push(AbiParam::new(F64));
+                                    sig.returns.push(AbiParam::new(I64));
+                                    sig
+                                };
+                                let convert_id = module.declare_function("plat_f64_to_string", Linkage::Import, &convert_sig)
+                                    .map_err(CodegenError::ModuleError)?;
+                                let convert_ref = module.declare_func_in_func(convert_id, builder.func);
+                                let call = builder.ins().call(convert_ref, &[expr_val]);
+                                builder.inst_results(call)[0]
                             } else {
                                 // I32 value, convert to string
                                 let convert_sig = {

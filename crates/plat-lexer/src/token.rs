@@ -29,6 +29,7 @@ pub enum Token {
     // Identifiers and literals
     Ident(String),
     IntLiteral(i64),
+    FloatLiteral(f64, FloatType), // value and type (f32/f64)
     StringLiteral(String),
     InterpolatedString(Vec<StringPart>),
 
@@ -74,6 +75,12 @@ pub enum Token {
 pub enum StringPart {
     Text(String),
     Interpolation(String),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum FloatType {
+    F32,
+    F64,
 }
 
 impl Token {

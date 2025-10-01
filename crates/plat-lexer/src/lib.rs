@@ -2,7 +2,7 @@ mod token;
 #[cfg(test)]
 mod tests;
 
-pub use token::{Span, StringPart, Token, TokenWithSpan};
+pub use token::{FloatType, Span, StringPart, Token, TokenWithSpan};
 
 use plat_diags::DiagnosticError;
 
@@ -260,6 +260,7 @@ impl Lexer {
     }
 
     fn scan_number(&mut self, start: usize) -> Result<(), DiagnosticError> {
+        // Scan integer part
         while let Some(c) = self.peek() {
             if c.is_ascii_digit() {
                 self.advance();
@@ -268,10 +269,63 @@ impl Lexer {
             }
         }
 
+        // Check for decimal point (float)
+        let is_float = if self.peek() == Some('.') {
+            // Make sure it's not a range operator (..)
+            if let Some(next) = self.peek_next() {
+                if next.is_ascii_digit() {
+                    self.advance(); // consume '.'
+                    // Scan fractional part
+                    while let Some(c) = self.peek() {
+                        if c.is_ascii_digit() {
+                            self.advance();
+                        } else {
+                            break;
+                        }
+                    }
+                    true
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+
+        // Check for scientific notation (e.g., 1.5e10, 2.3e-5)
+        let has_exponent = if self.peek() == Some('e') || self.peek() == Some('E') {
+            self.advance(); // consume 'e' or 'E'
+
+            // Optional sign
+            if self.peek() == Some('+') || self.peek() == Some('-') {
+                self.advance();
+            }
+
+            // Must have at least one digit after 'e'
+            if !self.peek().map(|c| c.is_ascii_digit()).unwrap_or(false) {
+                return Err(DiagnosticError::Syntax(
+                    format!("Invalid scientific notation at position {}", start)
+                ));
+            }
+
+            while let Some(c) = self.peek() {
+                if c.is_ascii_digit() {
+                    self.advance();
+                } else {
+                    break;
+                }
+            }
+            true
+        } else {
+            false
+        };
+
         let num_str: String = self.input[start..self.current].iter().collect();
 
-        // Check for i32 or i64 suffix
-        let (num_part, suffix) = if self.peek() == Some('i') {
+        // Check for suffix (f32, f64, i32, i64)
+        let suffix = if self.peek() == Some('f') || self.peek() == Some('i') {
             let suffix_start = self.current;
             self.advance();
 
@@ -285,26 +339,51 @@ impl Lexer {
             }
 
             let suffix_str: String = self.input[suffix_start..self.current].iter().collect();
-            (num_str, Some(suffix_str))
+            Some(suffix_str)
         } else {
-            (num_str, None)
+            None
         };
 
-        let value = num_part.parse::<i64>()
-            .map_err(|_| DiagnosticError::Syntax(
-                format!("Invalid number literal at position {}", start)
-            ))?;
+        // Determine if this is a float or int based on presence of decimal point or exponent
+        let is_float_literal = is_float || has_exponent || matches!(suffix.as_deref(), Some("f32") | Some("f64"));
 
-        // Validate suffix if present
-        if let Some(suffix) = suffix {
-            if suffix != "i32" && suffix != "i64" {
-                return Err(DiagnosticError::Syntax(
-                    format!("Invalid number suffix '{}' at position {}", suffix, start)
-                ));
+        if is_float_literal {
+            // Parse as float
+            let float_value = num_str.parse::<f64>()
+                .map_err(|_| DiagnosticError::Syntax(
+                    format!("Invalid float literal at position {}", start)
+                ))?;
+
+            let float_type = match suffix.as_deref() {
+                Some("f32") => token::FloatType::F32,
+                Some("f64") | None => token::FloatType::F64, // Default to f64
+                Some(s) => {
+                    return Err(DiagnosticError::Syntax(
+                        format!("Invalid float suffix '{}' at position {}", s, start)
+                    ));
+                }
+            };
+
+            self.add_token(Token::FloatLiteral(float_value, float_type), start);
+        } else {
+            // Parse as integer
+            let value = num_str.parse::<i64>()
+                .map_err(|_| DiagnosticError::Syntax(
+                    format!("Invalid number literal at position {}", start)
+                ))?;
+
+            // Validate suffix if present
+            if let Some(suffix) = suffix {
+                if suffix != "i32" && suffix != "i64" {
+                    return Err(DiagnosticError::Syntax(
+                        format!("Invalid number suffix '{}' at position {}", suffix, start)
+                    ));
+                }
             }
+
+            self.add_token(Token::IntLiteral(value), start);
         }
 
-        self.add_token(Token::IntLiteral(value), start);
         Ok(())
     }
 

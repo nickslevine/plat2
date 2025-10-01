@@ -279,6 +279,8 @@ impl Formatter {
             Type::Bool => self.write("bool"),
             Type::I32 => self.write("i32"),
             Type::I64 => self.write("i64"),
+            Type::F32 => self.write("f32"),
+            Type::F64 => self.write("f64"),
             Type::String => self.write("string"),
             Type::List(element_type) => {
                 self.write("List[");
@@ -548,6 +550,13 @@ impl Formatter {
         match literal {
             Literal::Bool(value, _) => self.write(&value.to_string()),
             Literal::Integer(value, _) => self.write(&value.to_string()),
+            Literal::Float(value, float_type, _) => {
+                self.write(&value.to_string());
+                // Add type suffix if f32
+                if matches!(float_type, FloatType::F32) {
+                    self.write("f32");
+                }
+            }
             Literal::String(value, _) => {
                 self.write("\"");
                 // Escape special characters
