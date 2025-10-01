@@ -1,4 +1,3 @@
-fix all test failures
 fix all compilation warnings. 
 
   ☐ Update CLI for module compilation modes

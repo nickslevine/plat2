@@ -1988,7 +1988,7 @@ pub extern "C" fn plat_set_intersection(set1_ptr: *const RuntimeSet, set2_ptr: *
 
     unsafe {
         let set1 = &*set1_ptr;
-        let set2 = &*set2_ptr;
+        let _set2 = &*set2_ptr;
 
         // Create a temporary vector to collect intersection values
         let mut intersection_values: Vec<(i64, u8)> = Vec::new();
@@ -3341,9 +3341,8 @@ pub extern "C" fn Point__change_name(self_ptr: *mut PlatClass, new_name_ptr: *co
         return;
     }
 
-    unsafe {
-        plat_class_set_field_string(self_ptr, CString::new("name").unwrap().as_ptr(), new_name_ptr);
-    }
+    // SAFETY: plat_class_set_field_string is already an unsafe function
+    plat_class_set_field_string(self_ptr, CString::new("name").unwrap().as_ptr(), new_name_ptr);
 }
 
 /// Point::get_magnitude method - calculates x*x + y*y

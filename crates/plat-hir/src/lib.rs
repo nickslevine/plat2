@@ -1122,7 +1122,7 @@ impl TypeChecker {
                             ))
                         }
                     }
-                    (HirType::List(element_type), "all") => {
+                    (HirType::List(_element_type), "all") => {
                         if args.len() != 1 {
                             return Err(DiagnosticError::Type(
                                 "all() method takes exactly one argument".to_string()
@@ -1133,7 +1133,7 @@ impl TypeChecker {
                         let _predicate_type = self.check_expression(&args[0])?;
                         Ok(HirType::Bool)
                     }
-                    (HirType::List(element_type), "any") => {
+                    (HirType::List(_element_type), "any") => {
                         if args.len() != 1 {
                             return Err(DiagnosticError::Type(
                                 "any() method takes exactly one argument".to_string()

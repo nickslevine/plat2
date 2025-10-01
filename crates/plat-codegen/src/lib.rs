@@ -1,7 +1,7 @@
 /// Cranelift-based code generation for the Plat language
 /// Generates native machine code from the Plat AST
 
-use plat_ast::{self as ast, BinaryOp, Block, Expression, Function, Literal, MatchArm, Parameter, Pattern, Program, Statement, UnaryOp, EnumDecl, InterpolationPart, FloatType};
+use plat_ast::{self as ast, BinaryOp, Block, Expression, Literal, MatchArm, Pattern, Program, Statement, UnaryOp, FloatType};
 use plat_ast::Type as AstType;
 use cranelift_codegen::ir::types::*;
 use std::os::raw::c_char;
@@ -35,6 +35,7 @@ pub enum VariableType {
 
 /// Metadata about a class field
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct ClassField {
     name: String,
     ty: AstType,
@@ -52,6 +53,7 @@ struct VirtualMethod {
 
 /// Metadata about a class definition
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct ClassMetadata {
     name: String,
     fields: Vec<ClassField>,
@@ -496,10 +498,12 @@ impl CodeGenerator {
         Ok(())
     }
 
+    #[allow(dead_code)]
     fn get_field_info(&self, class_name: &str, field_name: &str) -> Result<(i32, Type), CodegenError> {
         Self::get_field_info_static(&self.class_metadata, class_name, field_name)
     }
 
+    #[allow(dead_code)]
     fn get_field_info_static(class_metadata: &HashMap<String, ClassMetadata>, class_name: &str, field_name: &str) -> Result<(i32, Type), CodegenError> {
         let metadata = class_metadata.get(class_name)
             .ok_or_else(|| CodegenError::UnsupportedFeature(
@@ -515,6 +519,7 @@ impl CodeGenerator {
         Ok((field.offset, field.cranelift_type))
     }
 
+    #[allow(dead_code)]
     fn get_class_size(&self, class_name: &str) -> Result<i32, CodegenError> {
         let metadata = self.class_metadata.get(class_name)
             .ok_or_else(|| CodegenError::UnsupportedFeature(
@@ -2344,7 +2349,7 @@ impl CodeGenerator {
                             .map_err(CodegenError::ModuleError)?;
                         let func_ref = module.declare_func_in_func(func_id, builder.func);
 
-                        let call = builder.ins().call(func_ref, &[object_val, index_val, value_64]);
+                        let _call = builder.ins().call(func_ref, &[object_val, index_val, value_64]);
                         // Returns success as i32, but we're treating this as void operation for now
                         let zero = builder.ins().iconst(I32, 0);
                         Ok(zero)
@@ -2377,7 +2382,7 @@ impl CodeGenerator {
                             .map_err(CodegenError::ModuleError)?;
                         let func_ref = module.declare_func_in_func(func_id, builder.func);
 
-                        let call = builder.ins().call(func_ref, &[object_val, value_64]);
+                        let _call = builder.ins().call(func_ref, &[object_val, value_64]);
                         // Returns success as i32, but we're treating this as void operation for now
                         let zero = builder.ins().iconst(I32, 0);
                         Ok(zero)
@@ -2412,7 +2417,7 @@ impl CodeGenerator {
                             .map_err(CodegenError::ModuleError)?;
                         let func_ref = module.declare_func_in_func(func_id, builder.func);
 
-                        let call = builder.ins().call(func_ref, &[object_val, index_val, value_64]);
+                        let _call = builder.ins().call(func_ref, &[object_val, index_val, value_64]);
                         // Returns success as i32, but we're treating this as void operation for now
                         let zero = builder.ins().iconst(I32, 0);
                         Ok(zero)
@@ -2507,7 +2512,7 @@ impl CodeGenerator {
                                 .map_err(CodegenError::ModuleError)?;
                             let func_ref = module.declare_func_in_func(func_id, builder.func);
 
-                            let call = builder.ins().call(func_ref, &[object_val]);
+                            let _call = builder.ins().call(func_ref, &[object_val]);
                             // Returns success as i32, but we're treating this as void operation for now
                             let zero = builder.ins().iconst(I32, 0);
                             Ok(zero)
@@ -3517,7 +3522,7 @@ impl CodeGenerator {
                     Err(CodegenError::UndefinedVariable("self".to_string()))
                 }
             }
-            Expression::Block(block) => {
+            Expression::Block(_block) => {
                 // For now, return an error since we need to implement block expressions
                 Err(CodegenError::UnsupportedFeature("Block expressions not yet implemented".to_string()))
             }
