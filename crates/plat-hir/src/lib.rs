@@ -5,6 +5,83 @@ use plat_ast::*;
 use plat_diags::DiagnosticError;
 use std::collections::HashMap;
 
+/// Module-aware symbol table for tracking declarations across modules
+#[derive(Debug, Clone)]
+pub struct ModuleSymbolTable {
+    /// Current module path (e.g., "database::connection")
+    pub current_module: String,
+    /// Imported modules (from `use` statements)
+    pub imports: Vec<String>,
+    /// Map of qualified names to their types (e.g., "database::connect" -> function signature)
+    pub global_symbols: HashMap<String, Symbol>,
+}
+
+#[derive(Debug, Clone)]
+pub enum Symbol {
+    Function(FunctionSignature),
+    Enum(EnumInfo),
+    Class(ClassInfo),
+}
+
+impl ModuleSymbolTable {
+    pub fn new(module_path: String) -> Self {
+        Self {
+            current_module: module_path,
+            imports: Vec::new(),
+            global_symbols: HashMap::new(),
+        }
+    }
+
+    /// Add an import statement
+    pub fn add_import(&mut self, module_path: String) {
+        self.imports.push(module_path);
+    }
+
+    /// Register a symbol in the current module
+    pub fn register(&mut self, name: &str, symbol: Symbol) {
+        let qualified_name = if self.current_module.is_empty() {
+            name.to_string()
+        } else {
+            format!("{}::{}", self.current_module, name)
+        };
+        self.global_symbols.insert(qualified_name, symbol);
+    }
+
+    /// Resolve a name to a qualified name using imports
+    pub fn resolve(&self, name: &str) -> Option<String> {
+        // Check if it's already qualified
+        if name.contains("::") {
+            return Some(name.to_string());
+        }
+
+        // Check in current module first
+        let current_qualified = if self.current_module.is_empty() {
+            name.to_string()
+        } else {
+            format!("{}::{}", self.current_module, name)
+        };
+
+        if self.global_symbols.contains_key(&current_qualified) {
+            return Some(current_qualified);
+        }
+
+        // Check in imported modules
+        for import in &self.imports {
+            let qualified = format!("{}::{}", import, name);
+            if self.global_symbols.contains_key(&qualified) {
+                return Some(qualified);
+            }
+        }
+
+        // Check global scope (no module prefix)
+        if self.global_symbols.contains_key(name) {
+            return Some(name.to_string());
+        }
+
+        None
+    }
+}
+
 pub struct TypeChecker {
     scopes: Vec<HashMap<String, HirType>>,
     functions: HashMap<String, FunctionSignature>,
@@ -15,6 +92,7 @@ pub struct TypeChecker {
     current_method_is_init: bool, // Track if we're currently in an init method
     type_parameters: Vec<String>, // Track current type parameters in scope (like T, U)
     monomorphizer: Monomorphizer, // For generic type specialization
+    module_table: ModuleSymbolTable, // Module-aware symbol table
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -75,6 +153,11 @@ pub struct FieldInfo {
 
 impl TypeChecker {
     pub fn new() -> Self {
+        Self::with_module(String::new())
+    }
+
+    /// Create a TypeChecker for a specific module
+    pub fn with_module(module_path: String) -> Self {
         let mut checker = Self {
             scopes: vec![HashMap::new()], // Global scope
             functions: HashMap::new(),
@@ -85,6 +168,7 @@ impl TypeChecker {
             current_method_is_init: false,
             type_parameters: Vec::new(),
             monomorphizer: Monomorphizer::new(),
+            module_table: ModuleSymbolTable::new(module_path),
         };
 
         // Register built-in Option<T> type
@@ -131,6 +215,16 @@ impl TypeChecker {
     }
 
     pub fn check_program(mut self, program: &Program) -> Result<(), DiagnosticError> {
+        // Process module declaration (if present)
+        if let Some(module_decl) = &program.module_decl {
+            self.module_table.current_module = module_decl.path.join("::");
+        }
+
+        // Process use declarations (imports)
+        for use_decl in &program.use_decls {
+            self.module_table.add_import(use_decl.path.join("::"));
+        }
+
         // First pass: collect all enum definitions
         for enum_decl in &program.enums {
             self.collect_enum_info(enum_decl)?;
