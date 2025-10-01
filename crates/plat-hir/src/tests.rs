@@ -550,7 +550,7 @@ mod tests {
 
         let result = type_check(input);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("can only iterate over List types"));
+        assert!(result.unwrap_err().to_string().contains("can only iterate over List or Range types"));
     }
 
     #[test]

@@ -642,14 +642,26 @@ impl Parser {
         loop {
             if self.match_token(&Token::LeftParen) {
                 if let Expression::Identifier { name, span } = expr {
-                    let args = self.parse_arguments()?;
-                    self.consume(Token::RightParen, "Expected ')' after arguments")?;
-                    let end = self.previous_span().end;
-                    expr = Expression::Call {
-                        function: name,
-                        args,
-                        span: Span::new(span.start, end),
-                    };
+                    // Check if this is a constructor call with named arguments
+                    if self.is_named_arg() {
+                        let args = self.parse_named_arguments()?;
+                        self.consume(Token::RightParen, "Expected ')' after constructor arguments")?;
+                        let end = self.previous_span().end;
+                        expr = Expression::ConstructorCall {
+                            class_name: name,
+                            args,
+                            span: Span::new(span.start, end),
+                        };
+                    } else {
+                        let args = self.parse_arguments()?;
+                        self.consume(Token::RightParen, "Expected ')' after arguments")?;
+                        let end = self.previous_span().end;
+                        expr = Expression::Call {
+                            function: name,
+                            args,
+                            span: Span::new(span.start, end),
+                        };
+                    }
                 } else {
                     return Err(DiagnosticError::Syntax(
                         "Can only call functions".to_string()
@@ -791,20 +803,8 @@ impl Parser {
 
         if let Some(Token::Ident(name)) = self.match_if(|t| matches!(t, Token::Ident(_))) {
             let span = self.previous_span();
-            // Check for constructor call with named arguments (ClassName(param=value))
-            if self.check(&Token::LeftParen) && self.is_named_arg() {
-                self.consume(Token::LeftParen, "Expected '('")?;
-                let args = self.parse_named_arguments()?;
-                self.consume(Token::RightParen, "Expected ')' after constructor arguments")?;
-                let end = self.previous_span().end;
-                return Ok(Expression::ConstructorCall {
-                    class_name: name,
-                    args,
-                    span: Span::new(span.start, end),
-                });
-            }
             // Check for enum constructor (EnumName::Variant)
-            else if self.match_token(&Token::DoubleColon) {
+            if self.match_token(&Token::DoubleColon) {
                 let variant = self.consume_identifier("Expected variant name after ':'")?;
                 let mut args = Vec::new();
                 if self.match_token(&Token::LeftParen) {

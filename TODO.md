@@ -1,9 +1,18 @@
+fix all test failures
+
+☐ Fix HIR tests for module support
+  ☐ Update CLI for module compilation modes
+  ☐ Update codegen for multi-module programs
+  ☐ Write end-to-end module tests
+
 * error handling
 * modules
   * private vs public. 
 
 * regex
 * testing
+* default initializer for classes. 
+* always explicit argument names. 
 * benchmarking
 * type alias
 * newtype
