@@ -24,7 +24,7 @@ mod tests {
     #[test]
     fn test_parse_function_with_params() {
         let input = r#"
-            fn add(x: I32, y: I32) -> I32 {
+            fn add(x: Int32, y: Int32) -> Int32 {
                 return x + y;
             }
         "#;
@@ -37,10 +37,10 @@ mod tests {
         assert_eq!(func.name, "add");
         assert_eq!(func.params.len(), 2);
         assert_eq!(func.params[0].name, "x");
-        assert_eq!(func.params[0].ty, Type::I32);
+        assert_eq!(func.params[0].ty, Type::Int32);
         assert_eq!(func.params[1].name, "y");
-        assert_eq!(func.params[1].ty, Type::I32);
-        assert_eq!(func.return_type, Some(Type::I32));
+        assert_eq!(func.params[1].ty, Type::Int32);
+        assert_eq!(func.return_type, Some(Type::Int32));
     }
 
     #[test]
@@ -48,9 +48,9 @@ mod tests {
         let input = r#"
             fn main() {
                 let x = 10;
-                let y: I32 = 20;
+                let y: Int32 = 20;
                 var z = 30;
-                var w: I64 = 40;
+                var w: Int64 = 40;
             }
         "#;
 
@@ -71,7 +71,7 @@ mod tests {
         match &statements[1] {
             Statement::Let { name, ty, .. } => {
                 assert_eq!(name, "y");
-                assert_eq!(*ty, Some(Type::I32));
+                assert_eq!(*ty, Some(Type::Int32));
             }
             _ => panic!("Expected let statement"),
         }
@@ -87,7 +87,7 @@ mod tests {
         match &statements[3] {
             Statement::Var { name, ty, .. } => {
                 assert_eq!(name, "w");
-                assert_eq!(*ty, Some(Type::I64));
+                assert_eq!(*ty, Some(Type::Int64));
             }
             _ => panic!("Expected var statement"),
         }
@@ -377,7 +377,7 @@ mod tests {
     #[test]
     fn test_parse_multiple_functions() {
         let input = r#"
-            fn add(x: I32, y: I32) -> I32 {
+            fn add(x: Int32, y: Int32) -> Int32 {
                 return x + y;
             }
 
@@ -447,7 +447,7 @@ mod tests {
         let input = r#"
             enum Message {
                 Quit,
-                Move(I32, I32),
+                Move(Int32, Int32),
                 Write(String)
             }
         "#;
@@ -465,8 +465,8 @@ mod tests {
 
         assert_eq!(enum_decl.variants[1].name, "Move");
         assert_eq!(enum_decl.variants[1].fields.len(), 2);
-        assert_eq!(enum_decl.variants[1].fields[0], Type::I32);
-        assert_eq!(enum_decl.variants[1].fields[1], Type::I32);
+        assert_eq!(enum_decl.variants[1].fields[0], Type::Int32);
+        assert_eq!(enum_decl.variants[1].fields[1], Type::Int32);
 
         assert_eq!(enum_decl.variants[2].name, "Write");
         assert_eq!(enum_decl.variants[2].fields.len(), 1);
@@ -498,7 +498,7 @@ mod tests {
         let input = r#"
             enum Message {
                 Quit,
-                Move(I32, I32),
+                Move(Int32, Int32),
 
                 fn is_quit() -> Bool {
                     return True;
@@ -623,7 +623,7 @@ mod tests {
     #[test]
     fn test_parse_mutable_function() {
         let input = r#"
-            mut fn update(value: I32) {
+            mut fn update(value: Int32) {
                 let x = value;
             }
         "#;
@@ -655,7 +655,7 @@ mod tests {
     #[test]
     fn test_for_range_loop() {
         let input = r#"
-            fn main() -> I32 {
+            fn main() -> Int32 {
                 for (i in 0..5) {
                     let x = i;
                 }

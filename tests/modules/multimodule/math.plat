@@ -1,9 +1,9 @@
 mod math;
 
-fn add(a: I32, b: I32) -> I32 {
+fn add(a: Int32, b: Int32) -> Int32 {
   return a + b;
 }
 
-fn multiply(a: I32, b: I32) -> I32 {
+fn multiply(a: Int32, b: Int32) -> Int32 {
   return a * b;
 }

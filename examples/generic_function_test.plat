@@ -3,12 +3,12 @@ fn identity<T>(value: T) -> T {
   return value;
 }
 
-fn create_pair<T, U>(first: T, second: U) -> I32 {
+fn create_pair<T, U>(first: T, second: U) -> Int32 {
   print("Created pair");
   return 42;
 }
 
-fn main() -> I32 {
+fn main() -> Int32 {
   // Test with I32 - type inferred from argument
   let x = identity(10);
   print("Identity I32: ${x}");

@@ -133,10 +133,10 @@ pub struct TypeChecker {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum HirType {
     Bool,
-    I32,
-    I64,
-    F32,
-    F64,
+    Int32,
+    Int64,
+    Float32,
+    Float64,
     String,
     List(Box<HirType>),
     Dict(Box<HirType>, Box<HirType>), // key type, value type
@@ -493,7 +493,7 @@ impl TypeChecker {
                 ));
             }
             // Main can return either Unit or i32 (for exit code)
-            if main_sig.return_type != HirType::Unit && main_sig.return_type != HirType::I32 {
+            if main_sig.return_type != HirType::Unit && main_sig.return_type != HirType::Int32 {
                 return Err(DiagnosticError::Type(
                     "Main function must return either nothing or i32".to_string()
                 ));
@@ -1184,7 +1184,7 @@ impl TypeChecker {
                 let value_type = self.check_expression(value)?;
                 // Print accepts any type (will be converted to string)
                 match value_type {
-                    HirType::Bool | HirType::I32 | HirType::I64 | HirType::F32 | HirType::F64 | HirType::String => {},
+                    HirType::Bool | HirType::Int32 | HirType::Int64 | HirType::Float32 | HirType::Float64 | HirType::String => {},
                     _ => return Err(DiagnosticError::Type(
                         format!("Cannot print value of type {:?}", value_type)
                     )),
@@ -1313,7 +1313,7 @@ impl TypeChecker {
                 let index_type = self.check_expression(index)?;
 
                 // Index must be i32
-                if index_type != HirType::I32 {
+                if index_type != HirType::Int32 {
                     return Err(DiagnosticError::Type(
                         format!("Array index must be i32, got {:?}", index_type)
                     ));
@@ -1338,7 +1338,7 @@ impl TypeChecker {
                                 "len() method takes no arguments".to_string()
                             ));
                         }
-                        Ok(HirType::I32)
+                        Ok(HirType::Int32)
                     }
                     (HirType::List(_), "length") => {
                         if !args.is_empty() {
@@ -1346,7 +1346,7 @@ impl TypeChecker {
                                 "length() method takes no arguments".to_string()
                             ));
                         }
-                        Ok(HirType::I32)
+                        Ok(HirType::Int32)
                     }
                     (HirType::List(element_type), "get") => {
                         if args.len() != 1 {
@@ -1355,7 +1355,7 @@ impl TypeChecker {
                             ));
                         }
                         let index_type = self.check_expression(&args[0])?;
-                        if index_type != HirType::I32 {
+                        if index_type != HirType::Int32 {
                             return Err(DiagnosticError::Type(
                                 format!("get() method expects i32 index, got {:?}", index_type)
                             ));
@@ -1371,7 +1371,7 @@ impl TypeChecker {
                         }
                         let index_type = self.check_expression(&args[0])?;
                         let value_type = self.check_expression(&args[1])?;
-                        if index_type != HirType::I32 {
+                        if index_type != HirType::Int32 {
                             return Err(DiagnosticError::Type(
                                 format!("set() method expects i32 index, got {:?}", index_type)
                             ));
@@ -1405,7 +1405,7 @@ impl TypeChecker {
                         }
                         let index_type = self.check_expression(&args[0])?;
                         let value_type = self.check_expression(&args[1])?;
-                        if index_type != HirType::I32 {
+                        if index_type != HirType::Int32 {
                             return Err(DiagnosticError::Type(
                                 format!("insert_at() method expects i32 index, got {:?}", index_type)
                             ));
@@ -1424,7 +1424,7 @@ impl TypeChecker {
                             ));
                         }
                         let index_type = self.check_expression(&args[0])?;
-                        if index_type != HirType::I32 {
+                        if index_type != HirType::Int32 {
                             return Err(DiagnosticError::Type(
                                 format!("remove_at() method expects i32 index, got {:?}", index_type)
                             ));
@@ -1467,7 +1467,7 @@ impl TypeChecker {
                             ));
                         }
                         // Returns Option<i32>
-                        Ok(HirType::Enum("Option".to_string(), vec![HirType::I32]))
+                        Ok(HirType::Enum("Option".to_string(), vec![HirType::Int32]))
                     }
                     (HirType::List(element_type), "count") => {
                         if args.len() != 1 {
@@ -1481,7 +1481,7 @@ impl TypeChecker {
                                 format!("count() method expects value of type {:?}, got {:?}", element_type, value_type)
                             ));
                         }
-                        Ok(HirType::I32)
+                        Ok(HirType::Int32)
                     }
                     (HirType::List(element_type), "slice") => {
                         if args.len() != 2 {
@@ -1491,12 +1491,12 @@ impl TypeChecker {
                         }
                         let start_type = self.check_expression(&args[0])?;
                         let end_type = self.check_expression(&args[1])?;
-                        if start_type != HirType::I32 {
+                        if start_type != HirType::Int32 {
                             return Err(DiagnosticError::Type(
                                 format!("slice() method expects i32 start index, got {:?}", start_type)
                             ));
                         }
-                        if end_type != HirType::I32 {
+                        if end_type != HirType::Int32 {
                             return Err(DiagnosticError::Type(
                                 format!("slice() method expects i32 end index, got {:?}", end_type)
                             ));
@@ -1549,7 +1549,7 @@ impl TypeChecker {
                                 "length() method takes no arguments".to_string()
                             ));
                         }
-                        Ok(HirType::I32)
+                        Ok(HirType::Int32)
                     }
                     (HirType::String, "concat") => {
                         if args.len() != 1 {
@@ -1746,7 +1746,7 @@ impl TypeChecker {
                                 format!("remove() method expects key of type {:?}, got {:?}", key_type, arg_type)
                             ));
                         }
-                        Ok(HirType::I64)  // Returns removed value or 0
+                        Ok(HirType::Int64)  // Returns removed value or 0
                     }
                     (HirType::Dict(_, _), "clear") => {
                         if !args.is_empty() {
@@ -1762,7 +1762,7 @@ impl TypeChecker {
                                 "length() method takes no arguments".to_string()
                             ));
                         }
-                        Ok(HirType::I32)
+                        Ok(HirType::Int32)
                     }
                     (HirType::Dict(_, _), "keys") => {
                         if !args.is_empty() {
@@ -1888,7 +1888,7 @@ impl TypeChecker {
                                 "length() method takes no arguments".to_string()
                             ));
                         }
-                        Ok(HirType::I32)
+                        Ok(HirType::Int32)
                     }
                     (HirType::Set(element_type), "contains") => {
                         if args.len() != 1 {
@@ -2076,7 +2076,7 @@ impl TypeChecker {
                 } else if enum_name == "Option" && variant == "None" {
                     // Option::None - type will be inferred from context
                     // We'll use I32 as default for now (ideally this would be a type variable)
-                    inferred_type_params.push(HirType::I32);
+                    inferred_type_params.push(HirType::Int32);
 
                     if args.len() != 0 {
                         return Err(DiagnosticError::Type(
@@ -2087,7 +2087,7 @@ impl TypeChecker {
                     // Result::Ok(value) - infer T from value type
                     let arg_type = self.check_expression(&args[0])?;
                     inferred_type_params.push(arg_type.clone());
-                    inferred_type_params.push(HirType::I32); // E defaults to I32
+                    inferred_type_params.push(HirType::Int32); // E defaults to I32
 
                     if args.len() != 1 {
                         return Err(DiagnosticError::Type(
@@ -2097,7 +2097,7 @@ impl TypeChecker {
                 } else if enum_name == "Result" && variant == "Err" && args.len() == 1 {
                     // Result::Err(error) - infer E from error type
                     let arg_type = self.check_expression(&args[0])?;
-                    inferred_type_params.push(HirType::I32); // T defaults to I32
+                    inferred_type_params.push(HirType::Int32); // T defaults to I32
                     inferred_type_params.push(arg_type.clone());
 
                     if args.len() != 1 {
@@ -2332,7 +2332,7 @@ impl TypeChecker {
                             inferred_type_args.push(concrete_type.clone());
                         } else {
                             // Default to I32 if we can't infer the type
-                            inferred_type_args.push(HirType::I32);
+                            inferred_type_args.push(HirType::Int32);
                         }
                     }
                 }
@@ -2428,13 +2428,13 @@ impl TypeChecker {
                 let end_type = self.check_expression(end)?;
 
                 // Both start and end must be integers (i32 or i64)
-                if !matches!(start_type, HirType::I32 | HirType::I64) {
+                if !matches!(start_type, HirType::Int32 | HirType::Int64) {
                     return Err(DiagnosticError::Type(
                         format!("Range start must be an integer type, got {:?}", start_type)
                     ));
                 }
 
-                if !matches!(end_type, HirType::I32 | HirType::I64) {
+                if !matches!(end_type, HirType::Int32 | HirType::Int64) {
                     return Err(DiagnosticError::Type(
                         format!("Range end must be an integer type, got {:?}", end_type)
                     ));
@@ -2483,11 +2483,11 @@ impl TypeChecker {
     fn check_literal(&mut self, literal: &Literal) -> Result<HirType, DiagnosticError> {
         match literal {
             Literal::Bool(_, _) => Ok(HirType::Bool),
-            Literal::Integer(_, _) => Ok(HirType::I32), // Default integer type
+            Literal::Integer(_, _) => Ok(HirType::Int32), // Default integer type
             Literal::Float(_, float_type, _) => {
                 match float_type {
-                    FloatType::F32 => Ok(HirType::F32),
-                    FloatType::F64 => Ok(HirType::F64),
+                    FloatType::F32 => Ok(HirType::Float32),
+                    FloatType::F64 => Ok(HirType::Float64),
                 }
             }
             Literal::String(_, _) => Ok(HirType::String),
@@ -2575,10 +2575,10 @@ impl TypeChecker {
         match op {
             BinaryOp::Add | BinaryOp::Subtract | BinaryOp::Multiply | BinaryOp::Divide => {
                 match (left, right) {
-                    (HirType::I32, HirType::I32) => Ok(HirType::I32),
-                    (HirType::I64, HirType::I64) => Ok(HirType::I64),
-                    (HirType::F32, HirType::F32) => Ok(HirType::F32),
-                    (HirType::F64, HirType::F64) => Ok(HirType::F64),
+                    (HirType::Int32, HirType::Int32) => Ok(HirType::Int32),
+                    (HirType::Int64, HirType::Int64) => Ok(HirType::Int64),
+                    (HirType::Float32, HirType::Float32) => Ok(HirType::Float32),
+                    (HirType::Float64, HirType::Float64) => Ok(HirType::Float64),
                     (HirType::String, HirType::String) if matches!(op, BinaryOp::Add) => Ok(HirType::String),
                     _ => Err(DiagnosticError::Type(
                         format!("Cannot apply {:?} to types {:?} and {:?}", op, left, right)
@@ -2588,8 +2588,8 @@ impl TypeChecker {
             BinaryOp::Modulo => {
                 // Modulo only works with integers, not floats
                 match (left, right) {
-                    (HirType::I32, HirType::I32) => Ok(HirType::I32),
-                    (HirType::I64, HirType::I64) => Ok(HirType::I64),
+                    (HirType::Int32, HirType::Int32) => Ok(HirType::Int32),
+                    (HirType::Int64, HirType::Int64) => Ok(HirType::Int64),
                     _ => Err(DiagnosticError::Type(
                         format!("Modulo operator requires integer operands, got {:?} and {:?}", left, right)
                     ))
@@ -2606,8 +2606,8 @@ impl TypeChecker {
             }
             BinaryOp::Less | BinaryOp::LessEqual | BinaryOp::Greater | BinaryOp::GreaterEqual => {
                 match (left, right) {
-                    (HirType::I32, HirType::I32) | (HirType::I64, HirType::I64) |
-                    (HirType::F32, HirType::F32) | (HirType::F64, HirType::F64) => Ok(HirType::Bool),
+                    (HirType::Int32, HirType::Int32) | (HirType::Int64, HirType::Int64) |
+                    (HirType::Float32, HirType::Float32) | (HirType::Float64, HirType::Float64) => Ok(HirType::Bool),
                     _ => Err(DiagnosticError::Type(
                         format!("Cannot compare types {:?} and {:?}", left, right)
                     ))
@@ -2636,8 +2636,8 @@ impl TypeChecker {
             }
             UnaryOp::Negate => {
                 match operand {
-                    HirType::I32 => Ok(HirType::I32),
-                    HirType::I64 => Ok(HirType::I64),
+                    HirType::Int32 => Ok(HirType::Int32),
+                    HirType::Int64 => Ok(HirType::Int64),
                     _ => Err(DiagnosticError::Type(
                         format!("Cannot negate type {:?}", operand)
                     ))
@@ -2649,10 +2649,10 @@ impl TypeChecker {
     fn ast_type_to_hir_type(&self, ast_type: &Type) -> Result<HirType, DiagnosticError> {
         match ast_type {
             Type::Bool => Ok(HirType::Bool),
-            Type::I32 => Ok(HirType::I32),
-            Type::I64 => Ok(HirType::I64),
-            Type::F32 => Ok(HirType::F32),
-            Type::F64 => Ok(HirType::F64),
+            Type::Int32 => Ok(HirType::Int32),
+            Type::Int64 => Ok(HirType::Int64),
+            Type::Float32 => Ok(HirType::Float32),
+            Type::Float64 => Ok(HirType::Float64),
             Type::String => Ok(HirType::String),
             Type::List(element_type) => {
                 let element_hir_type = self.ast_type_to_hir_type(element_type)?;
@@ -2945,7 +2945,7 @@ impl TypeChecker {
 }
 
 /// Type substitution for generic type parameters
-/// Maps type parameter names (like "T", "U") to concrete types (like HirType::I32)
+/// Maps type parameter names (like "T", "U") to concrete types (like HirType::Int32)
 pub type TypeSubstitution = HashMap<String, HirType>;
 
 /// Trait for types that can have type parameters substituted
@@ -2989,7 +2989,7 @@ impl TypeSubstitutable for HirType {
                 )
             }
             // Primitive types and newtypes don't need substitution
-            HirType::Bool | HirType::I32 | HirType::I64 | HirType::F32 | HirType::F64 | HirType::String | HirType::Unit | HirType::Newtype(_) => {
+            HirType::Bool | HirType::Int32 | HirType::Int64 | HirType::Float32 | HirType::Float64 | HirType::String | HirType::Unit | HirType::Newtype(_) => {
                 self.clone()
             }
         }

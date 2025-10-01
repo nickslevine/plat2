@@ -1,12 +1,12 @@
 // Simple single-file program with module declaration
 mod simple;
 
-fn greet(name: String) -> I32 {
+fn greet(name: String) -> Int32 {
   print("Hello, ${name}!");
   return 0;
 }
 
-fn main() -> I32 {
+fn main() -> Int32 {
   greet("World");
   return 0;
 }

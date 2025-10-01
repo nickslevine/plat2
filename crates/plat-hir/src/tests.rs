@@ -41,7 +41,7 @@ mod tests {
     #[test]
     fn test_main_function_wrong_signature() {
         let input = r#"
-            fn main(x: I32) {
+            fn main(x: Int32) {
                 print("Hello!");
             }
         "#;
@@ -68,7 +68,7 @@ mod tests {
     fn test_let_variable_explicit_type() {
         let input = r#"
             fn main() {
-                let x: I32 = 42;
+                let x: Int32 = 42;
                 let y: Bool = true;
                 let z: String = "hello";
             }
@@ -81,7 +81,7 @@ mod tests {
     fn test_let_variable_type_mismatch() {
         let input = r#"
             fn main() {
-                let x: I32 = true;
+                let x: Int32 = true;
             }
         "#;
 
@@ -299,7 +299,7 @@ mod tests {
     #[test]
     fn test_function_call() {
         let input = r#"
-            fn add(x: I32, y: I32) -> I32 {
+            fn add(x: Int32, y: Int32) -> Int32 {
                 return x + y;
             }
 
@@ -318,7 +318,7 @@ mod tests {
     #[test]
     fn test_function_call_wrong_args() {
         let input = r#"
-            fn add(x: I32, y: I32) -> I32 {
+            fn add(x: Int32, y: Int32) -> Int32 {
                 return x + y;
             }
 
@@ -335,7 +335,7 @@ mod tests {
     #[test]
     fn test_function_call_wrong_arg_types() {
         let input = r#"
-            fn add(x: I32, y: I32) -> I32 {
+            fn add(x: Int32, y: Int32) -> Int32 {
                 return x + y;
             }
 
@@ -352,7 +352,7 @@ mod tests {
     #[test]
     fn test_return_type_checking() {
         let input = r#"
-            fn get_number() -> I32 {
+            fn get_number() -> Int32 {
                 return 42;
             }
 
@@ -367,7 +367,7 @@ mod tests {
     #[test]
     fn test_return_type_mismatch() {
         let input = r#"
-            fn get_number() -> I32 {
+            fn get_number() -> Int32 {
                 return "hello";
             }
 
@@ -430,7 +430,7 @@ mod tests {
     #[test]
     fn test_parameter_scoping() {
         let input = r#"
-            fn test(x: I32, y: I32) -> I32 {
+            fn test(x: Int32, y: Int32) -> Int32 {
                 let z = x + y;
                 return z;
             }
@@ -446,7 +446,7 @@ mod tests {
     #[test]
     fn test_duplicate_parameters() {
         let input = r#"
-            fn test(x: I32, x: I32) -> I32 {
+            fn test(x: Int32, x: Int32) -> Int32 {
                 return x;
             }
 
@@ -644,7 +644,7 @@ mod tests {
         let input = r#"
             enum Message {
                 Quit,
-                Move(I32, I32),
+                Move(Int32, Int32),
                 Write(String)
             }
 
@@ -660,7 +660,7 @@ mod tests {
         let input = r#"
             enum Message {
                 Quit,
-                Move(I32, I32),
+                Move(Int32, Int32),
                 Write(String)
             }
 
@@ -679,7 +679,7 @@ mod tests {
         let input = r#"
             enum Message {
                 Quit,
-                Move(I32, I32),
+                Move(Int32, Int32),
                 Write(String)
             }
 
@@ -698,7 +698,7 @@ mod tests {
         let input = r#"
             enum Message {
                 Quit,
-                Move(I32, I32),
+                Move(Int32, Int32),
                 Write(String)
             }
 
@@ -717,7 +717,7 @@ mod tests {
         let input = r#"
             enum Message {
                 Quit,
-                Move(I32, I32)
+                Move(Int32, Int32)
             }
 
             fn main() {
@@ -735,7 +735,7 @@ mod tests {
         let input = r#"
             enum Message {
                 Quit,
-                Move(I32, I32),
+                Move(Int32, Int32),
                 Write(String)
             }
 
@@ -757,7 +757,7 @@ mod tests {
         let input = r#"
             enum Message {
                 Quit,
-                Move(I32, I32),
+                Move(Int32, Int32),
                 Write(String)
             }
 
@@ -782,7 +782,7 @@ mod tests {
         let input = r#"
             enum Message {
                 Quit,
-                Move(I32, I32)
+                Move(Int32, Int32)
             }
 
             fn main() {
@@ -803,7 +803,7 @@ mod tests {
     fn test_match_with_pattern_bindings() {
         let input = r#"
             enum Message {
-                Move(I32, I32),
+                Move(Int32, Int32),
                 Write(String)
             }
 
@@ -829,7 +829,7 @@ mod tests {
             }
 
             enum Message {
-                Move(I32, I32)
+                Move(Int32, Int32)
             }
 
             fn main() {
@@ -864,7 +864,7 @@ mod tests {
         let input = r#"
             enum Message {
                 Quit,
-                Move(I32, I32),
+                Move(Int32, Int32),
 
                 fn is_quit() -> Bool {
                     return true;
@@ -909,7 +909,7 @@ mod tests {
                 }
             }
 
-            fn main() -> I32 {
+            fn main() -> Int32 {
                 let animal: Animal = Dog(species = "Canine", breed = "Golden");
                 print("Animal created");
                 return 0;
@@ -944,7 +944,7 @@ mod tests {
                 }
             }
 
-            fn main() -> I32 {
+            fn main() -> Int32 {
                 var animal: Animal = Cat(name = "Whiskers");
                 print("Cat created as Animal");
                 return 0;
@@ -984,7 +984,7 @@ mod tests {
                 }
             }
 
-            fn main() -> I32 {
+            fn main() -> Int32 {
                 let animal: Animal = Dog(name = "Rex");
                 let mammal: Mammal = Dog(name = "Spot");
                 print("Transitive inheritance works!");
@@ -1029,7 +1029,7 @@ mod tests {
                 }
             }
 
-            fn main() -> I32 {
+            fn main() -> Int32 {
                 let dog = Dog(name = "Buddy");
                 let container = AnimalContainer(animal = dog);
                 print("Dog stored in Animal field");
@@ -1065,7 +1065,7 @@ mod tests {
                 }
             }
 
-            fn main() -> I32 {
+            fn main() -> Int32 {
                 let dog: Dog = Animal(name = "Generic");
                 return 0;
             }
@@ -1097,7 +1097,7 @@ mod tests {
                 }
             }
 
-            fn main() -> I32 {
+            fn main() -> Int32 {
                 let animal: Animal = Vehicle(model = "Car");
                 return 0;
             }
@@ -1138,7 +1138,7 @@ mod tests {
                 }
             }
 
-            fn main() -> I32 {
+            fn main() -> Int32 {
                 var animal: Animal = Dog(name = "Buddy");
                 animal = Cat(name = "Whiskers");
                 print("Can reassign different derived types to base type variable");

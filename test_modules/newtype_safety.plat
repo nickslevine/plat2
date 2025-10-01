@@ -1,15 +1,15 @@
 newtype DocumentID = I32;
 newtype UserID = I32;
 
-fn get_document(id: DocumentID) -> I32 {
+fn get_document(id: DocumentID) -> Int32 {
   return 100;
 }
 
-fn get_user(id: UserID) -> I32 {
+fn get_user(id: UserID) -> Int32 {
   return 200;
 }
 
-fn main() -> I32 {
+fn main() -> Int32 {
   let doc_id: DocumentID = 1;
   let user_id: UserID = 2;
 

@@ -1,4 +1,4 @@
 fn main() {
-    let x: I32 = true;  // Type error
+    let x: Int32 = true;  // Type error
     print(x);
 }

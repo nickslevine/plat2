@@ -1,6 +1,6 @@
-fn main() -> I32 {
+fn main() -> Int32 {
     // Simple dict creation
-    let my_dict: Dict[String, I32] = {"key1": 42, "key2": 100};
+    let my_dict: Dict[String, Int32] = {"key1": 42, "key2": 100};
     print("Dict: ${my_dict}");
 
     // Test length method

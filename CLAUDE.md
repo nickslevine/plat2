@@ -14,10 +14,11 @@
 ## 🎯 Core Language Features
 
 ### Type System
-- **Primitives**: `Bool`, `I32`, `I64`, `F32`, `F64`, `String`
+- **Primitives**: `Bool`, `Int32`, `Int64`, `Float32`, `Float64`, `String`
+- **Type Aliases (Built-in)**: `Int` (alias for `Int64`), `Float` (alias for `Float64`)
 - **Collections**: `List[T]`, `Dict[K, V]`, `Set[T]`
 - **Built-in Enums**: `Option<T>`, `Result<T, E>`
-- **Type Aliases**: `type UserID = String;` (interchangeable with underlying type)
+- **Custom Type Aliases**: `type UserID = String;` (interchangeable with underlying type)
 - **Newtypes**: `newtype DocumentID = String;` (distinct type at compile-time, same runtime representation)
 
 ### Naming Conventions (Enforced at Compile-Time)
@@ -94,7 +95,7 @@ plat2/
 - Module system with cross-module function calls
 - Type aliases
 - Newtypes (zero-cost distinct types)
-- Float support (F32/F64)
+- Float support (Float32/Float64)
 - String methods (13 built-in functions)
 - Set methods (11 built-in operations)
 - Dict methods (11 built-in operations)
@@ -115,16 +116,16 @@ plat2/
 ### Class Definition
 ```plat
 class Point {
-  let x: I32;
+  let x: Int32;
   var name: String;
 
-  init(x: I32, name: String) -> Point {
+  init(x: Int32, name: String) -> Point {
     self.x = x;
     self.name = name;
     return self;
   }
 
-  fn get_x() -> I32 {
+  fn get_x() -> Int32 {
     return self.x;
   }
 }
@@ -134,11 +135,11 @@ class Point {
 ```plat
 enum Status {
   Success,
-  Warning(I32),
-  Error(I32)
+  Warning(Int32),
+  Error(Int32)
 }
 
-fn main() -> I32 {
+fn main() -> Int32 {
   let status = Status::Warning(42);
   let code = match status {
     Status::Success -> 0,
@@ -155,7 +156,7 @@ fn identity<T>(value: T) -> T {
   return value;
 }
 
-fn main() -> I32 {
+fn main() -> Int32 {
   let x = identity(10);
   let name = identity("hello");
   return x;
@@ -167,14 +168,14 @@ fn main() -> I32 {
 // math.plat
 mod math;
 
-fn add(a: I32, b: I32) -> I32 {
+fn add(a: Int32, b: Int32) -> Int32 {
   return a + b;
 }
 
 // main.plat
 use math;
 
-fn main() -> I32 {
+fn main() -> Int32 {
   return math::add(5, 10);
 }
 ```
@@ -188,11 +189,11 @@ type Username = String;
 newtype DocumentID = String;
 newtype UserID = String;
 
-fn process_user(id: UserID) -> I32 {
+fn process_user(id: UserID) -> Int32 {
   return 42;
 }
 
-fn main() -> I32 {
+fn main() -> Int32 {
   // ✅ Type alias works with raw string
   let name: Username = "john";
 

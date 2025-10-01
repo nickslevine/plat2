@@ -21,10 +21,10 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, PartialEq)]
 pub enum VariableType {
     Bool,
-    I32,
-    I64,
-    F32,
-    F64,
+    Int32,
+    Int64,
+    Float32,
+    Float64,
     String,
     Array(Box<VariableType>), // Array with element type
     Dict,
@@ -91,7 +91,7 @@ impl CodeGenerator {
     /// Determine the variable type that a match expression returns
     fn determine_match_return_type(arms: &[MatchArm], _variable_types: &HashMap<String, VariableType>) -> VariableType {
         if arms.is_empty() {
-            return VariableType::I32;
+            return VariableType::Int32;
         }
 
         // Check all arms to determine if we have mixed types requiring unified handling
@@ -117,18 +117,18 @@ impl CodeGenerator {
 
         // For pure integer cases (integer literals + integer pattern bindings), use I32
         if has_integer_literal || has_pattern_binding {
-            return VariableType::I32;
+            return VariableType::Int32;
         }
 
         // Fallback to specific type detection
         match &arms[0].body {
             Expression::Literal(Literal::Bool(_, _)) => VariableType::Bool,
-            Expression::Literal(Literal::Array(_, _)) => VariableType::Array(Box::new(VariableType::I32)),
+            Expression::Literal(Literal::Array(_, _)) => VariableType::Array(Box::new(VariableType::Int32)),
             Expression::Literal(Literal::Dict(_, _)) => VariableType::Dict,
             Expression::Literal(Literal::Set(_, _)) => VariableType::Set,
             Expression::EnumConstructor { enum_name, .. } => VariableType::Enum(enum_name.clone()),
             Expression::ConstructorCall { class_name, .. } => VariableType::Class(class_name.clone()),
-            _ => VariableType::I32,
+            _ => VariableType::Int32,
         }
     }
 
@@ -139,23 +139,23 @@ impl CodeGenerator {
             // Direct array literal: look at first element to infer type
             Expression::Literal(Literal::Array(elements, _)) => {
                 if elements.is_empty() {
-                    return VariableType::I32; // Default for empty arrays
+                    return VariableType::Int32; // Default for empty arrays
                 }
                 match &elements[0] {
                     Expression::Literal(Literal::Bool(_, _)) => VariableType::Bool,
-                    Expression::Literal(Literal::Integer(_, _)) => VariableType::I32,
+                    Expression::Literal(Literal::Integer(_, _)) => VariableType::Int32,
                     Expression::Literal(Literal::String(_, _)) => VariableType::String,
                     Expression::Literal(Literal::InterpolatedString(_, _)) => VariableType::String,
                     Expression::EnumConstructor { enum_name, .. } => VariableType::Enum(enum_name.clone()),
                     Expression::ConstructorCall { class_name, .. } => VariableType::Class(class_name.clone()),
-                    Expression::Literal(Literal::Array(_, _)) => VariableType::Array(Box::new(VariableType::I32)),
+                    Expression::Literal(Literal::Array(_, _)) => VariableType::Array(Box::new(VariableType::Int32)),
                     Expression::Literal(Literal::Dict(_, _)) => VariableType::Dict,
                     Expression::Literal(Literal::Set(_, _)) => VariableType::Set,
                     Expression::Identifier { name, .. } => {
                         // Look up the variable's type
-                        variable_types.get(name).cloned().unwrap_or(VariableType::I32)
+                        variable_types.get(name).cloned().unwrap_or(VariableType::Int32)
                     }
-                    _ => VariableType::I32,
+                    _ => VariableType::Int32,
                 }
             }
             // Variable reference: look up its type in variable_types
@@ -163,18 +163,18 @@ impl CodeGenerator {
                 // For arrays stored in variables, extract the element type from Array(element_type)
                 match variable_types.get(name) {
                     Some(VariableType::Array(element_type)) => *element_type.clone(),
-                    _ => VariableType::I32, // Default if not found or not an array
+                    _ => VariableType::Int32, // Default if not found or not an array
                 }
             }
             // Method call that returns an array
             Expression::MethodCall { .. } => {
-                VariableType::I32 // Default assumption
+                VariableType::Int32 // Default assumption
             }
             // Function call that returns an array
             Expression::Call { .. } => {
-                VariableType::I32 // Default assumption
+                VariableType::Int32 // Default assumption
             }
-            _ => VariableType::I32,
+            _ => VariableType::Int32,
         }
     }
 
@@ -184,21 +184,21 @@ impl CodeGenerator {
             Expression::Literal(Literal::Integer(val, _)) => {
                 // Use i32 for smaller values, i64 for larger
                 if *val >= i32::MIN as i64 && *val <= i32::MAX as i64 {
-                    VariableType::I32
+                    VariableType::Int32
                 } else {
-                    VariableType::I64
+                    VariableType::Int64
                 }
             }
             Expression::Literal(Literal::Float(_, float_type, _)) => {
                 match float_type {
-                    FloatType::F32 => VariableType::F32,
-                    FloatType::F64 => VariableType::F64,
+                    FloatType::F32 => VariableType::Float32,
+                    FloatType::F64 => VariableType::Float64,
                 }
             }
             Expression::Literal(Literal::String(_, _)) => VariableType::String,
             Expression::Literal(Literal::InterpolatedString(_, _)) => VariableType::String,
             Expression::Identifier { name, .. } => {
-                variable_types.get(name).cloned().unwrap_or(VariableType::I32)
+                variable_types.get(name).cloned().unwrap_or(VariableType::Int32)
             }
             Expression::Binary { left, op, right, .. } => {
                 // For arithmetic operations, infer from operands
@@ -207,20 +207,20 @@ impl CodeGenerator {
                         let left_type = Self::infer_expression_type(left, variable_types);
                         let right_type = Self::infer_expression_type(right, variable_types);
                         // Priority: F64 > F32 > I64 > I32
-                        if left_type == VariableType::F64 || right_type == VariableType::F64 {
-                            VariableType::F64
-                        } else if left_type == VariableType::F32 || right_type == VariableType::F32 {
-                            VariableType::F32
-                        } else if left_type == VariableType::I64 || right_type == VariableType::I64 {
-                            VariableType::I64
+                        if left_type == VariableType::Float64 || right_type == VariableType::Float64 {
+                            VariableType::Float64
+                        } else if left_type == VariableType::Float32 || right_type == VariableType::Float32 {
+                            VariableType::Float32
+                        } else if left_type == VariableType::Int64 || right_type == VariableType::Int64 {
+                            VariableType::Int64
                         } else {
-                            VariableType::I32
+                            VariableType::Int32
                         }
                     }
                     _ => VariableType::Bool, // Comparison and logical operations return bool
                 }
             }
-            _ => VariableType::I32, // Default
+            _ => VariableType::Int32, // Default
         }
     }
 
@@ -228,10 +228,10 @@ impl CodeGenerator {
     fn variable_type_to_cranelift_type(var_type: &VariableType) -> Type {
         match var_type {
             VariableType::Bool => I32,      // Booleans are represented as i32
-            VariableType::I32 => I32,
-            VariableType::I64 => I64,
-            VariableType::F32 => F32,
-            VariableType::F64 => F64,
+            VariableType::Int32 => I32,
+            VariableType::Int64 => I64,
+            VariableType::Float32 => F32,
+            VariableType::Float64 => F64,
             VariableType::String => I64,    // Strings are pointers
             VariableType::Array(_) => I64,  // Arrays are pointers
             VariableType::Dict => I64,      // Dicts are pointers
@@ -292,14 +292,14 @@ impl CodeGenerator {
         let resolved_ty = self.resolve_type_alias(ty);
         match resolved_ty {
             AstType::String => I64,
-            AstType::I64 => I64,
-            AstType::F64 => F64,
+            AstType::Int64 => I64,
+            AstType::Float64 => F64,
             AstType::List(_) => I64,
             AstType::Dict(_, _) => I64,
             AstType::Set(_) => I64,
             AstType::Named(_, _) => I64, // Custom types (classes, enums) are pointers
-            AstType::I32 | AstType::Bool => I32,
-            AstType::F32 => F32,
+            AstType::Int32 | AstType::Bool => I32,
+            AstType::Float32 => F32,
         }
     }
 
@@ -313,10 +313,10 @@ impl CodeGenerator {
         let resolved_ty = Self::resolve_type_alias_static(type_aliases, ast_type);
         match resolved_ty {
             AstType::Bool => VariableType::Bool,
-            AstType::I32 => VariableType::I32,
-            AstType::I64 => VariableType::I64,
-            AstType::F32 => VariableType::F32,
-            AstType::F64 => VariableType::F64,
+            AstType::Int32 => VariableType::Int32,
+            AstType::Int64 => VariableType::Int64,
+            AstType::Float32 => VariableType::Float32,
+            AstType::Float64 => VariableType::Float64,
             AstType::String => VariableType::String,
             AstType::List(element_type) => {
                 let element_var_type = Self::ast_type_to_variable_type_static(type_aliases, &element_type);
@@ -387,14 +387,14 @@ impl CodeGenerator {
             // Determine Cranelift type and size for this field
             let (cranelift_type, size, alignment) = match &field.ty {
                 AstType::String => (I64, 8, 8),
-                AstType::I64 => (I64, 8, 8),
-                AstType::F64 => (F64, 8, 8),
+                AstType::Int64 => (I64, 8, 8),
+                AstType::Float64 => (F64, 8, 8),
                 AstType::List(_) => (I64, 8, 8),
                 AstType::Dict(_, _) => (I64, 8, 8),
                 AstType::Set(_) => (I64, 8, 8),
                 AstType::Named(_, _) => (I64, 8, 8), // Custom types are pointers
-                AstType::I32 => (I32, 4, 4),
-                AstType::F32 => (F32, 4, 4),
+                AstType::Int32 => (I32, 4, 4),
+                AstType::Float32 => (F32, 4, 4),
                 AstType::Bool => (I32, 4, 4),
             };
 
@@ -920,36 +920,36 @@ impl CodeGenerator {
                                         (I64, VariableType::Class(class_name))
                                     },
                                     "get_name" | "make_sound" | "get_description" => (I64, VariableType::String),
-                                    "change_name" | "set_name" => (I32, VariableType::I32), // void methods
+                                    "change_name" | "set_name" => (I32, VariableType::Int32), // void methods
                                     _ => {
                                         // Default: return I64 to be safe (assume object/string return)
-                                        (I64, VariableType::I64)
+                                        (I64, VariableType::Int64)
                                     }
                                 }
                             } else {
-                                (I32, VariableType::I32)
+                                (I32, VariableType::Int32)
                             }
                         }
                         // Check if this is a Dict method
                         else if Self::is_dict_type(object, variable_types) {
                             match method.as_str() {
-                                "get" | "get_or" => (I64, VariableType::I64), // Returns value type
+                                "get" | "get_or" => (I64, VariableType::Int64), // Returns value type
                                 "set" | "has_key" | "has_value" => (I32, VariableType::Bool),
-                                "remove" => (I64, VariableType::I64), // Returns removed value
-                                "clear" | "merge" => (I32, VariableType::I32), // Void
-                                "length" => (I32, VariableType::I32),
+                                "remove" => (I64, VariableType::Int64), // Returns removed value
+                                "clear" | "merge" => (I32, VariableType::Int32), // Void
+                                "length" => (I32, VariableType::Int32),
                                 "keys" | "values" => (I64, VariableType::Array(Box::new(VariableType::String))),
-                                _ => (I32, VariableType::I32),
+                                _ => (I32, VariableType::Int32),
                             }
                         } else {
                             match method.as_str() {
-                                "len" | "length" | "count" => (I32, VariableType::I32),
+                                "len" | "length" | "count" => (I32, VariableType::Int32),
                                 "concat" | "trim" | "trim_left" | "trim_right" | "replace" | "replace_all" => (I64, VariableType::String),
                                 "split" | "slice" => (I64, VariableType::Array(Box::new(VariableType::String))),
                                 "contains" | "starts_with" | "ends_with" | "is_alpha" | "is_numeric" | "is_alphanumeric" | "all" | "any" => (I32, VariableType::Bool),
                                 "get" | "remove_at" | "index_of" => (I64, VariableType::Enum("Option".to_string())), // Returns Option<T>
-                                "set" | "append" | "insert_at" | "clear" => (I32, VariableType::I32), // Returns unit/void, represented as i32
-                                _ => (I32, VariableType::I32), // default fallback
+                                "set" | "append" | "insert_at" | "clear" => (I32, VariableType::Int32), // Returns unit/void, represented as i32
+                                _ => (I32, VariableType::Int32), // default fallback
                             }
                         }
                     }
@@ -970,10 +970,10 @@ impl CodeGenerator {
                             let cranelift_type = Self::variable_type_to_cranelift_type(var_type);
                             (cranelift_type, var_type.clone())
                         } else {
-                            (I32, VariableType::I32)
+                            (I32, VariableType::Int32)
                         }
                     }
-                    _ => (I32, VariableType::I32),
+                    _ => (I32, VariableType::Int32),
                     }
                 };
 
@@ -1024,36 +1024,36 @@ impl CodeGenerator {
                                         (I64, VariableType::Class(class_name))
                                     },
                                     "get_name" | "make_sound" | "get_description" => (I64, VariableType::String),
-                                    "change_name" | "set_name" => (I32, VariableType::I32), // void methods
+                                    "change_name" | "set_name" => (I32, VariableType::Int32), // void methods
                                     _ => {
                                         // Default: return I64 to be safe (assume object/string return)
-                                        (I64, VariableType::I64)
+                                        (I64, VariableType::Int64)
                                     }
                                 }
                             } else {
-                                (I32, VariableType::I32)
+                                (I32, VariableType::Int32)
                             }
                         }
                         // Check if this is a Dict method
                         else if Self::is_dict_type(object, variable_types) {
                             match method.as_str() {
-                                "get" | "get_or" => (I64, VariableType::I64), // Returns value type
+                                "get" | "get_or" => (I64, VariableType::Int64), // Returns value type
                                 "set" | "has_key" | "has_value" => (I32, VariableType::Bool),
-                                "remove" => (I64, VariableType::I64), // Returns removed value
-                                "clear" | "merge" => (I32, VariableType::I32), // Void
-                                "length" => (I32, VariableType::I32),
+                                "remove" => (I64, VariableType::Int64), // Returns removed value
+                                "clear" | "merge" => (I32, VariableType::Int32), // Void
+                                "length" => (I32, VariableType::Int32),
                                 "keys" | "values" => (I64, VariableType::Array(Box::new(VariableType::String))),
-                                _ => (I32, VariableType::I32),
+                                _ => (I32, VariableType::Int32),
                             }
                         } else {
                             match method.as_str() {
-                                "len" | "length" | "count" => (I32, VariableType::I32),
+                                "len" | "length" | "count" => (I32, VariableType::Int32),
                                 "concat" | "trim" | "trim_left" | "trim_right" | "replace" | "replace_all" => (I64, VariableType::String),
                                 "split" | "slice" => (I64, VariableType::Array(Box::new(VariableType::String))),
                                 "contains" | "starts_with" | "ends_with" | "is_alpha" | "is_numeric" | "is_alphanumeric" | "all" | "any" => (I32, VariableType::Bool),
                                 "get" | "remove_at" | "index_of" => (I64, VariableType::Enum("Option".to_string())), // Returns Option<T>
-                                "set" | "append" | "insert_at" | "clear" => (I32, VariableType::I32), // Returns unit/void, represented as i32
-                                _ => (I32, VariableType::I32), // default fallback
+                                "set" | "append" | "insert_at" | "clear" => (I32, VariableType::Int32), // Returns unit/void, represented as i32
+                                _ => (I32, VariableType::Int32), // default fallback
                             }
                         }
                     }
@@ -1074,10 +1074,10 @@ impl CodeGenerator {
                             let cranelift_type = Self::variable_type_to_cranelift_type(var_type);
                             (cranelift_type, var_type.clone())
                         } else {
-                            (I32, VariableType::I32)
+                            (I32, VariableType::Int32)
                         }
                     }
-                    _ => (I32, VariableType::I32),
+                    _ => (I32, VariableType::Int32),
                     }
                 };
 
@@ -1525,7 +1525,7 @@ impl CodeGenerator {
             let (_key_type, _value_type) = if let Some(AstType::Dict(key_type, value_type)) = expected_type {
                 (key_type.as_ref(), value_type.as_ref())
             } else {
-                (&AstType::String, &AstType::I32) // default
+                (&AstType::String, &AstType::Int32) // default
             };
 
             // Create empty dict
@@ -1648,7 +1648,7 @@ impl CodeGenerator {
             let _element_type = if let Some(AstType::Set(element_type)) = expected_type {
                 element_type.as_ref()
             } else {
-                &AstType::I32 // default
+                &AstType::Int32 // default
             };
 
             // Create empty set
@@ -1777,7 +1777,7 @@ impl CodeGenerator {
 
                         // Determine if we're working with floats
                         let left_type = Self::infer_expression_type(left, variable_types);
-                        let is_float = matches!(left_type, VariableType::F32 | VariableType::F64);
+                        let is_float = matches!(left_type, VariableType::Float32 | VariableType::Float64);
 
                         match op {
                             BinaryOp::Add => {
@@ -3451,12 +3451,12 @@ impl CodeGenerator {
                                 let (field_val, var_type, cranelift_type) = if bindings.len() == 1 {
                                     // Single field: assume packed format (discriminant in high, value in low)
                                     let packed_val = builder.ins().ireduce(I32, value_val);
-                                    (packed_val, VariableType::I32, I32)
+                                    (packed_val, VariableType::Int32, I32)
                                 } else {
                                     // Multi-field: assume heap format, load from offset
                                     let offset = 4 + (binding_idx * 4) as i32; // 4-byte alignment for i32
                                     let loaded = builder.ins().load(I32, MemFlags::new(), value_val, offset);
-                                    (loaded, VariableType::I32, I32)
+                                    (loaded, VariableType::Int32, I32)
                                 };
 
                                 let var = Variable::from_u32(*variable_counter);
@@ -3703,13 +3703,13 @@ impl CodeGenerator {
             let element_type = if let Some(AstType::List(element_type)) = expected_type {
                 element_type.as_ref()
             } else {
-                &AstType::I32 // default
+                &AstType::Int32 // default
             };
 
             let function_name = match element_type {
                 AstType::Bool => "plat_array_create_bool",
-                AstType::I32 => "plat_array_create_i32",
-                AstType::I64 => "plat_array_create_i64",
+                AstType::Int32 => "plat_array_create_i32",
+                AstType::Int64 => "plat_array_create_i64",
                 AstType::String => "plat_array_create_string",
                 AstType::Named(_, _) => "plat_array_create_class", // Custom class types
                 _ => "plat_array_create_i32", // fallback for unknown types
@@ -3746,19 +3746,19 @@ impl CodeGenerator {
                 Expression::Literal(Literal::InterpolatedString(_, _)) => &AstType::String,
                 Expression::Literal(Literal::Integer(value, _)) => {
                     if *value > i32::MAX as i64 || *value < i32::MIN as i64 {
-                        &AstType::I64
+                        &AstType::Int64
                     } else {
-                        &AstType::I32
+                        &AstType::Int32
                     }
                 },
-                _ => &AstType::I32,
+                _ => &AstType::Int32,
             }
         };
 
         let (element_size, function_name) = match element_type {
             AstType::Bool => (std::mem::size_of::<bool>(), "plat_array_create_bool"),
-            AstType::I32 => (std::mem::size_of::<i32>(), "plat_array_create_i32"),
-            AstType::I64 => (std::mem::size_of::<i64>(), "plat_array_create_i64"),
+            AstType::Int32 => (std::mem::size_of::<i32>(), "plat_array_create_i32"),
+            AstType::Int64 => (std::mem::size_of::<i64>(), "plat_array_create_i64"),
             AstType::String => (std::mem::size_of::<*const u8>(), "plat_array_create_string"),
             AstType::Named(_, _) => (std::mem::size_of::<*const u8>(), "plat_array_create_class"), // Custom class pointers
             _ => (std::mem::size_of::<i32>(), "plat_array_create_i32"), // fallback
@@ -4051,7 +4051,7 @@ impl CodeGenerator {
                                     let call = builder.ins().call(convert_ref, &[expr_val]);
                                     builder.inst_results(call)[0]
                                 }
-                                Some(VariableType::I32) | Some(VariableType::Bool) => {
+                                Some(VariableType::Int32) | Some(VariableType::Bool) => {
                                     // I32/boolean variable, convert to string
                                     let convert_sig = {
                                         let mut sig = module.make_signature();
@@ -4066,7 +4066,7 @@ impl CodeGenerator {
                                     let call = builder.ins().call(convert_ref, &[expr_val]);
                                     builder.inst_results(call)[0]
                                 }
-                                Some(VariableType::I64) => {
+                                Some(VariableType::Int64) => {
                                     // I64 variable, convert to string
                                     let convert_sig = {
                                         let mut sig = module.make_signature();
@@ -4081,7 +4081,7 @@ impl CodeGenerator {
                                     let call = builder.ins().call(convert_ref, &[expr_val]);
                                     builder.inst_results(call)[0]
                                 }
-                                Some(VariableType::F32) => {
+                                Some(VariableType::Float32) => {
                                     // F32 variable, convert to string
                                     let convert_sig = {
                                         let mut sig = module.make_signature();
@@ -4096,7 +4096,7 @@ impl CodeGenerator {
                                     let call = builder.ins().call(convert_ref, &[expr_val]);
                                     builder.inst_results(call)[0]
                                 }
-                                Some(VariableType::F64) => {
+                                Some(VariableType::Float64) => {
                                     // F64 variable, convert to string
                                     let convert_sig = {
                                         let mut sig = module.make_signature();
@@ -4606,8 +4606,8 @@ impl CodeGenerator {
                 // Look up variable type
                 if let Some(var_type) = variable_types.get(name) {
                     match var_type {
-                        VariableType::I32 => DICT_VALUE_TYPE_I32,
-                        VariableType::I64 => DICT_VALUE_TYPE_I64,
+                        VariableType::Int32 => DICT_VALUE_TYPE_I32,
+                        VariableType::Int64 => DICT_VALUE_TYPE_I64,
                         VariableType::Bool => DICT_VALUE_TYPE_BOOL,
                         VariableType::String => DICT_VALUE_TYPE_STRING,
                         _ => DICT_VALUE_TYPE_I64, // Default to i64
@@ -4702,8 +4702,8 @@ impl CodeGenerator {
                 // Look up variable type
                 if let Some(var_type) = variable_types.get(name) {
                     match var_type {
-                        VariableType::I32 => SET_VALUE_TYPE_I32,
-                        VariableType::I64 => SET_VALUE_TYPE_I64,
+                        VariableType::Int32 => SET_VALUE_TYPE_I32,
+                        VariableType::Int64 => SET_VALUE_TYPE_I64,
                         VariableType::Bool => SET_VALUE_TYPE_BOOL,
                         VariableType::String => SET_VALUE_TYPE_STRING,
                         _ => SET_VALUE_TYPE_I64, // Default to i64

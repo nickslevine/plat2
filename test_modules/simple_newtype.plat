@@ -1,5 +1,5 @@
 newtype UserID = I32;
 
-fn main() -> I32 {
+fn main() -> Int32 {
   return 42;
 }

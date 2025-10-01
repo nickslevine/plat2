@@ -269,10 +269,12 @@ impl Parser {
 
         match type_name.as_str() {
             "Bool" => Ok(Type::Bool),
-            "I32" => Ok(Type::I32),
-            "I64" => Ok(Type::I64),
-            "F32" => Ok(Type::F32),
-            "F64" => Ok(Type::F64),
+            "Int32" => Ok(Type::Int32),
+            "Int64" => Ok(Type::Int64),
+            "Int" => Ok(Type::Int64), // Alias for Int64
+            "Float32" => Ok(Type::Float32),
+            "Float64" => Ok(Type::Float64),
+            "Float" => Ok(Type::Float64), // Alias for Float64
             "String" => Ok(Type::String),
             _ => Ok(Type::Named(type_name, vec![])),
         }

@@ -2,10 +2,10 @@ mod utils;
 
 use math;
 
-fn double(x: I32) -> I32 {
+fn double(x: Int32) -> Int32 {
   return math::add(x, x);
 }
 
-fn square(x: I32) -> I32 {
+fn square(x: Int32) -> Int32 {
   return math::multiply(x, x);
 }

@@ -1,9 +1,9 @@
 class Point {
-  let x: I32;
-  let y: I32;
+  let x: Int32;
+  let y: Int32;
   var name: String;
 
-  init(x: I32, y: I32, name: String) {
+  init(x: Int32, y: Int32, name: String) {
     self.x = x;
     self.y = y;
     self.name = name;

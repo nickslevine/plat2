@@ -321,10 +321,10 @@ impl Formatter {
     fn format_type(&mut self, ty: &Type) {
         match ty {
             Type::Bool => self.write("Bool"),
-            Type::I32 => self.write("I32"),
-            Type::I64 => self.write("I64"),
-            Type::F32 => self.write("F32"),
-            Type::F64 => self.write("F64"),
+            Type::Int32 => self.write("Int32"),
+            Type::Int64 => self.write("Int64"),
+            Type::Float32 => self.write("Float32"),
+            Type::Float64 => self.write("Float64"),
             Type::String => self.write("String"),
             Type::List(element_type) => {
                 self.write("List[");

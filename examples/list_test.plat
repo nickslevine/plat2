@@ -1,4 +1,4 @@
-fn main() -> I32 {
+fn main() -> Int32 {
   let arr: List[I32] = [1, 2, 3];
   let len = arr.len();
   let first = arr[0];

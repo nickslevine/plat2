@@ -2,11 +2,11 @@
 newtype DocumentID = I32;
 newtype UserID = I32;
 
-fn get_document(id: DocumentID) -> I32 {
+fn get_document(id: DocumentID) -> Int32 {
   return 100;
 }
 
-fn main() -> I32 {
+fn main() -> Int32 {
   let user_id: UserID = 2;
 
   // This should fail - UserID and DocumentID are distinct types

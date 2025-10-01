@@ -8,22 +8,22 @@ newtype UserID = String;
 // Define type alias for comparison
 type Username = String;
 
-fn get_document(id: DocumentID) -> I32 {
+fn get_document(id: DocumentID) -> Int32 {
   print "Document ID received";
   return 42;
 }
 
-fn get_user(id: UserID) -> I32 {
+fn get_user(id: UserID) -> Int32 {
   print "User ID received";
   return 100;
 }
 
-fn get_username(name: Username) -> I32 {
+fn get_username(name: Username) -> Int32 {
   print "Username received";
   return 200;
 }
 
-fn main() -> I32 {
+fn main() -> Int32 {
   print "Starting newtype test";
 
   return 42;

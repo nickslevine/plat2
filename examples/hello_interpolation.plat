@@ -1,5 +1,5 @@
 // Example: Hello World with string interpolation
-fn main() -> I32 {
+fn main() -> Int32 {
   let name = "Plat";
   let version = 1;
 

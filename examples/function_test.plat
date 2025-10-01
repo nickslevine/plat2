@@ -1,8 +1,8 @@
-fn add(x: I32, y: I32) -> I32 {
+fn add(x: Int32, y: Int32) -> Int32 {
   return x + y;
 }
 
-fn multiply(x: I32, y: I32) -> I32 {
+fn multiply(x: Int32, y: Int32) -> Int32 {
   return x * y;
 }
 

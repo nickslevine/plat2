@@ -1,4 +1,4 @@
-fn main() -> I32 {
+fn main() -> Int32 {
   print("Hello, Nick!");
   return 0;
 }

@@ -1,4 +1,4 @@
-fn main() -> I32 {
+fn main() -> Int32 {
   // Test string literals
   print("Testing Plat language features...");
 

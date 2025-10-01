@@ -1,4 +1,4 @@
-fn main() -> I32 {
+fn main() -> Int32 {
   let x = 42;
   let y = 7;
   let result = x + y;

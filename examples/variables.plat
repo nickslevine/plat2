@@ -1,5 +1,5 @@
 // Example: let vs var (immutability vs mutability)
-fn main() -> I32 {
+fn main() -> Int32 {
   // Immutable binding with let
   let x = 10;
   let y = 20;

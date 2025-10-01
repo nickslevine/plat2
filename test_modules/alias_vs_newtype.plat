@@ -2,15 +2,15 @@
 type AliasID = I32;
 newtype NewtypeID = I32;
 
-fn take_alias(x: AliasID) -> I32 {
+fn take_alias(x: AliasID) -> Int32 {
   return x + 10;
 }
 
-fn take_newtype(x: NewtypeID) -> I32 {
+fn take_newtype(x: NewtypeID) -> Int32 {
   return 20;
 }
 
-fn main() -> I32 {
+fn main() -> Int32 {
   // Type alias: can pass raw I32 (interchangeable)
   let result1 = take_alias(42);
 

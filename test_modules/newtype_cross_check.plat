@@ -3,19 +3,19 @@ newtype DocumentID = I32;
 newtype UserID = I32;
 type PlainID = I32;
 
-fn process_doc(id: DocumentID) -> I32 {
+fn process_doc(id: DocumentID) -> Int32 {
   return 100;
 }
 
-fn process_user(id: UserID) -> I32 {
+fn process_user(id: UserID) -> Int32 {
   return 200;
 }
 
-fn process_plain(id: PlainID) -> I32 {
+fn process_plain(id: PlainID) -> Int32 {
   return 300;
 }
 
-fn main() -> I32 {
+fn main() -> Int32 {
   // These should all work: type alias is interchangeable
   let plain1 = process_plain(1);
   let plain2 = process_plain(2);

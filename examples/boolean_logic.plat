@@ -9,7 +9,7 @@ fn returns_false() -> Bool {
   return false;
 }
 
-fn main() -> I32 {
+fn main() -> Int32 {
   print("Testing boolean logic...");
 
   // Basic boolean operations

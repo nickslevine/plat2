@@ -49,7 +49,7 @@ fn test_hello_world_execution() {
     let source_file = temp_dir.path().join("hello.plat");
 
     let source = r#"
-fn main() -> I32 {
+fn main() -> Int32 {
     print("Hello, World!");
     return 0;
 }
@@ -76,11 +76,11 @@ fn test_arithmetic_operations() {
     let source_file = temp_dir.path().join("arithmetic.plat");
 
     let source = r#"
-fn add(a: I32, b: I32) -> I32 {
+fn add(a: Int32, b: Int32) -> Int32 {
     return a + b;
 }
 
-fn main() -> I32 {
+fn main() -> Int32 {
     let x = 5;
     let y = 3;
     let result = add(x, y);
@@ -110,7 +110,7 @@ fn test_exit_code() {
     let source_file = temp_dir.path().join("exit.plat");
 
     let source = r#"
-fn main() -> I32 {
+fn main() -> Int32 {
     return 42;
 }
 "#;
@@ -133,7 +133,7 @@ fn test_build_command() {
     let source_file = temp_dir.path().join("build_test.plat");
 
     let source = r#"
-fn main() -> I32 {
+fn main() -> Int32 {
     print("Built successfully!");
     return 0;
 }
@@ -170,7 +170,7 @@ fn test_fmt_command() {
     let source_file = temp_dir.path().join("fmt_test.plat");
 
     // Badly formatted source
-    let source = r#"fn   main( )  ->I32{
+    let source = r#"fn   main( )  ->Int32{
 print(  "Hello"  )  ;
     return   0 ;
     }"#;
@@ -190,7 +190,7 @@ print(  "Hello"  )  ;
     let formatted = fs::read_to_string(&source_file).unwrap();
 
     // Check that it's properly formatted (has consistent spacing)
-    assert!(formatted.contains("fn main() -> I32"));
+    assert!(formatted.contains("fn main() -> Int32"));
     assert!(formatted.contains("  print("));  // 2-space indent
 }
 
@@ -205,7 +205,7 @@ fn should_not_call() -> Bool {
     return true;
 }
 
-fn main() -> I32 {
+fn main() -> Int32 {
     print("Testing short-circuit...");
     let result = false and should_not_call();
     print("Short-circuit works!");
@@ -236,7 +236,7 @@ fn test_variable_mutation() {
     let source_file = temp_dir.path().join("mutation.plat");
 
     let source = r#"
-fn main() -> I32 {
+fn main() -> Int32 {
     var x = 10;
     x = x + 5;
     x = x * 2;
@@ -266,7 +266,7 @@ fn test_string_literals() {
     let source_file = temp_dir.path().join("strings.plat");
 
     let source = r#"
-fn main() -> I32 {
+fn main() -> Int32 {
     print("String with spaces");
     print("String with special chars: !@#$%");
     print("");  // Empty string

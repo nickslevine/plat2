@@ -1,19 +1,19 @@
-fn main() -> I32 {
+fn main() -> Int32 {
   // Basic float literals
-  let pi: F64 = 3.14159;
-  let e: F64 = 2.71828;
+  let pi: Float64 = 3.14159;
+  let e: Float64 = 2.71828;
 
   print("Pi: ${pi}");
   print("E: ${e}");
 
   // Float arithmetic
-  let radius: F64 = 5.0;
-  let area: F64 = pi * radius * radius;
+  let radius: Float64 = 5.0;
+  let area: Float64 = pi * radius * radius;
   print("Circle area with radius ${radius}: ${area}");
 
   // Float comparisons
-  let x: F64 = 10.5;
-  let y: F64 = 20.3;
+  let x: Float64 = 10.5;
+  let y: Float64 = 20.3;
 
   if (x < y) {
     print("${x} is less than ${y}");
@@ -24,10 +24,10 @@ fn main() -> I32 {
   }
 
   // Mixed operations
-  let sum: F64 = 100.5 + 50.25;
-  let difference: F64 = 100.5 - 50.25;
-  let product: F64 = 10.5 * 2.0;
-  let quotient: F64 = 100.0 / 4.0;
+  let sum: Float64 = 100.5 + 50.25;
+  let difference: Float64 = 100.5 - 50.25;
+  let product: Float64 = 10.5 * 2.0;
+  let quotient: Float64 = 100.0 / 4.0;
 
   print("Sum: ${sum}");
   print("Difference: ${difference}");

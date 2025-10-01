@@ -1,4 +1,4 @@
-fn main() -> I32 {
+fn main() -> Int32 {
     let numbers: List[I32] = [10, 20, 30];
     let len = numbers.length();
     print("Length: ${len}");

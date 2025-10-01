@@ -60,10 +60,10 @@ pub struct Parameter {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     Bool,
-    I32,
-    I64,
-    F32,
-    F64,
+    Int32,
+    Int64,
+    Float32,
+    Float64,
     String,
     List(Box<Type>),
     Dict(Box<Type>, Box<Type>), // Key type, Value type

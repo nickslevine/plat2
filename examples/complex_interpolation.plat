@@ -1,8 +1,8 @@
-fn square(x: I32) -> I32 {
+fn square(x: Int32) -> Int32 {
   return x * x;
 }
 
-fn main() -> I32 {
+fn main() -> Int32 {
   let base = 5;
   let multiplier = 3;
   let offset = 10;

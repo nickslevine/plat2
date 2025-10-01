@@ -1,4 +1,4 @@
-fn main() -> I32 {
+fn main() -> Int32 {
   print("First print");
   print("Second print");
   print("Third print");

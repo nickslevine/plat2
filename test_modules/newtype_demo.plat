@@ -14,11 +14,11 @@ newtype UserID = I32;
 // Define a type alias wrapping I32 for comparison
 type PlainID = I32;
 
-fn main() -> I32 {
+fn main() -> Int32 {
   // ✅ Type aliases are interchangeable with their underlying type
   // You can pass a raw I32 where PlainID is expected
   let x: PlainID = 42;
-  let y: I32 = x;
+  let y: Int32 = x;
 
   // ❌ Newtypes are NOT interchangeable with their underlying type
   // Uncommenting these lines would cause compile errors:

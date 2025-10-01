@@ -1,6 +1,6 @@
 // Plat Language Feature Showcase
 
-fn fibonacci(n: I32) -> I32 {
+fn fibonacci(n: Int32) -> Int32 {
   // Base cases
   let zero = 0;
   let one = 1;
@@ -14,7 +14,7 @@ fn fibonacci(n: I32) -> I32 {
   return a + b;
 }
 
-fn test_arithmetic() -> I32 {
+fn test_arithmetic() -> Int32 {
   print("=== Testing Arithmetic ===");
 
   let a = 10;
@@ -54,7 +54,7 @@ fn test_boolean() -> Bool {
   return (and1 or and2) and (not not1);  // true
 }
 
-fn test_variables() -> I32 {
+fn test_variables() -> Int32 {
   print("=== Testing Variables ===");
 
   // Immutable with let
@@ -70,7 +70,7 @@ fn test_variables() -> I32 {
   return immutable + mutable;  // 200
 }
 
-fn main() -> I32 {
+fn main() -> Int32 {
   print("===================================");
   print("     Plat Language Showcase");
   print("===================================");
