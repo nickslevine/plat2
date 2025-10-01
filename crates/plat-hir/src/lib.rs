@@ -87,6 +87,7 @@ pub struct TypeChecker {
     functions: HashMap<String, FunctionSignature>,
     enums: HashMap<String, EnumInfo>,
     classes: HashMap<String, ClassInfo>,
+    type_aliases: HashMap<String, HirType>, // Type alias name -> resolved type
     current_function_return_type: Option<HirType>,
     current_class_context: Option<String>, // Track which class we're currently type-checking
     current_method_is_init: bool, // Track if we're currently in an init method
@@ -164,6 +165,7 @@ impl TypeChecker {
             functions: HashMap::new(),
             enums: HashMap::new(),
             classes: HashMap::new(),
+            type_aliases: HashMap::new(),
             current_function_return_type: None,
             current_class_context: None,
             current_method_is_init: false,
@@ -189,6 +191,7 @@ impl TypeChecker {
             functions: HashMap::new(),
             enums: HashMap::new(),
             classes: HashMap::new(),
+            type_aliases: HashMap::new(),
             current_function_return_type: None,
             current_class_context: None,
             current_method_is_init: false,
@@ -376,6 +379,11 @@ impl TypeChecker {
             self.module_table.add_import(use_decl.path.join("::"));
         }
 
+        // Process type aliases
+        for type_alias in &program.type_aliases {
+            self.collect_type_alias(type_alias)?;
+        }
+
         // First pass: collect all enum definitions
         for enum_decl in &program.enums {
             self.collect_enum_info(enum_decl)?;
@@ -453,6 +461,33 @@ impl TypeChecker {
                 self.check_class_method(class_decl, method)?;
             }
         }
+
+        Ok(())
+    }
+
+    fn collect_type_alias(&mut self, type_alias: &TypeAlias) -> Result<(), DiagnosticError> {
+        // Check for duplicate type alias definitions
+        if self.type_aliases.contains_key(&type_alias.name) {
+            return Err(DiagnosticError::Type(
+                format!("Type alias '{}' is already defined", type_alias.name)
+            ));
+        }
+
+        // Check for conflicts with enums and classes
+        if self.enums.contains_key(&type_alias.name) {
+            return Err(DiagnosticError::Type(
+                format!("Type alias '{}' conflicts with an existing enum", type_alias.name)
+            ));
+        }
+        if self.classes.contains_key(&type_alias.name) {
+            return Err(DiagnosticError::Type(
+                format!("Type alias '{}' conflicts with an existing class", type_alias.name)
+            ));
+        }
+
+        // Resolve the aliased type
+        let resolved_type = self.ast_type_to_hir_type(&type_alias.ty)?;
+        self.type_aliases.insert(type_alias.name.clone(), resolved_type);
 
         Ok(())
     }
@@ -2444,8 +2479,18 @@ impl TypeChecker {
                 Ok(HirType::Set(Box::new(element_hir_type)))
             }
             Type::Named(name, type_params) => {
+                // Check if this is a type alias first
+                if self.type_aliases.contains_key(name) {
+                    // Type aliases shouldn't have type parameters
+                    if !type_params.is_empty() {
+                        return Err(DiagnosticError::Type(
+                            format!("Type alias '{}' cannot have type arguments", name)
+                        ));
+                    }
+                    Ok(self.type_aliases[name].clone())
+                }
                 // Check if this is a type parameter (T, U, etc.)
-                if self.type_parameters.contains(name) {
+                else if self.type_parameters.contains(name) {
                     // Type parameters shouldn't have their own type parameters
                     if !type_params.is_empty() {
                         return Err(DiagnosticError::Type(

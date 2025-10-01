@@ -70,6 +70,7 @@ pub struct CodeGenerator {
     string_counter: usize,
     class_metadata: HashMap<String, ClassMetadata>,
     module_name: Option<String>, // Name of the current module for name mangling
+    type_aliases: HashMap<String, AstType>, // Type aliases resolved from program
 }
 
 impl CodeGenerator {
@@ -239,9 +240,52 @@ impl CodeGenerator {
         }
     }
 
+    /// Resolve a type alias recursively
+    fn resolve_type_alias(&self, ty: &AstType) -> AstType {
+        Self::resolve_type_alias_static(&self.type_aliases, ty)
+    }
+
+    /// Static version of resolve_type_alias for use in helper methods
+    fn resolve_type_alias_static(type_aliases: &HashMap<String, AstType>, ty: &AstType) -> AstType {
+        match ty {
+            AstType::Named(name, type_params) if type_params.is_empty() => {
+                // Check if this is a type alias
+                if let Some(resolved) = type_aliases.get(name) {
+                    // Recursively resolve in case of chained aliases
+                    Self::resolve_type_alias_static(type_aliases, resolved)
+                } else {
+                    ty.clone()
+                }
+            }
+            _ => ty.clone(),
+        }
+    }
+
+    /// Convert an AST type to a Cranelift type (resolving aliases first)
+    fn ast_type_to_cranelift(&self, ty: &AstType) -> Type {
+        let resolved_ty = self.resolve_type_alias(ty);
+        match resolved_ty {
+            AstType::String => I64,
+            AstType::I64 => I64,
+            AstType::F64 => F64,
+            AstType::List(_) => I64,
+            AstType::Dict(_, _) => I64,
+            AstType::Set(_) => I64,
+            AstType::Named(_, _) => I64, // Custom types (classes, enums) are pointers
+            AstType::I32 | AstType::Bool => I32,
+            AstType::F32 => F32,
+        }
+    }
+
     /// Convert an AST type to a VariableType
-    fn ast_type_to_variable_type(ast_type: &AstType) -> VariableType {
-        match ast_type {
+    fn ast_type_to_variable_type(&self, ast_type: &AstType) -> VariableType {
+        Self::ast_type_to_variable_type_static(&self.type_aliases, ast_type)
+    }
+
+    /// Static version of ast_type_to_variable_type for use in helper methods
+    fn ast_type_to_variable_type_static(type_aliases: &HashMap<String, AstType>, ast_type: &AstType) -> VariableType {
+        let resolved_ty = Self::resolve_type_alias_static(type_aliases, ast_type);
+        match resolved_ty {
             AstType::Bool => VariableType::Bool,
             AstType::I32 => VariableType::I32,
             AstType::I64 => VariableType::I64,
@@ -249,7 +293,7 @@ impl CodeGenerator {
             AstType::F64 => VariableType::F64,
             AstType::String => VariableType::String,
             AstType::List(element_type) => {
-                let element_var_type = Self::ast_type_to_variable_type(element_type);
+                let element_var_type = Self::ast_type_to_variable_type_static(type_aliases, &element_type);
                 VariableType::Array(Box::new(element_var_type))
             }
             AstType::Dict(_, _) => VariableType::Dict,
@@ -283,6 +327,7 @@ impl CodeGenerator {
             string_counter: 0,
             class_metadata: HashMap::new(),
             module_name: None,
+            type_aliases: HashMap::new(),
         })
     }
 
@@ -550,6 +595,11 @@ impl CodeGenerator {
             self.module_name = Some(mod_decl.path.join("::"));
         }
 
+        // Process type aliases
+        for type_alias in &program.type_aliases {
+            self.type_aliases.insert(type_alias.name.clone(), type_alias.ty.clone());
+        }
+
         // Build class metadata first (before declaring functions)
         for class_decl in &program.classes {
             eprintln!("DEBUG: Building metadata for class: {}", class_decl.name);
@@ -629,35 +679,13 @@ impl CodeGenerator {
 
         // Add parameters
         for param in &function.params {
-            // Determine parameter type based on the type annotation
-            let param_type = match &param.ty {
-                AstType::String => I64,
-                AstType::I64 => I64,
-                AstType::F64 => F64,
-                AstType::List(_) => I64,
-                AstType::Dict(_, _) => I64,
-                AstType::Set(_) => I64,
-                AstType::Named(_, _) => I64, // Custom types (classes, enums) are pointers
-                AstType::I32 | AstType::Bool => I32,
-                AstType::F32 => F32,
-            };
+            let param_type = self.ast_type_to_cranelift(&param.ty);
             sig.params.push(AbiParam::new(param_type));
         }
 
         // Add return type
         if let Some(return_type) = &function.return_type {
-            // Determine return type based on the type annotation
-            let ret_type = match return_type {
-                AstType::String => I64,
-                AstType::I64 => I64,
-                AstType::F64 => F64,
-                AstType::List(_) => I64,
-                AstType::Dict(_, _) => I64,
-                AstType::Set(_) => I64,
-                AstType::Named(_, _) => I64, // Custom types (classes, enums) are pointers
-                AstType::F32 => F32,
-                AstType::I32 | AstType::Bool => I32,
-            };
+            let ret_type = self.ast_type_to_cranelift(return_type);
             sig.returns.push(AbiParam::new(ret_type));
         } else if function.name == "main" || name == "main" {
             // Main function always returns i32 (exit code) even if not specified
@@ -688,6 +716,16 @@ impl CodeGenerator {
 
         // Create the function in Cranelift IR
         self.context.func.signature = sig;
+
+        // Pre-compute parameter types (before creating the builder to avoid borrow conflicts)
+        let param_cranelift_types: Vec<Type> = function.params
+            .iter()
+            .map(|param| self.ast_type_to_cranelift(&param.ty))
+            .collect();
+        let param_variable_types: Vec<VariableType> = function.params
+            .iter()
+            .map(|param| self.ast_type_to_variable_type(&param.ty))
+            .collect();
 
         // Create entry block
         let entry_block = self.context.func.dfg.make_block();
@@ -735,31 +773,20 @@ impl CodeGenerator {
             let var = Variable::from_u32(variable_counter);
             variable_counter += 1;
 
-            // Determine the cranelift type based on the AST type
-            let cranelift_type = match &param.ty {
-                AstType::String => I64,
-                AstType::I64 => I64,
-                AstType::F64 => F64,
-                AstType::List(_) => I64,
-                AstType::Dict(_, _) => I64,
-                AstType::Set(_) => I64,
-                AstType::Named(_, _) => I64, // Custom types (classes, enums) are pointers
-                AstType::I32 | AstType::Bool => I32,
-                AstType::F32 => F32,
-            };
+            // Use pre-computed types
+            let cranelift_type = param_cranelift_types[i];
+            let var_type = param_variable_types[i].clone();
 
             builder.declare_var(var, cranelift_type);
             builder.def_var(var, params[i + param_offset]);
             variables.insert(param.name.clone(), var);
-
-            // Track parameter type based on AST type
-            let var_type = Self::ast_type_to_variable_type(&param.ty);
             variable_types.insert(param.name.clone(), var_type);
         }
 
         // Generate function body - we need to avoid borrowing conflicts
-        // Extract the functions HashMap to avoid borrowing self while builder exists
+        // Extract the functions HashMap and type_aliases to avoid borrowing self while builder exists
         let functions_copy = self.functions.clone();
+        let type_aliases_copy = self.type_aliases.clone();
         let mut has_return = false;
         for statement in &function.body.statements {
             has_return |= Self::generate_statement_helper(
@@ -771,7 +798,8 @@ impl CodeGenerator {
                 &functions_copy,
                 &mut self.module,
                 &mut self.string_counter,
-                &self.class_metadata
+                &self.class_metadata,
+                &type_aliases_copy
             )?;
         }
 
@@ -815,7 +843,8 @@ impl CodeGenerator {
         functions: &HashMap<String, FuncId>,
         module: &mut ObjectModule,
         string_counter: &mut usize,
-        class_metadata: &HashMap<String, ClassMetadata>
+        class_metadata: &HashMap<String, ClassMetadata>,
+        type_aliases: &HashMap<String, AstType>
     ) -> Result<bool, CodegenError> {
         match statement {
             Statement::Let { name, ty, value, .. } => {
@@ -826,7 +855,7 @@ impl CodeGenerator {
                 // Determine Cranelift type and Plat type based on type annotation or expression
                 let (cranelift_type, plat_type) = if let Some(ast_ty) = ty {
                     // Use the type annotation if available
-                    let var_type = Self::ast_type_to_variable_type(ast_ty);
+                    let var_type = Self::ast_type_to_variable_type_static(type_aliases, ast_ty);
                     let cran_type = Self::variable_type_to_cranelift_type(&var_type);
                     (cran_type, var_type)
                 } else {
@@ -930,7 +959,7 @@ impl CodeGenerator {
                 // Determine Cranelift type and Plat type based on type annotation or expression
                 let (cranelift_type, plat_type) = if let Some(ast_ty) = ty {
                     // Use the type annotation if available
-                    let var_type = Self::ast_type_to_variable_type(ast_ty);
+                    let var_type = Self::ast_type_to_variable_type_static(type_aliases, ast_ty);
                     let cran_type = Self::variable_type_to_cranelift_type(&var_type);
                     (cran_type, var_type)
                 } else {
@@ -1089,7 +1118,7 @@ impl CodeGenerator {
                 for stmt in &then_branch.statements {
                     then_has_return |= Self::generate_statement_helper(
                         builder, stmt, variables, variable_types, variable_counter,
-                        functions, module, string_counter, class_metadata
+                        functions, module, string_counter, class_metadata, type_aliases
                     )?;
                 }
                 if !then_has_return {
@@ -1104,7 +1133,7 @@ impl CodeGenerator {
                     for stmt in &else_block_ast.statements {
                         else_has_return |= Self::generate_statement_helper(
                             builder, stmt, variables, variable_types, variable_counter,
-                            functions, module, string_counter, class_metadata
+                            functions, module, string_counter, class_metadata, type_aliases
                         )?;
                     }
                 }
@@ -1140,7 +1169,7 @@ impl CodeGenerator {
                 for stmt in &body.statements {
                     body_has_return |= Self::generate_statement_helper(
                         builder, stmt, variables, variable_types, variable_counter,
-                        functions, module, string_counter, class_metadata
+                        functions, module, string_counter, class_metadata, type_aliases
                     )?;
                 }
                 if !body_has_return {
@@ -1163,7 +1192,7 @@ impl CodeGenerator {
                     // Range-based for loop
                     return Self::generate_range_for_loop(
                         builder, variable, start, end, *inclusive, body,
-                        variables, variable_types, variable_counter, functions, module, string_counter, class_metadata
+                        variables, variable_types, variable_counter, functions, module, string_counter, class_metadata, type_aliases
                     );
                 }
 
@@ -1267,7 +1296,7 @@ impl CodeGenerator {
                 for stmt in &body.statements {
                     body_has_return |= Self::generate_statement_helper(
                         builder, stmt, variables, variable_types, variable_counter,
-                        functions, module, string_counter, class_metadata
+                        functions, module, string_counter, class_metadata, type_aliases
                     )?;
                 }
 
@@ -1317,7 +1346,8 @@ impl CodeGenerator {
         functions: &HashMap<String, FuncId>,
         module: &mut ObjectModule,
         string_counter: &mut usize,
-        class_metadata: &HashMap<String, ClassMetadata>
+        class_metadata: &HashMap<String, ClassMetadata>,
+        type_aliases: &HashMap<String, AstType>
     ) -> Result<bool, CodegenError> {
         // Evaluate start and end expressions
         let start_val = Self::generate_expression_helper(builder, start, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
@@ -1374,7 +1404,7 @@ impl CodeGenerator {
         for stmt in &body.statements {
             body_has_return |= Self::generate_statement_helper(
                 builder, stmt, variables, variable_types, variable_counter,
-                functions, module, string_counter, class_metadata
+                functions, module, string_counter, class_metadata, type_aliases
             )?;
         }
 

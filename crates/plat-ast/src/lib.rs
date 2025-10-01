@@ -4,6 +4,7 @@ use plat_lexer::Span;
 pub struct Program {
     pub module_decl: Option<ModuleDecl>,
     pub use_decls: Vec<UseDecl>,
+    pub type_aliases: Vec<TypeAlias>,
     pub functions: Vec<Function>,
     pub enums: Vec<EnumDecl>,
     pub classes: Vec<ClassDecl>,
@@ -18,6 +19,13 @@ pub struct ModuleDecl {
 #[derive(Debug, Clone, PartialEq)]
 pub struct UseDecl {
     pub path: Vec<String>, // e.g., ["database"] for "use database;"
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TypeAlias {
+    pub name: String,
+    pub ty: Type,
     pub span: Span,
 }
 

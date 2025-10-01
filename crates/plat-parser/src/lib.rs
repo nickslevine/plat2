@@ -31,6 +31,12 @@ impl Parser {
             use_decls.push(self.parse_use_decl()?);
         }
 
+        // Parse type aliases
+        let mut type_aliases = Vec::new();
+        while self.check(&Token::Type) {
+            type_aliases.push(self.parse_type_alias()?);
+        }
+
         let mut functions = Vec::new();
         let mut enums = Vec::new();
         let mut classes = Vec::new();
@@ -40,12 +46,14 @@ impl Parser {
                 enums.push(self.parse_enum()?);
             } else if self.check(&Token::Class) {
                 classes.push(self.parse_class()?);
+            } else if self.check(&Token::Type) {
+                type_aliases.push(self.parse_type_alias()?);
             } else {
                 functions.push(self.parse_function()?);
             }
         }
 
-        Ok(Program { module_decl, use_decls, functions, enums, classes })
+        Ok(Program { module_decl, use_decls, type_aliases, functions, enums, classes })
     }
 
     fn parse_module_decl(&mut self) -> Result<ModuleDecl, DiagnosticError> {
@@ -86,6 +94,26 @@ impl Parser {
 
         Ok(UseDecl {
             path,
+            span: Span::new(start, end),
+        })
+    }
+
+    fn parse_type_alias(&mut self) -> Result<TypeAlias, DiagnosticError> {
+        let start = self.current_span().start;
+        self.consume(Token::Type, "Expected 'type'")?;
+
+        let name = self.consume_identifier("Expected type alias name")?;
+
+        self.consume(Token::Assign, "Expected '=' after type alias name")?;
+
+        let ty = self.parse_type()?;
+
+        self.consume(Token::Semicolon, "Expected ';' after type alias")?;
+        let end = self.previous_span().end;
+
+        Ok(TypeAlias {
+            name,
+            ty,
             span: Span::new(start, end),
         })
     }

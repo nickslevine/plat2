@@ -55,6 +55,20 @@ impl Formatter {
             self.write_line("");
         }
 
+        // Format type aliases
+        for type_alias in &program.type_aliases {
+            self.write("type ");
+            self.write(&type_alias.name);
+            self.write(" = ");
+            self.format_type(&type_alias.ty);
+            self.write_line(";");
+        }
+
+        // Add blank line after type aliases if there are any
+        if !program.type_aliases.is_empty() {
+            self.write_line("");
+        }
+
         let mut items_written = 0;
 
         // Format enums first
