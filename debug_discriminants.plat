@@ -1,4 +1,0 @@
-fn main() {
-    // Test discriminant calculation for Option variants
-    print("Testing discriminants");
-}

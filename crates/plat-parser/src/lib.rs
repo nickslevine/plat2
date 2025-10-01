@@ -792,7 +792,8 @@ impl Parser {
         if let Some(Token::Ident(name)) = self.match_if(|t| matches!(t, Token::Ident(_))) {
             let span = self.previous_span();
             // Check for constructor call with named arguments (ClassName(param=value))
-            if self.match_token(&Token::LeftParen) && self.is_named_arg() {
+            if self.check(&Token::LeftParen) && self.is_named_arg() {
+                self.consume(Token::LeftParen, "Expected '('")?;
                 let args = self.parse_named_arguments()?;
                 self.consume(Token::RightParen, "Expected ')' after constructor arguments")?;
                 let end = self.previous_span().end;

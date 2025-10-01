@@ -7,7 +7,11 @@ mod tests {
         let parser = Parser::new(input)?;
         let program = parser.parse()?;
         let type_checker = TypeChecker::new();
-        type_checker.check_program(&program)
+        let result = type_checker.check_program(&program);
+        if let Err(e) = &result {
+            eprintln!("Type check error: {}", e);
+        }
+        result
     }
 
     #[test]
@@ -304,7 +308,11 @@ mod tests {
             }
         "#;
 
-        assert!(type_check(input).is_ok());
+        let result = type_check(input);
+        if let Err(ref e) = result {
+            panic!("Type check failed with error: {}", e);
+        }
+        assert!(result.is_ok());
     }
 
     #[test]
