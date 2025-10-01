@@ -9,7 +9,7 @@ members = [
     "crates/plat-codegen",
     "crates/plat-runtime",
     "crates/plat-fmt",
-    "crates/plat-diags",
+    "crates/plat-diags", "crates/plat-modules",
 ]
 
 [workspace.package]
