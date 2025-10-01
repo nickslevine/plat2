@@ -865,7 +865,82 @@ Product: 21
 Quotient: 25
 ```
 
-## 20. Stretch Goals (post-MVP)
+## 20. If-Expressions (COMPLETE!)
+- [x] **AST Extensions**: `Expression::If` variant
+  - [x] Condition, then branch, and optional else branch
+  - [x] Full span tracking for error reporting
+- [x] **Parser Implementation**: If-expression parsing
+  - [x] Parse `if (condition) { expr }` in expression context
+  - [x] Parse optional `else { expr }` branch
+  - [x] `parse_block_expression()` for block value extraction
+  - [x] Integration with expression precedence chain
+- [x] **Type System & HIR**: If-expression type checking
+  - [x] Validate condition is boolean type
+  - [x] Ensure both branches have the same type
+  - [x] If no else branch, expression returns Unit
+  - [x] Helpful error messages for type mismatches
+- [x] **Code Generation**: Efficient conditional compilation
+  - [x] Cranelift IR generation with control flow blocks
+  - [x] Proper branch and continuation block handling
+  - [x] Block parameters for passing result values
+  - [x] Full integration with expression evaluation
+- [x] **Formatter Support**: Pretty printing for if-expressions
+  - [x] Format condition and branches correctly
+  - [x] Proper spacing and layout
+- [x] **End-to-End Testing**: Comprehensive validation
+  - [x] Simple if-expressions: `if (x > y) { x } else { y }`
+  - [x] Nested if-expressions working correctly
+  - [x] If-expressions as return values
+  - [x] If-expressions without else branch (returns unit)
+
+### ✅ **If-Expressions Status - PRODUCTION READY!**
+- ✅ **Basic If**: `if (condition) { value1 } else { value2 }` → returns typed value
+- ✅ **No Else**: `if (condition) { value }` → returns Unit (0)
+- ✅ **Type Safety**: Both branches must have the same type
+- ✅ **Performance**: Native code generation with efficient control flow
+- ✅ **Testing**: All tests pass with correct output
+- ✅ **Integration**: Seamless integration with existing expression system
+
+### 📝 **Complete If-Expression Example (Production Ready!)**
+
+```plat
+fn main() -> i32 {
+  let x = 10;
+  let y = 20;
+
+  // Simple if-expression
+  let max = if (x > y) { x } else { y };
+  print("Max of ${x} and ${y} is ${max}"); // Outputs: "Max of 10 and 20 is 20"
+
+  // If-expression in computation
+  let result = if (x < y) { x + y } else { x - y };
+  print("Result: ${result}"); // Outputs: "Result: 30"
+
+  // Nested if-expression
+  let sign = if (result > 0) {
+    1
+  } else {
+    if (result < 0) {
+      -1
+    } else {
+      0
+    }
+  };
+  print("Sign: ${sign}"); // Outputs: "Sign: 1"
+
+  // If-expression as return value
+  return if (max > 15) { 1 } else { 0 }; // Returns: 1
+}
+```
+
+**Output:**
+```
+Max of 10 and 20 is 20
+Result: 30
+Sign: 1
+```
+
+## 21. Stretch Goals (post-MVP)
 - [ ] Imports & modules
 - [ ] More operators & advanced pattern matching
 - [ ] Incremental compilation & caching
@@ -889,9 +964,10 @@ Quotient: 25
 - [x] **COMPLETE**: Comprehensive string methods API with 13 built-in methods
 - [x] **COMPLETE**: Comprehensive Set methods API with 11 built-in methods and type-safe method dispatch
 - [x] **COMPLETE**: Custom classes with object-oriented programming support
-- [x] **🎉 NEW: Generic Type Substitution with monomorphization system**
-- [x] **🎉 NEW: Inheritance & Polymorphism with virtual methods and super calls**
-- [x] **🎉 NEW: Generic Functions with type parameters and monomorphization**
+- [x] **COMPLETE**: Generic Type Substitution with monomorphization system
+- [x] **COMPLETE**: Inheritance & Polymorphism with virtual methods and super calls
+- [x] **COMPLETE**: Generic Functions with type parameters and monomorphization
+- [x] **🎉 NEW: If-Expressions with type-safe conditional value evaluation**
 - [x] **WORKING**: `print("Result: ${x + y}")` → `"Result: 42"`
 - [x] **WORKING**: `enum Status { Success, Error }` → complete pattern matching
 - [x] **WORKING**: `Status::Success` → `match` → `Success -> 1` → `1` ✅
@@ -939,7 +1015,10 @@ Quotient: 25
 - [x] **🎉 NEW WORKING**: `for (i in 0..5) { }` → exclusive range for loops (iterates 0-4) ✅
 - [x] **🎉 NEW WORKING**: `for (i in 0..=5) { }` → inclusive range for loops (iterates 0-5) ✅
 - [x] **🎉 NEW WORKING**: `for (i in start..end) { }` → range with variables ✅
-- [x] **🏆 ACHIEVEMENT**: Complete object-oriented programming + algebraic data types + generic collections + dictionaries + sets + **generics + inheritance + full polymorphism + generic functions + range-based for loops** ready for production!
+- [x] **🎉 NEW WORKING**: `let max = if (x > y) { x } else { y }` → if-expressions return typed values ✅
+- [x] **🎉 NEW WORKING**: `if (result > 0) { 1 } else { -1 }` → nested and complex if-expressions ✅
+- [x] **🎉 NEW WORKING**: `return if (max > 15) { 1 } else { 0 }` → if-expressions as return values ✅
+- [x] **🏆 ACHIEVEMENT**: Complete object-oriented programming + algebraic data types + generic collections + dictionaries + sets + **generics + inheritance + full polymorphism + generic functions + range-based for loops + if-expressions** ready for production!
 
 ### 📝 **Complete Working Examples (Production Ready!)**
 

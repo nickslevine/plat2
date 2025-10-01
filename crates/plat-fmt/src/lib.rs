@@ -543,6 +543,16 @@ impl Formatter {
                 }
                 self.format_expression(end);
             }
+            Expression::If { condition, then_branch, else_branch, .. } => {
+                self.write("if (");
+                self.format_expression(condition);
+                self.write(") ");
+                self.format_expression(then_branch);
+                if let Some(else_expr) = else_branch {
+                    self.write(" else ");
+                    self.format_expression(else_expr);
+                }
+            }
         }
     }
 

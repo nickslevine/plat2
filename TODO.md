@@ -1,6 +1,4 @@
 * error handling
-* if expressions? 
-
 
 * regex
 * safe vs unsafe arithmetic 

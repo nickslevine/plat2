@@ -1959,6 +1959,32 @@ impl TypeChecker {
                 // We return the element type (the integer type)
                 Ok(start_type)
             }
+            Expression::If { condition, then_branch, else_branch, .. } => {
+                // Check condition is bool
+                let condition_type = self.check_expression(condition)?;
+                if condition_type != HirType::Bool {
+                    return Err(DiagnosticError::Type(
+                        format!("If condition must be bool, got {:?}", condition_type)
+                    ));
+                }
+
+                // Check then branch
+                let then_type = self.check_expression(then_branch)?;
+
+                // If there's an else branch, check it and ensure both branches have the same type
+                if let Some(else_expr) = else_branch {
+                    let else_type = self.check_expression(else_expr)?;
+                    if then_type != else_type {
+                        return Err(DiagnosticError::Type(
+                            format!("If-expression branches must have the same type: then={:?}, else={:?}", then_type, else_type)
+                        ));
+                    }
+                    Ok(then_type)
+                } else {
+                    // If there's no else branch, the expression returns Unit
+                    Ok(HirType::Unit)
+                }
+            }
         }
     }
 

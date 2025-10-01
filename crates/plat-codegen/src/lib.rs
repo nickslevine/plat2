@@ -3521,6 +3521,52 @@ impl CodeGenerator {
                 // For now, return an error since we need to implement block expressions
                 Err(CodegenError::UnsupportedFeature("Block expressions not yet implemented".to_string()))
             }
+            Expression::If { condition, then_branch, else_branch, .. } => {
+                // Create blocks for the branches
+                let then_block = builder.create_block();
+                let else_block = builder.create_block();
+                let cont_block = builder.create_block();
+
+                // Evaluate condition
+                let cond_val = Self::generate_expression_helper(
+                    builder, condition, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata
+                )?;
+
+                // Convert i32 bool to i8 for conditional branch
+                let cond_bool = builder.ins().icmp_imm(IntCC::NotEqual, cond_val, 0);
+
+                // Branch based on condition
+                builder.ins().brif(cond_bool, then_block, &[], else_block, &[]);
+
+                // Generate then branch
+                builder.switch_to_block(then_block);
+                builder.seal_block(then_block);
+                let then_val = Self::generate_expression_helper(
+                    builder, then_branch, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata
+                )?;
+                builder.ins().jump(cont_block, &[then_val]);
+
+                // Generate else branch (or default to unit value)
+                builder.switch_to_block(else_block);
+                builder.seal_block(else_block);
+                let else_val = if let Some(else_expr) = else_branch {
+                    Self::generate_expression_helper(
+                        builder, else_expr, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata
+                    )?
+                } else {
+                    // If no else branch, default to 0 (unit value represented as i32)
+                    builder.ins().iconst(I32, 0)
+                };
+                builder.ins().jump(cont_block, &[else_val]);
+
+                // Continue block - add parameter for the result
+                builder.switch_to_block(cont_block);
+                builder.append_block_param(cont_block, I32);
+                builder.seal_block(cont_block);
+
+                let result = builder.block_params(cont_block)[0];
+                Ok(result)
+            }
             _ => {
                 // TODO: Implement any remaining expressions
                 Err(CodegenError::UnsupportedFeature("Complex expressions not yet implemented".to_string()))

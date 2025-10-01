@@ -415,6 +415,7 @@ impl Parser {
                     Expression::ConstructorCall { span, .. } => span.start,
                     Expression::SuperCall { span, .. } => span.start,
                     Expression::Range { span, .. } => span.start,
+                    Expression::If { span, .. } => span.start,
                 },
                 self.previous_span().end,
             );
@@ -669,6 +670,10 @@ impl Parser {
             return self.parse_match_expression();
         }
 
+        if self.match_token(&Token::If) {
+            return self.parse_if_expression();
+        }
+
         if self.match_token(&Token::True) {
             let span = self.previous_span();
             return Ok(Expression::Literal(Literal::Bool(true, span)));
@@ -848,6 +853,7 @@ impl Parser {
             Expression::ConstructorCall { span, .. } => span.start,
             Expression::SuperCall { span, .. } => span.start,
             Expression::Range { span, .. } => span.start,
+            Expression::If { span, .. } => span.start,
         };
         Span::new(start, end)
     }
@@ -957,6 +963,91 @@ impl Parser {
             arms,
             span: Span::new(start, end),
         })
+    }
+
+    fn parse_if_expression(&mut self) -> Result<Expression, DiagnosticError> {
+        let start = self.previous_span().start;
+
+        self.consume(Token::LeftParen, "Expected '(' after 'if'")?;
+        let condition = Box::new(self.parse_expression()?);
+        self.consume(Token::RightParen, "Expected ')' after condition")?;
+
+        // For if-expressions, we require braces for the then branch
+        self.consume(Token::LeftBrace, "Expected '{' for if-expression then branch")?;
+        let then_branch = Box::new(self.parse_block_expression()?);
+
+        let else_branch = if self.match_token(&Token::Else) {
+            self.consume(Token::LeftBrace, "Expected '{' for if-expression else branch")?;
+            Some(Box::new(self.parse_block_expression()?))
+        } else {
+            None
+        };
+
+        let end = else_branch.as_ref()
+            .map(|b| self.get_expression_span(b, 0).end)
+            .unwrap_or_else(|| self.get_expression_span(&then_branch, 0).end);
+
+        Ok(Expression::If {
+            condition,
+            then_branch,
+            else_branch,
+            span: Span::new(start, end),
+        })
+    }
+
+    fn parse_block_expression(&mut self) -> Result<Expression, DiagnosticError> {
+        // Parse statements until we find the last expression or closing brace
+        let start = self.previous_span().start;
+        let mut statements = Vec::new();
+        let mut final_expr = None;
+
+        while !self.check(&Token::RightBrace) && !self.is_at_end() {
+            // Check if this looks like the final expression (no semicolon)
+            let checkpoint = self.current;
+
+            // Try to parse as expression first
+            if let Ok(expr) = self.parse_expression() {
+                // If followed by semicolon, it's a statement
+                if self.match_token(&Token::Semicolon) {
+                    statements.push(Statement::Expression(expr));
+                } else if self.check(&Token::RightBrace) {
+                    // This is the final expression
+                    final_expr = Some(expr);
+                    break;
+                } else {
+                    // Not followed by semicolon or closing brace, might be error
+                    // But first check if it's a control flow statement that doesn't need semicolon
+                    self.current = checkpoint;
+                    statements.push(self.parse_statement()?);
+                }
+            } else {
+                // Failed to parse as expression, try as statement
+                self.current = checkpoint;
+                statements.push(self.parse_statement()?);
+            }
+        }
+
+        self.consume(Token::RightBrace, "Expected '}' after block")?;
+        let end = self.previous_span().end;
+
+        // If there's a final expression, use it; otherwise, create a block
+        if let Some(expr) = final_expr {
+            if statements.is_empty() {
+                Ok(expr)
+            } else {
+                // Need to wrap statements + final expr in a block
+                statements.push(Statement::Expression(expr));
+                Ok(Expression::Block(Block {
+                    statements,
+                    span: Span::new(start, end),
+                }))
+            }
+        } else {
+            Ok(Expression::Block(Block {
+                statements,
+                span: Span::new(start, end),
+            }))
+        }
     }
 
     fn parse_pattern(&mut self) -> Result<Pattern, DiagnosticError> {

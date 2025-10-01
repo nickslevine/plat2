@@ -168,6 +168,12 @@ pub enum Expression {
         inclusive: bool, // true for ..=, false for ..
         span: Span,
     },
+    If {
+        condition: Box<Expression>,
+        then_branch: Box<Expression>,
+        else_branch: Option<Box<Expression>>,
+        span: Span,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
