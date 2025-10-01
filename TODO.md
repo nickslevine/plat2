@@ -1,6 +1,6 @@
 fix all test failures
+fix all compilation warnings. 
 
-☐ Fix HIR tests for module support
   ☐ Update CLI for module compilation modes
   ☐ Update codegen for multi-module programs
   ☐ Write end-to-end module tests
