@@ -69,9 +69,23 @@ pub struct CodeGenerator {
     functions: HashMap<String, FuncId>,
     string_counter: usize,
     class_metadata: HashMap<String, ClassMetadata>,
+    module_name: Option<String>, // Name of the current module for name mangling
 }
 
 impl CodeGenerator {
+    /// Compute the mangled function name for export
+    fn mangle_function_name(&self, simple_name: &str) -> String {
+        if let Some(mod_name) = &self.module_name {
+            // Skip mangling for main function - it must remain "_main" for linking
+            if simple_name == "main" {
+                return simple_name.to_string();
+            }
+            format!("{}::{}", mod_name, simple_name)
+        } else {
+            simple_name.to_string()
+        }
+    }
+
     /// Determine the variable type that a match expression returns
     fn determine_match_return_type(arms: &[MatchArm], _variable_types: &HashMap<String, VariableType>) -> VariableType {
         if arms.is_empty() {
@@ -268,6 +282,7 @@ impl CodeGenerator {
             functions: HashMap::new(),
             string_counter: 0,
             class_metadata: HashMap::new(),
+            module_name: None,
         })
     }
 
@@ -530,6 +545,11 @@ impl CodeGenerator {
     }
 
     pub fn generate_code(mut self, program: &Program) -> Result<Vec<u8>, CodegenError> {
+        // Extract module name for function name mangling
+        if let Some(mod_decl) = &program.module_decl {
+            self.module_name = Some(mod_decl.path.join("::"));
+        }
+
         // Build class metadata first (before declaring functions)
         for class_decl in &program.classes {
             eprintln!("DEBUG: Building metadata for class: {}", class_decl.name);
@@ -588,7 +608,8 @@ impl CodeGenerator {
     }
 
     fn declare_function(&mut self, function: &ast::Function) -> Result<(), CodegenError> {
-        self.declare_function_with_name(&function.name, function)
+        let mangled_name = self.mangle_function_name(&function.name);
+        self.declare_function_with_name(&mangled_name, function)
     }
 
     fn declare_function_with_name(&mut self, name: &str, function: &ast::Function) -> Result<(), CodegenError> {
@@ -653,7 +674,8 @@ impl CodeGenerator {
     }
 
     fn generate_function(&mut self, function: &ast::Function) -> Result<(), CodegenError> {
-        self.generate_function_with_name(&function.name, function)
+        let mangled_name = self.mangle_function_name(&function.name);
+        self.generate_function_with_name(&mangled_name, function)
     }
 
     fn generate_function_with_name(&mut self, name: &str, function: &ast::Function) -> Result<(), CodegenError> {
@@ -1909,10 +1931,33 @@ impl CodeGenerator {
                 }
             }
             Expression::Call { function, args, .. } => {
-                // Look up the function ID
-                let func_id = match functions.get(function) {
-                    Some(&id) => id,
-                    None => return Err(CodegenError::UndefinedFunction(function.clone())),
+                // Check if this is a cross-module call (qualified name with ::)
+                let func_id = if function.contains("::") {
+                    // Cross-module call - declare as import with standard ABI
+                    // For now, we assume all cross-module functions take i64 params and return i64
+                    // This is a simplified approach that works for most Plat types (pointers, strings, classes, etc.)
+                    // Future enhancement: pass HIR symbol table to get exact signatures
+
+                    let sig = {
+                        let mut sig = module.make_signature();
+                        sig.call_conv = CallConv::SystemV;
+                        // Add i64 parameter for each argument
+                        for _ in args {
+                            sig.params.push(AbiParam::new(I64));
+                        }
+                        // Assume i64 return (covers most Plat types: strings, objects, i64, etc.)
+                        sig.returns.push(AbiParam::new(I64));
+                        sig
+                    };
+
+                    module.declare_function(function, Linkage::Import, &sig)
+                        .map_err(CodegenError::ModuleError)?
+                } else {
+                    // Local function call - look up in functions map
+                    match functions.get(function) {
+                        Some(&id) => id,
+                        None => return Err(CodegenError::UndefinedFunction(function.clone())),
+                    }
                 };
 
                 // Get function reference for calling

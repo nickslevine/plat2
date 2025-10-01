@@ -1,7 +1,4 @@
-  - Global symbol table across all modules
-  - Type checker loading imported module symbols
-  - Code generator exporting/importing symbols
-  - Object file linking for multi-module programs
+  
 
 * error handling
 * modules
@@ -33,4 +30,6 @@
 * first-class pandas, numpy, pytorch
 * ffi
 
-enforce snake case for variables and function/method names, TitleCase for classes / enums 
+* enforce snake case for variables and function/method names, TitleCase for classes / enums 
+
+* simplify i32/i64 etc? 

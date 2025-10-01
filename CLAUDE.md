@@ -954,7 +954,7 @@ Sign: 1
   - [x] Parser support for qualified identifiers (module::function)
   - [x] HIR integration for cross-module function resolution
   - [x] End-to-end module tests (single-file with mod declarations)
-- [x] **Phase 4 - Multi-Module Compilation Infrastructure** (Partial):
+- [x] **Phase 4 - Multi-Module Compilation Infrastructure** (COMPLETE):
   - [x] Global symbol table design and implementation
   - [x] Symbol collection from all modules (`collect_symbols_from_program`)
   - [x] Import-aware symbol loading (only load current module + imports)
@@ -964,7 +964,8 @@ Sign: 1
   - [x] Multi-module parsing and dependency-ordered compilation
   - [x] Object file generation for each module
   - [x] Object file linking infrastructure
-  - [ ] Cross-module function call code generation (requires qualified name import declarations)
+  - [x] Cross-module function call code generation with name mangling
+  - [x] Linkage::Import declarations for cross-module function calls
 
 ### 📐 **Module System Design**
 
@@ -1071,7 +1072,7 @@ Sign: 1
   mod database;  // ❌ Error: file must be in database/ folder
   ```
 
-### 🎯 **Module System Status - PHASE 1, 2, 3, & 4 (PARTIAL) COMPLETE!**
+### 🎯 **Module System Status - PHASE 1, 2, 3, & 4 COMPLETE!**
 - [x] **Lexer Support**: `mod` and `use` keywords ✅
 - [x] **AST Extensions**: `ModuleDecl` and `UseDecl` structures ✅
 - [x] **Parser Implementation**: Parse module declarations and import statements ✅
@@ -1085,7 +1086,8 @@ Sign: 1
 - [x] **Multi-Module Type Checking**: Import-aware symbol loading and validation ✅
 - [x] **Object File Generation**: Separate .o files for each module ✅
 - [x] **Object File Linking**: Multi-module executable linking ✅
-- [ ] **Cross-Module Calls**: Code generation for qualified function calls (future work)
+- [x] **Cross-Module Calls**: Code generation for qualified function calls with name mangling ✅
+- [x] **Name Mangling**: Export functions with module-qualified names (e.g., `math::greet`) ✅
 
 ### ✅ **Phase 1, 2, & 3 Complete: Full Module Infrastructure**
 The Plat compiler now has complete module resolution infrastructure:
@@ -1139,19 +1141,21 @@ fn main() -> i32 {
 ```
 ✅ Single-file programs with module declarations compile and run!
 
-**Phase 4 - Multi-Module Compilation (IN PROGRESS):**
+**Phase 4 - Multi-Module Compilation (COMPLETE):**
 ✅ **Completed Infrastructure:**
 - ✅ Global symbol table across all modules in dependency graph
 - ✅ Type checker loading imported module symbols with import-aware filtering
 - ✅ Object file generation for each module
 - ✅ Linker combining multiple object files into single executable
 - ✅ Optional main function validation (library modules don't require `main()`)
+- ✅ Code generator support for cross-module function calls (qualified names like `math::greet`)
+- ✅ External symbol import declarations with `Linkage::Import` in codegen
+- ✅ Function name mangling for cross-module linking (e.g., `greet` → `math::greet`)
+- ✅ Automatic mangling/demangling for function exports and imports
 
-⏳ **Remaining Work:**
-- Code generator support for cross-module function calls (qualified names like `math::add`)
-- External symbol import declarations with `Linkage::Import` in codegen
+**Module System is now production ready!** Cross-module function calls work end-to-end.
 
-### 📝 **Complete Module System Example (Requires Phase 4)**
+### 📝 **Complete Module System Example (Production Ready!)**
 
 ```plat
 // database/connection.plat
