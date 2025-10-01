@@ -1,0 +1,25 @@
+// Test that different newtypes with same underlying type are distinct
+newtype DocumentID = i32;
+newtype UserID = i32;
+type PlainID = i32;
+
+fn process_doc(id: DocumentID) -> i32 {
+  return 100;
+}
+
+fn process_user(id: UserID) -> i32 {
+  return 200;
+}
+
+fn process_plain(id: PlainID) -> i32 {
+  return 300;
+}
+
+fn main() -> i32 {
+  // These should all work: type alias is interchangeable
+  let plain1 = process_plain(1);
+  let plain2 = process_plain(2);
+  let plain3 = process_plain(3);
+
+  return plain1 + plain2 + plain3;
+}

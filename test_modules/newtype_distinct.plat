@@ -1,0 +1,16 @@
+// Test that different newtypes are not interchangeable
+newtype DocumentID = i32;
+newtype UserID = i32;
+
+fn get_document(id: DocumentID) -> i32 {
+  return 100;
+}
+
+fn main() -> i32 {
+  let user_id: UserID = 2;
+
+  // This should fail - UserID and DocumentID are distinct types
+  let result = get_document(user_id);
+
+  return result;
+}

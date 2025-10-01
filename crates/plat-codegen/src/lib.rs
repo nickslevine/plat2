@@ -71,6 +71,7 @@ pub struct CodeGenerator {
     class_metadata: HashMap<String, ClassMetadata>,
     module_name: Option<String>, // Name of the current module for name mangling
     type_aliases: HashMap<String, AstType>, // Type aliases resolved from program
+    newtypes: HashMap<String, AstType>, // Newtypes map to their underlying type
 }
 
 impl CodeGenerator {
@@ -242,7 +243,32 @@ impl CodeGenerator {
 
     /// Resolve a type alias recursively
     fn resolve_type_alias(&self, ty: &AstType) -> AstType {
-        Self::resolve_type_alias_static(&self.type_aliases, ty)
+        Self::resolve_type_alias_or_newtype(&self.type_aliases, &self.newtypes, ty)
+    }
+
+    /// Resolve both type aliases and newtypes to their underlying types
+    fn resolve_type_alias_or_newtype(
+        type_aliases: &HashMap<String, AstType>,
+        newtypes: &HashMap<String, AstType>,
+        ty: &AstType
+    ) -> AstType {
+        match ty {
+            AstType::Named(name, type_params) if type_params.is_empty() => {
+                // Check if this is a newtype first (resolve to underlying type)
+                if let Some(resolved) = newtypes.get(name) {
+                    // Recursively resolve in case of chained newtypes/aliases
+                    Self::resolve_type_alias_or_newtype(type_aliases, newtypes, resolved)
+                }
+                // Check if this is a type alias
+                else if let Some(resolved) = type_aliases.get(name) {
+                    // Recursively resolve in case of chained aliases
+                    Self::resolve_type_alias_or_newtype(type_aliases, newtypes, resolved)
+                } else {
+                    ty.clone()
+                }
+            }
+            _ => ty.clone(),
+        }
     }
 
     /// Static version of resolve_type_alias for use in helper methods
@@ -328,6 +354,7 @@ impl CodeGenerator {
             class_metadata: HashMap::new(),
             module_name: None,
             type_aliases: HashMap::new(),
+            newtypes: HashMap::new(),
         })
     }
 
@@ -598,6 +625,11 @@ impl CodeGenerator {
         // Process type aliases
         for type_alias in &program.type_aliases {
             self.type_aliases.insert(type_alias.name.clone(), type_alias.ty.clone());
+        }
+
+        // Process newtypes - they map to their underlying type at runtime
+        for newtype in &program.newtypes {
+            self.newtypes.insert(newtype.name.clone(), newtype.underlying_type.clone());
         }
 
         // Build class metadata first (before declaring functions)

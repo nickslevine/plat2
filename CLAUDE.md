@@ -17,7 +17,8 @@
 - **Primitives**: `bool`, `i32`, `i64`, `f32`, `f64`, `string`
 - **Collections**: `List[T]`, `Dict[K, V]`, `Set[T]`
 - **Built-in Enums**: `Option<T>`, `Result<T, E>`
-- **Type Aliases**: `type UserID = string;`
+- **Type Aliases**: `type UserID = string;` (interchangeable with underlying type)
+- **Newtypes**: `newtype DocumentID = string;` (distinct type at compile-time, same runtime representation)
 
 ### Object-Oriented Programming
 - **Classes**: Field declarations with `let`/`var` mutability
@@ -88,6 +89,7 @@ plat2/
 - If-expressions
 - Module system with cross-module function calls
 - Type aliases
+- Newtypes (zero-cost distinct types)
 - Float support (f32/f64)
 - String methods (13 built-in functions)
 - Set methods (11 built-in operations)
@@ -169,6 +171,33 @@ use math;
 
 fn main() -> i32 {
   return math::add(5, 10);
+}
+```
+
+### Newtypes
+```plat
+// Type aliases: interchangeable with underlying type
+type Username = string;
+
+// Newtypes: distinct type at compile-time, zero runtime overhead
+newtype DocumentID = string;
+newtype UserID = string;
+
+fn process_user(id: UserID) -> i32 {
+  return 42;
+}
+
+fn main() -> i32 {
+  // ✅ Type alias works with raw string
+  let name: Username = "john";
+
+  // ❌ Newtype ERROR: cannot assign string to UserID
+  // let user: UserID = "user123";
+
+  // ❌ Newtype ERROR: DocumentID != UserID
+  // let doc: DocumentID = user;
+
+  return 0;
 }
 ```
 

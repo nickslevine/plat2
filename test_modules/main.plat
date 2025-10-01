@@ -1,0 +1,7 @@
+use math;
+
+fn main() -> i32 {
+  print(math::greet("World"));
+  print(math::farewell("Friend"));
+  return 0;
+}

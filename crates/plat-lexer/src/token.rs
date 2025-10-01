@@ -28,6 +28,7 @@ pub enum Token {
     Mod,
     Use,
     Type,
+    Newtype,
 
     // Identifiers and literals
     Ident(String),
@@ -116,6 +117,7 @@ impl Token {
             "mod" => Some(Token::Mod),
             "use" => Some(Token::Use),
             "type" => Some(Token::Type),
+            "newtype" => Some(Token::Newtype),
             "and" => Some(Token::And),
             "or" => Some(Token::Or),
             "not" => Some(Token::Not),

@@ -37,6 +37,12 @@ impl Parser {
             type_aliases.push(self.parse_type_alias()?);
         }
 
+        // Parse newtypes
+        let mut newtypes = Vec::new();
+        while self.check(&Token::Newtype) {
+            newtypes.push(self.parse_newtype()?);
+        }
+
         let mut functions = Vec::new();
         let mut enums = Vec::new();
         let mut classes = Vec::new();
@@ -48,12 +54,14 @@ impl Parser {
                 classes.push(self.parse_class()?);
             } else if self.check(&Token::Type) {
                 type_aliases.push(self.parse_type_alias()?);
+            } else if self.check(&Token::Newtype) {
+                newtypes.push(self.parse_newtype()?);
             } else {
                 functions.push(self.parse_function()?);
             }
         }
 
-        Ok(Program { module_decl, use_decls, type_aliases, functions, enums, classes })
+        Ok(Program { module_decl, use_decls, type_aliases, newtypes, functions, enums, classes })
     }
 
     fn parse_module_decl(&mut self) -> Result<ModuleDecl, DiagnosticError> {
@@ -114,6 +122,26 @@ impl Parser {
         Ok(TypeAlias {
             name,
             ty,
+            span: Span::new(start, end),
+        })
+    }
+
+    fn parse_newtype(&mut self) -> Result<NewtypeDecl, DiagnosticError> {
+        let start = self.current_span().start;
+        self.consume(Token::Newtype, "Expected 'newtype'")?;
+
+        let name = self.consume_identifier("Expected newtype name")?;
+
+        self.consume(Token::Assign, "Expected '=' after newtype name")?;
+
+        let underlying_type = self.parse_type()?;
+
+        self.consume(Token::Semicolon, "Expected ';' after newtype declaration")?;
+        let end = self.previous_span().end;
+
+        Ok(NewtypeDecl {
+            name,
+            underlying_type,
             span: Span::new(start, end),
         })
     }

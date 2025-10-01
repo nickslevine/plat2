@@ -1,0 +1,30 @@
+// Test newtype declarations - newtypes should be distinct types
+// unlike type aliases
+
+// Define newtypes
+newtype DocumentID = string;
+newtype UserID = string;
+
+// Define type alias for comparison
+type Username = string;
+
+fn get_document(id: DocumentID) -> i32 {
+  print "Document ID received";
+  return 42;
+}
+
+fn get_user(id: UserID) -> i32 {
+  print "User ID received";
+  return 100;
+}
+
+fn get_username(name: Username) -> i32 {
+  print "Username received";
+  return 200;
+}
+
+fn main() -> i32 {
+  print "Starting newtype test";
+
+  return 42;
+}

@@ -29,3 +29,4 @@
 * first-class pandas, numpy, pytorch
 * ffi
 * simplify i32/i64 etc? 
+* incremental compilation and caching 

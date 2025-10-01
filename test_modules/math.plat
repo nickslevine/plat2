@@ -1,0 +1,9 @@
+mod math;
+
+fn greet(name: string) -> string {
+  return "Hello, ${name}!";
+}
+
+fn farewell(name: string) -> string {
+  return "Goodbye, ${name}!";
+}

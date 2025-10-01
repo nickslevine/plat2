@@ -88,6 +88,7 @@ pub struct TypeChecker {
     enums: HashMap<String, EnumInfo>,
     classes: HashMap<String, ClassInfo>,
     type_aliases: HashMap<String, HirType>, // Type alias name -> resolved type
+    newtypes: HashMap<String, HirType>, // Newtype name -> underlying type (distinct from aliases)
     current_function_return_type: Option<HirType>,
     current_class_context: Option<String>, // Track which class we're currently type-checking
     current_method_is_init: bool, // Track if we're currently in an init method
@@ -111,6 +112,7 @@ pub enum HirType {
     Enum(String, Vec<HirType>), // name, type parameters
     Class(String, Vec<HirType>), // name, type parameters
     TypeParameter(String), // For generic type parameters like T, U, etc.
+    Newtype(String), // Distinct type wrapping another type
     Unit, // For functions that don't return anything
 }
 
@@ -166,6 +168,7 @@ impl TypeChecker {
             enums: HashMap::new(),
             classes: HashMap::new(),
             type_aliases: HashMap::new(),
+            newtypes: HashMap::new(),
             current_function_return_type: None,
             current_class_context: None,
             current_method_is_init: false,
@@ -192,6 +195,7 @@ impl TypeChecker {
             enums: HashMap::new(),
             classes: HashMap::new(),
             type_aliases: HashMap::new(),
+            newtypes: HashMap::new(),
             current_function_return_type: None,
             current_class_context: None,
             current_method_is_init: false,
@@ -384,6 +388,11 @@ impl TypeChecker {
             self.collect_type_alias(type_alias)?;
         }
 
+        // Process newtypes
+        for newtype in &program.newtypes {
+            self.collect_newtype(newtype)?;
+        }
+
         // First pass: collect all enum definitions
         for enum_decl in &program.enums {
             self.collect_enum_info(enum_decl)?;
@@ -488,6 +497,38 @@ impl TypeChecker {
         // Resolve the aliased type
         let resolved_type = self.ast_type_to_hir_type(&type_alias.ty)?;
         self.type_aliases.insert(type_alias.name.clone(), resolved_type);
+
+        Ok(())
+    }
+
+    fn collect_newtype(&mut self, newtype: &NewtypeDecl) -> Result<(), DiagnosticError> {
+        // Check for duplicate newtype definitions
+        if self.newtypes.contains_key(&newtype.name) {
+            return Err(DiagnosticError::Type(
+                format!("Newtype '{}' is already defined", newtype.name)
+            ));
+        }
+
+        // Check for conflicts with enums, classes, and type aliases
+        if self.enums.contains_key(&newtype.name) {
+            return Err(DiagnosticError::Type(
+                format!("Newtype '{}' conflicts with an existing enum", newtype.name)
+            ));
+        }
+        if self.classes.contains_key(&newtype.name) {
+            return Err(DiagnosticError::Type(
+                format!("Newtype '{}' conflicts with an existing class", newtype.name)
+            ));
+        }
+        if self.type_aliases.contains_key(&newtype.name) {
+            return Err(DiagnosticError::Type(
+                format!("Newtype '{}' conflicts with an existing type alias", newtype.name)
+            ));
+        }
+
+        // Resolve the underlying type
+        let underlying_type = self.ast_type_to_hir_type(&newtype.underlying_type)?;
+        self.newtypes.insert(newtype.name.clone(), underlying_type);
 
         Ok(())
     }
@@ -2479,8 +2520,18 @@ impl TypeChecker {
                 Ok(HirType::Set(Box::new(element_hir_type)))
             }
             Type::Named(name, type_params) => {
-                // Check if this is a type alias first
-                if self.type_aliases.contains_key(name) {
+                // Check if this is a newtype first (distinct from type aliases)
+                if self.newtypes.contains_key(name) {
+                    // Newtypes shouldn't have type parameters
+                    if !type_params.is_empty() {
+                        return Err(DiagnosticError::Type(
+                            format!("Newtype '{}' cannot have type arguments", name)
+                        ));
+                    }
+                    Ok(HirType::Newtype(name.clone()))
+                }
+                // Check if this is a type alias
+                else if self.type_aliases.contains_key(name) {
                     // Type aliases shouldn't have type parameters
                     if !type_params.is_empty() {
                         return Err(DiagnosticError::Type(
@@ -2789,8 +2840,8 @@ impl TypeSubstitutable for HirType {
                     type_params.iter().map(|t| t.substitute_types(substitution)).collect()
                 )
             }
-            // Primitive types don't need substitution
-            HirType::Bool | HirType::I32 | HirType::I64 | HirType::F32 | HirType::F64 | HirType::String | HirType::Unit => {
+            // Primitive types and newtypes don't need substitution
+            HirType::Bool | HirType::I32 | HirType::I64 | HirType::F32 | HirType::F64 | HirType::String | HirType::Unit | HirType::Newtype(_) => {
                 self.clone()
             }
         }
