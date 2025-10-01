@@ -771,6 +771,36 @@ impl TypeChecker {
             }
         }
 
+        // If no init method was defined, generate a default one
+        if !methods.contains_key("init") {
+            // Create a default init signature that takes all fields as parameters (in declaration order)
+            let mut param_types = Vec::new();
+            for field in &class_decl.fields {
+                let field_type = self.ast_type_to_hir_type(&field.ty)?;
+                param_types.push(field_type);
+            }
+
+            // Default init returns the class type
+            let type_args: Vec<HirType> = class_decl.type_params.iter()
+                .map(|param| HirType::TypeParameter(param.clone()))
+                .collect();
+            let class_type = HirType::Class(class_decl.name.clone(), type_args);
+
+            let default_init_signature = FunctionSignature {
+                type_params: vec![], // init methods don't have their own type parameters
+                params: param_types,
+                return_type: class_type,
+                is_mutable: false,
+            };
+
+            // Store in class methods
+            methods.insert("init".to_string(), default_init_signature.clone());
+
+            // Also store in global functions map with qualified name
+            let method_name = format!("{}::init", class_decl.name);
+            self.functions.insert(method_name, default_init_signature);
+        }
+
         // Separate virtual methods from regular methods
         let mut virtual_methods = HashMap::new();
         for method in &class_decl.methods {
@@ -1222,6 +1252,21 @@ impl TypeChecker {
                 } else if let Some(Symbol::Function(sig)) = self.module_table.global_symbols.get(&resolved_name) {
                     sig.clone()
                 } else {
+                    // If not found as a function, check if it's a class constructor with zero arguments
+                    if let Some(class_info) = self.classes.get(function) {
+                        // This is a class constructor with no arguments (empty class)
+                        // Get the init signature we generated
+                        if let Some(init_sig) = class_info.methods.get("init") {
+                            if !args.is_empty() {
+                                return Err(DiagnosticError::Type(
+                                    format!("Constructor for '{}' expects {} arguments, got {}",
+                                           function, init_sig.params.len(), args.len())
+                                ));
+                            }
+                            // Return the class type
+                            return Ok(init_sig.return_type.clone());
+                        }
+                    }
                     return Err(DiagnosticError::Type(format!("Unknown function '{}'", function)));
                 };
 

@@ -2,8 +2,12 @@
 * default initializer for classes. 
 * always explicit argument names. 
 * explicit type declarations always
+* change constructor calls to init? 
 
 * error handling
+  * minimize panics. 
+  * use result/option where it makes sense. 
+  * ? operator. 
 * beautiful error messages (ariadne)
 * modules
   * private vs public. 
@@ -37,7 +41,11 @@
 * syntax highlighting
 * config 
 * any module is automatically a cli
-* first-class pandas, numpy, pytorch
+* first-class pandas, numpy, pytorch, matrix. platnum. 
 * ffi
 * incremental compilation and caching 
 * enforce composition over inheritance? one level of inheritance? 
+* revisit verbosity. type inference, etc. 
+* docs
+* plat by example / the plat book
+

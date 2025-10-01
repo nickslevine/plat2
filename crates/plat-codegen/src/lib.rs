@@ -956,6 +956,15 @@ impl CodeGenerator {
                     Expression::Literal(Literal::Bool(_, _)) => (I32, VariableType::Bool),
                     Expression::EnumConstructor { enum_name, .. } => (I64, VariableType::Enum(enum_name.clone())),
                     Expression::ConstructorCall { class_name, .. } => (I64, VariableType::Class(class_name.clone())),
+                    Expression::Call { function, args, .. } => {
+                        // Check if this is a zero-arg class constructor (e.g., Empty())
+                        if args.is_empty() && class_metadata.contains_key(function) {
+                            (I64, VariableType::Class(function.clone()))
+                        } else {
+                            // Regular function call, assume i32 return for now
+                            (I32, VariableType::Int32)
+                        }
+                    }
                     Expression::Match { arms, .. } => {
                         let match_type = Self::determine_match_return_type(arms, variable_types);
                         let cranelift_type = match match_type {
@@ -1060,6 +1069,15 @@ impl CodeGenerator {
                     Expression::Literal(Literal::Bool(_, _)) => (I32, VariableType::Bool),
                     Expression::EnumConstructor { enum_name, .. } => (I64, VariableType::Enum(enum_name.clone())),
                     Expression::ConstructorCall { class_name, .. } => (I64, VariableType::Class(class_name.clone())),
+                    Expression::Call { function, args, .. } => {
+                        // Check if this is a zero-arg class constructor (e.g., Empty())
+                        if args.is_empty() && class_metadata.contains_key(function) {
+                            (I64, VariableType::Class(function.clone()))
+                        } else {
+                            // Regular function call, assume i32 return for now
+                            (I32, VariableType::Int32)
+                        }
+                    }
                     Expression::Match { arms, .. } => {
                         let match_type = Self::determine_match_return_type(arms, variable_types);
                         let cranelift_type = match match_type {
@@ -1993,6 +2011,56 @@ impl CodeGenerator {
                 }
             }
             Expression::Call { function, args, .. } => {
+                // Check if this is actually a class constructor with no arguments (e.g., Empty())
+                // This happens when a class has no fields and uses a default init
+                if args.is_empty() && class_metadata.contains_key(function) {
+                    // This is a zero-argument class constructor
+                    // Generate the same code as ConstructorCall but with no field initialization
+                    let metadata = class_metadata.get(function).unwrap();
+                    let class_size = metadata.size as i64;
+                    let has_vtable = metadata.has_vtable;
+
+                    // Allocate memory using GC
+                    let gc_alloc_sig = {
+                        let mut sig = module.make_signature();
+                        sig.call_conv = CallConv::SystemV;
+                        sig.params.push(AbiParam::new(I64)); // size
+                        sig.returns.push(AbiParam::new(I64)); // pointer
+                        sig
+                    };
+
+                    let gc_alloc_id = module.declare_function("plat_gc_alloc", Linkage::Import, &gc_alloc_sig)
+                        .map_err(CodegenError::ModuleError)?;
+                    let gc_alloc_ref = module.declare_func_in_func(gc_alloc_id, builder.func);
+
+                    let size_val = builder.ins().iconst(I64, class_size);
+                    let call = builder.ins().call(gc_alloc_ref, &[size_val]);
+                    let class_ptr = builder.inst_results(call)[0];
+
+                    // If this class has a vtable, store the vtable pointer at offset 0
+                    if has_vtable {
+                        let vtable_name = format!("{}_vtable", function);
+
+                        // Get the address of the vtable global
+                        let vtable_data_id = module.declare_data(
+                            &vtable_name,
+                            Linkage::Export,
+                            true,
+                            false,
+                        ).map_err(CodegenError::ModuleError)?;
+
+                        let vtable_ref = module.declare_data_in_func(vtable_data_id, builder.func);
+                        let vtable_addr = builder.ins().global_value(I64, vtable_ref);
+
+                        // Store vtable pointer at offset 0
+                        builder.ins().store(MemFlags::new(), vtable_addr, class_ptr, 0);
+                    }
+
+                    // No field initialization needed (no fields)
+                    // Return the class pointer
+                    return Ok(class_ptr);
+                }
+
                 // Check if this is a cross-module call (qualified name with ::)
                 let func_id = if function.contains("::") {
                     // Cross-module call - declare as import with standard ABI
