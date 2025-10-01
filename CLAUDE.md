@@ -14,11 +14,15 @@
 ## 🎯 Core Language Features
 
 ### Type System
-- **Primitives**: `bool`, `i32`, `i64`, `f32`, `f64`, `string`
+- **Primitives**: `Bool`, `I32`, `I64`, `F32`, `F64`, `String`
 - **Collections**: `List[T]`, `Dict[K, V]`, `Set[T]`
 - **Built-in Enums**: `Option<T>`, `Result<T, E>`
-- **Type Aliases**: `type UserID = string;` (interchangeable with underlying type)
-- **Newtypes**: `newtype DocumentID = string;` (distinct type at compile-time, same runtime representation)
+- **Type Aliases**: `type UserID = String;` (interchangeable with underlying type)
+- **Newtypes**: `newtype DocumentID = String;` (distinct type at compile-time, same runtime representation)
+
+### Naming Conventions (Enforced at Compile-Time)
+- **snake_case**: Variables, functions, parameters, module names, field names
+- **TitleCase**: Types, classes, enums, enum variants, type aliases, newtypes, type parameters
 
 ### Object-Oriented Programming
 - **Classes**: Field declarations with `let`/`var` mutability
@@ -90,10 +94,11 @@ plat2/
 - Module system with cross-module function calls
 - Type aliases
 - Newtypes (zero-cost distinct types)
-- Float support (f32/f64)
+- Float support (F32/F64)
 - String methods (13 built-in functions)
 - Set methods (11 built-in operations)
 - Dict methods (11 built-in operations)
+- Naming convention enforcement (compile-time validation)
 
 **📋 TODO (Stretch Goals):**
 - [ ] Rich error messages with Ariadne spans
@@ -110,16 +115,16 @@ plat2/
 ### Class Definition
 ```plat
 class Point {
-  let x: i32;
-  var name: string;
+  let x: I32;
+  var name: String;
 
-  init(x: i32, name: string) -> Point {
+  init(x: I32, name: String) -> Point {
     self.x = x;
     self.name = name;
     return self;
   }
 
-  fn get_x() -> i32 {
+  fn get_x() -> I32 {
     return self.x;
   }
 }
@@ -129,11 +134,11 @@ class Point {
 ```plat
 enum Status {
   Success,
-  Warning(i32),
-  Error(i32)
+  Warning(I32),
+  Error(I32)
 }
 
-fn main() -> i32 {
+fn main() -> I32 {
   let status = Status::Warning(42);
   let code = match status {
     Status::Success -> 0,
@@ -150,7 +155,7 @@ fn identity<T>(value: T) -> T {
   return value;
 }
 
-fn main() -> i32 {
+fn main() -> I32 {
   let x = identity(10);
   let name = identity("hello");
   return x;
@@ -162,14 +167,14 @@ fn main() -> i32 {
 // math.plat
 mod math;
 
-fn add(a: i32, b: i32) -> i32 {
+fn add(a: I32, b: I32) -> I32 {
   return a + b;
 }
 
 // main.plat
 use math;
 
-fn main() -> i32 {
+fn main() -> I32 {
   return math::add(5, 10);
 }
 ```
@@ -177,21 +182,21 @@ fn main() -> i32 {
 ### Newtypes
 ```plat
 // Type aliases: interchangeable with underlying type
-type Username = string;
+type Username = String;
 
 // Newtypes: distinct type at compile-time, zero runtime overhead
-newtype DocumentID = string;
-newtype UserID = string;
+newtype DocumentID = String;
+newtype UserID = String;
 
-fn process_user(id: UserID) -> i32 {
+fn process_user(id: UserID) -> I32 {
   return 42;
 }
 
-fn main() -> i32 {
+fn main() -> I32 {
   // ✅ Type alias works with raw string
   let name: Username = "john";
 
-  // ❌ Newtype ERROR: cannot assign string to UserID
+  // ❌ Newtype ERROR: cannot assign String to UserID
   // let user: UserID = "user123";
 
   // ❌ Newtype ERROR: DocumentID != UserID

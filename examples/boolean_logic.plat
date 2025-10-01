@@ -1,15 +1,15 @@
 // Example: Boolean logic and short-circuit evaluation
-fn returns_true() -> bool {
+fn returns_true() -> Bool {
   print("returns_true() called");
   return true;
 }
 
-fn returns_false() -> bool {
+fn returns_false() -> Bool {
   print("returns_false() called");
   return false;
 }
 
-fn main() -> i32 {
+fn main() -> I32 {
   print("Testing boolean logic...");
 
   // Basic boolean operations

@@ -1,9 +1,9 @@
 mod math;
 
-fn greet(name: string) -> string {
+fn greet(name: String) -> String {
   return "Hello, ${name}!";
 }
 
-fn farewell(name: string) -> string {
+fn farewell(name: String) -> String {
   return "Goodbye, ${name}!";
 }

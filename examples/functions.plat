@@ -1,19 +1,19 @@
 // Example: Function definitions and calls
-fn add(a: i32, b: i32) -> i32 {
+fn add(a: I32, b: I32) -> I32 {
   return a + b;
 }
 
-fn multiply(x: i32, y: i32) -> i32 {
+fn multiply(x: I32, y: I32) -> I32 {
   return x * y;
 }
 
-fn calculate(a: i32, b: i32, c: i32) -> i32 {
+fn calculate(a: I32, b: I32, c: I32) -> I32 {
   let sum = add(a, b);
   let product = multiply(sum, c);
   return product;
 }
 
-fn main() -> i32 {
+fn main() -> I32 {
   print("Testing functions...");
 
   let result1 = add(5, 3);

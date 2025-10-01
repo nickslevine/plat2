@@ -41,7 +41,7 @@ mod tests {
     #[test]
     fn test_main_function_wrong_signature() {
         let input = r#"
-            fn main(x: i32) {
+            fn main(x: I32) {
                 print("Hello!");
             }
         "#;
@@ -68,9 +68,9 @@ mod tests {
     fn test_let_variable_explicit_type() {
         let input = r#"
             fn main() {
-                let x: i32 = 42;
-                let y: bool = true;
-                let z: string = "hello";
+                let x: I32 = 42;
+                let y: Bool = true;
+                let z: String = "hello";
             }
         "#;
 
@@ -81,7 +81,7 @@ mod tests {
     fn test_let_variable_type_mismatch() {
         let input = r#"
             fn main() {
-                let x: i32 = true;
+                let x: I32 = true;
             }
         "#;
 
@@ -299,7 +299,7 @@ mod tests {
     #[test]
     fn test_function_call() {
         let input = r#"
-            fn add(x: i32, y: i32) -> i32 {
+            fn add(x: I32, y: I32) -> I32 {
                 return x + y;
             }
 
@@ -318,7 +318,7 @@ mod tests {
     #[test]
     fn test_function_call_wrong_args() {
         let input = r#"
-            fn add(x: i32, y: i32) -> i32 {
+            fn add(x: I32, y: I32) -> I32 {
                 return x + y;
             }
 
@@ -335,7 +335,7 @@ mod tests {
     #[test]
     fn test_function_call_wrong_arg_types() {
         let input = r#"
-            fn add(x: i32, y: i32) -> i32 {
+            fn add(x: I32, y: I32) -> I32 {
                 return x + y;
             }
 
@@ -352,7 +352,7 @@ mod tests {
     #[test]
     fn test_return_type_checking() {
         let input = r#"
-            fn get_number() -> i32 {
+            fn get_number() -> I32 {
                 return 42;
             }
 
@@ -367,7 +367,7 @@ mod tests {
     #[test]
     fn test_return_type_mismatch() {
         let input = r#"
-            fn get_number() -> i32 {
+            fn get_number() -> I32 {
                 return "hello";
             }
 
@@ -430,7 +430,7 @@ mod tests {
     #[test]
     fn test_parameter_scoping() {
         let input = r#"
-            fn test(x: i32, y: i32) -> i32 {
+            fn test(x: I32, y: I32) -> I32 {
                 let z = x + y;
                 return z;
             }
@@ -446,7 +446,7 @@ mod tests {
     #[test]
     fn test_duplicate_parameters() {
         let input = r#"
-            fn test(x: i32, x: i32) -> i32 {
+            fn test(x: I32, x: I32) -> I32 {
                 return x;
             }
 
@@ -644,8 +644,8 @@ mod tests {
         let input = r#"
             enum Message {
                 Quit,
-                Move(i32, i32),
-                Write(string)
+                Move(I32, I32),
+                Write(String)
             }
 
             fn main() {
@@ -660,8 +660,8 @@ mod tests {
         let input = r#"
             enum Message {
                 Quit,
-                Move(i32, i32),
-                Write(string)
+                Move(I32, I32),
+                Write(String)
             }
 
             fn main() {
@@ -679,8 +679,8 @@ mod tests {
         let input = r#"
             enum Message {
                 Quit,
-                Move(i32, i32),
-                Write(string)
+                Move(I32, I32),
+                Write(String)
             }
 
             fn main() {
@@ -698,8 +698,8 @@ mod tests {
         let input = r#"
             enum Message {
                 Quit,
-                Move(i32, i32),
-                Write(string)
+                Move(I32, I32),
+                Write(String)
             }
 
             fn main() {
@@ -717,7 +717,7 @@ mod tests {
         let input = r#"
             enum Message {
                 Quit,
-                Move(i32, i32)
+                Move(I32, I32)
             }
 
             fn main() {
@@ -735,8 +735,8 @@ mod tests {
         let input = r#"
             enum Message {
                 Quit,
-                Move(i32, i32),
-                Write(string)
+                Move(I32, I32),
+                Write(String)
             }
 
             fn main() {
@@ -757,8 +757,8 @@ mod tests {
         let input = r#"
             enum Message {
                 Quit,
-                Move(i32, i32),
-                Write(string)
+                Move(I32, I32),
+                Write(String)
             }
 
             fn main() {
@@ -782,7 +782,7 @@ mod tests {
         let input = r#"
             enum Message {
                 Quit,
-                Move(i32, i32)
+                Move(I32, I32)
             }
 
             fn main() {
@@ -803,8 +803,8 @@ mod tests {
     fn test_match_with_pattern_bindings() {
         let input = r#"
             enum Message {
-                Move(i32, i32),
-                Write(string)
+                Move(I32, I32),
+                Write(String)
             }
 
             fn main() {
@@ -829,7 +829,7 @@ mod tests {
             }
 
             enum Message {
-                Move(i32, i32)
+                Move(I32, I32)
             }
 
             fn main() {
@@ -864,9 +864,9 @@ mod tests {
         let input = r#"
             enum Message {
                 Quit,
-                Move(i32, i32),
+                Move(I32, I32),
 
-                fn is_quit() -> bool {
+                fn is_quit() -> Bool {
                     return true;
                 }
             }
@@ -882,34 +882,34 @@ mod tests {
     fn test_polymorphic_assignment_let() {
         let input = r#"
             class Animal {
-                let species: string;
+                let species: String;
 
-                init(species: string) -> Animal {
+                init(species: String) -> Animal {
                     self.species = species;
                     return self;
                 }
 
-                virtual fn make_sound() -> string {
+                virtual fn make_sound() -> String {
                     return "Generic animal sound";
                 }
             }
 
             class Dog : Animal {
-                let species: string;
-                let breed: string;
+                let species: String;
+                let breed: String;
 
-                init(species: string, breed: string) -> Dog {
+                init(species: String, breed: String) -> Dog {
                     self.species = species;
                     self.breed = breed;
                     return self;
                 }
 
-                override fn make_sound() -> string {
+                override fn make_sound() -> String {
                     return "Woof!";
                 }
             }
 
-            fn main() -> i32 {
+            fn main() -> I32 {
                 let animal: Animal = Dog(species = "Canine", breed = "Golden");
                 print("Animal created");
                 return 0;
@@ -927,24 +927,24 @@ mod tests {
     fn test_polymorphic_assignment_var() {
         let input = r#"
             class Animal {
-                let name: string;
+                let name: String;
 
-                init(name: string) -> Animal {
+                init(name: String) -> Animal {
                     self.name = name;
                     return self;
                 }
             }
 
             class Cat : Animal {
-                let name: string;
+                let name: String;
 
-                init(name: string) -> Cat {
+                init(name: String) -> Cat {
                     self.name = name;
                     return self;
                 }
             }
 
-            fn main() -> i32 {
+            fn main() -> I32 {
                 var animal: Animal = Cat(name = "Whiskers");
                 print("Cat created as Animal");
                 return 0;
@@ -958,33 +958,33 @@ mod tests {
     fn test_polymorphic_assignment_transitive() {
         let input = r#"
             class Animal {
-                let name: string;
+                let name: String;
 
-                init(name: string) -> Animal {
+                init(name: String) -> Animal {
                     self.name = name;
                     return self;
                 }
             }
 
             class Mammal : Animal {
-                let name: string;
+                let name: String;
 
-                init(name: string) -> Mammal {
+                init(name: String) -> Mammal {
                     self.name = name;
                     return self;
                 }
             }
 
             class Dog : Mammal {
-                let name: string;
+                let name: String;
 
-                init(name: string) -> Dog {
+                init(name: String) -> Dog {
                     self.name = name;
                     return self;
                 }
             }
 
-            fn main() -> i32 {
+            fn main() -> I32 {
                 let animal: Animal = Dog(name = "Rex");
                 let mammal: Mammal = Dog(name = "Spot");
                 print("Transitive inheritance works!");
@@ -999,18 +999,18 @@ mod tests {
     fn test_polymorphic_assignment_field() {
         let input = r#"
             class Animal {
-                let name: string;
+                let name: String;
 
-                init(name: string) -> Animal {
+                init(name: String) -> Animal {
                     self.name = name;
                     return self;
                 }
             }
 
             class Dog : Animal {
-                let name: string;
+                let name: String;
 
-                init(name: string) -> Dog {
+                init(name: String) -> Dog {
                     self.name = name;
                     return self;
                 }
@@ -1029,7 +1029,7 @@ mod tests {
                 }
             }
 
-            fn main() -> i32 {
+            fn main() -> I32 {
                 let dog = Dog(name = "Buddy");
                 let container = AnimalContainer(animal = dog);
                 print("Dog stored in Animal field");
@@ -1048,24 +1048,24 @@ mod tests {
     fn test_polymorphic_assignment_invalid_upcast() {
         let input = r#"
             class Animal {
-                let name: string;
+                let name: String;
 
-                init(name: string) -> Animal {
+                init(name: String) -> Animal {
                     self.name = name;
                     return self;
                 }
             }
 
             class Dog : Animal {
-                let name: string;
+                let name: String;
 
-                init(name: string) -> Dog {
+                init(name: String) -> Dog {
                     self.name = name;
                     return self;
                 }
             }
 
-            fn main() -> i32 {
+            fn main() -> I32 {
                 let dog: Dog = Animal(name = "Generic");
                 return 0;
             }
@@ -1080,24 +1080,24 @@ mod tests {
     fn test_polymorphic_assignment_unrelated_classes() {
         let input = r#"
             class Animal {
-                let name: string;
+                let name: String;
 
-                init(name: string) -> Animal {
+                init(name: String) -> Animal {
                     self.name = name;
                     return self;
                 }
             }
 
             class Vehicle {
-                let model: string;
+                let model: String;
 
-                init(model: string) -> Vehicle {
+                init(model: String) -> Vehicle {
                     self.model = model;
                     return self;
                 }
             }
 
-            fn main() -> i32 {
+            fn main() -> I32 {
                 let animal: Animal = Vehicle(model = "Car");
                 return 0;
             }
@@ -1112,33 +1112,33 @@ mod tests {
     fn test_polymorphic_assignment_variable_reassignment() {
         let input = r#"
             class Animal {
-                let name: string;
+                let name: String;
 
-                init(name: string) -> Animal {
+                init(name: String) -> Animal {
                     self.name = name;
                     return self;
                 }
             }
 
             class Dog : Animal {
-                let name: string;
+                let name: String;
 
-                init(name: string) -> Dog {
+                init(name: String) -> Dog {
                     self.name = name;
                     return self;
                 }
             }
 
             class Cat : Animal {
-                let name: string;
+                let name: String;
 
-                init(name: string) -> Cat {
+                init(name: String) -> Cat {
                     self.name = name;
                     return self;
                 }
             }
 
-            fn main() -> i32 {
+            fn main() -> I32 {
                 var animal: Animal = Dog(name = "Buddy");
                 animal = Cat(name = "Whiskers");
                 print("Can reassign different derived types to base type variable");

@@ -1,20 +1,20 @@
 // Compare type alias (interchangeable) vs newtype (distinct)
-type AliasID = i32;
-newtype NewtypeID = i32;
+type AliasID = I32;
+newtype NewtypeID = I32;
 
-fn take_alias(x: AliasID) -> i32 {
+fn take_alias(x: AliasID) -> I32 {
   return x + 10;
 }
 
-fn take_newtype(x: NewtypeID) -> i32 {
+fn take_newtype(x: NewtypeID) -> I32 {
   return 20;
 }
 
-fn main() -> i32 {
-  // Type alias: can pass raw i32 (interchangeable)
+fn main() -> I32 {
+  // Type alias: can pass raw I32 (interchangeable)
   let result1 = take_alias(42);
 
-  // Newtype: cannot pass raw i32 (distinct type)
+  // Newtype: cannot pass raw I32 (distinct type)
   // This line should fail:
   let result2 = take_newtype(42);
 

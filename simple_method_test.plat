@@ -1,13 +1,13 @@
 class Point {
-  let x: i32;
-  var name: string;
+  let x: I32;
+  var name: String;
 
-  init(x: i32, name: string) {
+  init(x: I32, name: String) {
     self.x = x;
     self.name = name;
   }
 
-  fn change_name(new_name: string) {
+  fn change_name(new_name: String) {
     self.name = new_name;
   }
 }

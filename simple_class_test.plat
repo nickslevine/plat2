@@ -1,14 +1,14 @@
 class Point {
-  let x: i32;
-  let y: i32;
+  let x: I32;
+  let y: I32;
 
-  init(x: i32, y: i32) -> Point {
+  init(x: I32, y: I32) -> Point {
     self.x = x;
     self.y = y;
     return self;
   }
 
-  fn get_magnitude() -> i32 {
+  fn get_magnitude() -> I32 {
     return self.x * self.x + self.y * self.y;
   }
 }

@@ -1,9 +1,9 @@
 class Point {
-  let x: i32;
-  let y: i32;
-  var name: string;
+  let x: I32;
+  let y: I32;
+  var name: String;
 
-  init(x: i32, y: i32, name: string) -> Point {
+  init(x: I32, y: I32, name: String) -> Point {
     self.x = x;
     self.y = y;
     self.name = name;
@@ -12,23 +12,23 @@ class Point {
   fn add(other: Point) -> Point {
     return Point(x = self.x + other.x, y = self.y + other.y, name = "sum");
   }
-  fn change_name(new_name: string) {
+  fn change_name(new_name: String) {
     self.name = new_name;
   }
-  fn get_magnitude() -> i32 {
+  fn get_magnitude() -> I32 {
     return self.x * self.x + self.y * self.y;
   }
 }
 
 class Vector<T> {
   let data: T;
-  var size: i32;
+  var size: I32;
 
-  init(data: T, size: i32) {
+  init(data: T, size: I32) {
     self.data = data;
     self.size = size;
   }
-  mut fn resize(new_size: i32) {
+  mut fn resize(new_size: I32) {
     self.size = new_size;
   }
 }

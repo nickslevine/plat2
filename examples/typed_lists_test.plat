@@ -1,21 +1,21 @@
 fn main() {
   // Test with explicit type annotations
 
-  // bool list with explicit type
-  let flags: List[bool] = [true, false, true, false];
-  print("bool list: ${flags}");
+  // Bool list with explicit type
+  let flags: List[Bool] = [true, false, true, false];
+  print("Bool list: ${flags}");
   print("First flag: ${flags[0]}");
   print("Flags length: ${flags.len()}");
 
-  // string list with explicit type
-  let words: List[string] = ["hello", "world", "plat"];
-  print("string list: ${words}");
+  // String list with explicit type
+  let words: List[String] = ["hello", "world", "plat"];
+  print("String list: ${words}");
   print("First word: ${words[0]}");
   print("Words length: ${words.len()}");
 
-  // i32 list with explicit type
-  let numbers: List[i32] = [10, 20, 30];
-  print("i32 list: ${numbers}");
+  // I32 list with explicit type
+  let numbers: List[I32] = [10, 20, 30];
+  print("I32 list: ${numbers}");
   print("First number: ${numbers[0]}");
   print("Numbers length: ${numbers.len()}");
 

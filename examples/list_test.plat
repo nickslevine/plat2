@@ -1,5 +1,5 @@
-fn main() -> i32 {
-  let arr: List[i32] = [1, 2, 3];
+fn main() -> I32 {
+  let arr: List[I32] = [1, 2, 3];
   let len = arr.len();
   let first = arr[0];
   print("Array has ${len} elements, first is ${first}");

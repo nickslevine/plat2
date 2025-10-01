@@ -8,7 +8,7 @@ use tempfile::TempDir;
 #[test]
 fn test_hello_world_compilation() {
     let source = r#"
-fn main() -> i32 {
+fn main() -> I32 {
     print("Hello, World!");
     return 0;
 }
@@ -33,11 +33,11 @@ fn main() -> i32 {
 #[test]
 fn test_arithmetic_compilation() {
     let source = r#"
-fn add(a: i32, b: i32) -> i32 {
+fn add(a: I32, b: I32) -> I32 {
     return a + b;
 }
 
-fn main() -> i32 {
+fn main() -> I32 {
     let x = 10;
     let y = 20;
     let result = add(x, y);
@@ -63,7 +63,7 @@ fn main() -> i32 {
 #[test]
 fn test_boolean_short_circuit_compilation() {
     let source = r#"
-fn main() -> i32 {
+fn main() -> I32 {
     let a = true;
     let b = false;
     let result = a and b;
@@ -90,7 +90,7 @@ fn main() -> i32 {
 #[test]
 fn test_string_interpolation_compilation() {
     let source = r#"
-fn main() -> i32 {
+fn main() -> I32 {
     let name = "World";
     print("Hello, ${name}!");
     return 0;
@@ -117,7 +117,7 @@ fn main() -> i32 {
 #[ignore] // Ignore by default as it requires linking
 fn test_end_to_end_execution() {
     let source = r#"
-fn main() -> i32 {
+fn main() -> I32 {
     return 42;
 }
 "#;

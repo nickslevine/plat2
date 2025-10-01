@@ -1,6 +1,6 @@
 fn main() {
-  let my_dict: Dict[string, i32] = {"key1": 42, "key2": 100};
+  let my_dict: Dict[String, I32] = {"key1": 42, "key2": 100};
   print("Dictionary: ${my_dict}");
-  let mixed_dict: Dict[string, string] = {"name": "Alice", "city": "New York"};
+  let mixed_dict: Dict[String, String] = {"name": "Alice", "city": "New York"};
   print("Mixed dict: ${mixed_dict}");
 }

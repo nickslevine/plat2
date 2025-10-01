@@ -2,28 +2,28 @@
 // unlike type aliases
 
 // Define newtypes
-newtype DocumentID = string;
-newtype UserID = string;
+newtype DocumentID = String;
+newtype UserID = String;
 
 // Define type alias for comparison
-type Username = string;
+type Username = String;
 
-fn get_document(id: DocumentID) -> i32 {
+fn get_document(id: DocumentID) -> I32 {
   print "Document ID received";
   return 42;
 }
 
-fn get_user(id: UserID) -> i32 {
+fn get_user(id: UserID) -> I32 {
   print "User ID received";
   return 100;
 }
 
-fn get_username(name: Username) -> i32 {
+fn get_username(name: Username) -> I32 {
   print "Username received";
   return 200;
 }
 
-fn main() -> i32 {
+fn main() -> I32 {
   print "Starting newtype test";
 
   return 42;

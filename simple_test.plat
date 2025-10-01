@@ -1,8 +1,8 @@
 class Point {
-  let x: i32;
-  let y: i32;
+  let x: I32;
+  let y: I32;
 
-  init(x: i32, y: i32) {
+  init(x: I32, y: I32) {
     self.x = x;
     self.y = y;
   }

@@ -7,26 +7,26 @@
 // At runtime, newtypes have the same representation as their underlying type,
 // so there's zero runtime overhead.
 
-// Define two newtypes wrapping i32
-newtype DocumentID = i32;
-newtype UserID = i32;
+// Define two newtypes wrapping I32
+newtype DocumentID = I32;
+newtype UserID = I32;
 
-// Define a type alias wrapping i32 for comparison
-type PlainID = i32;
+// Define a type alias wrapping I32 for comparison
+type PlainID = I32;
 
-fn main() -> i32 {
+fn main() -> I32 {
   // ✅ Type aliases are interchangeable with their underlying type
-  // You can pass a raw i32 where PlainID is expected
+  // You can pass a raw I32 where PlainID is expected
   let x: PlainID = 42;
-  let y: i32 = x;
+  let y: I32 = x;
 
   // ❌ Newtypes are NOT interchangeable with their underlying type
   // Uncommenting these lines would cause compile errors:
-  // let doc: DocumentID = 100;        // ERROR: can't assign i32 to DocumentID
-  // let user: UserID = 200;           // ERROR: can't assign i32 to UserID
+  // let doc: DocumentID = 100;        // ERROR: can't assign I32 to DocumentID
+  // let user: UserID = 200;           // ERROR: can't assign I32 to UserID
 
   // ❌ Different newtypes are NOT interchangeable with each other
-  // Even though both wrap i32, they are distinct types:
+  // Even though both wrap I32, they are distinct types:
   // let doc2: DocumentID = user;      // ERROR: UserID != DocumentID
 
   return y;

@@ -5,6 +5,38 @@ use plat_ast::*;
 use plat_diags::DiagnosticError;
 use std::collections::HashMap;
 
+/// Validates that a name follows snake_case convention
+fn is_snake_case(name: &str) -> bool {
+    if name.is_empty() {
+        return false;
+    }
+
+    // Must start with lowercase letter or underscore
+    let first_char = name.chars().next().unwrap();
+    if !first_char.is_lowercase() && first_char != '_' {
+        return false;
+    }
+
+    // Can only contain lowercase letters, digits, and underscores
+    name.chars().all(|c| c.is_lowercase() || c.is_ascii_digit() || c == '_')
+}
+
+/// Validates that a name follows TitleCase convention
+fn is_title_case(name: &str) -> bool {
+    if name.is_empty() {
+        return false;
+    }
+
+    // Must start with uppercase letter
+    let first_char = name.chars().next().unwrap();
+    if !first_char.is_uppercase() {
+        return false;
+    }
+
+    // Can contain letters and digits, no underscores
+    name.chars().all(|c| c.is_alphanumeric())
+}
+
 /// Module-aware symbol table for tracking declarations across modules
 #[derive(Debug, Clone)]
 pub struct ModuleSymbolTable {
@@ -375,11 +407,27 @@ impl TypeChecker {
     pub fn check_program(mut self, program: &Program) -> Result<(), DiagnosticError> {
         // Process module declaration (if present)
         if let Some(module_decl) = &program.module_decl {
+            // Validate module path components follow snake_case
+            for component in &module_decl.path {
+                if !is_snake_case(component) {
+                    return Err(DiagnosticError::Type(
+                        format!("Module name '{}' must be snake_case", component)
+                    ));
+                }
+            }
             self.module_table.current_module = module_decl.path.join("::");
         }
 
         // Process use declarations (imports)
         for use_decl in &program.use_decls {
+            // Validate imported module path components follow snake_case
+            for component in &use_decl.path {
+                if !is_snake_case(component) {
+                    return Err(DiagnosticError::Type(
+                        format!("Module name '{}' must be snake_case", component)
+                    ));
+                }
+            }
             self.module_table.add_import(use_decl.path.join("::"));
         }
 
@@ -475,6 +523,13 @@ impl TypeChecker {
     }
 
     fn collect_type_alias(&mut self, type_alias: &TypeAlias) -> Result<(), DiagnosticError> {
+        // Validate type alias name follows TitleCase
+        if !is_title_case(&type_alias.name) {
+            return Err(DiagnosticError::Type(
+                format!("Type alias name '{}' must be TitleCase", type_alias.name)
+            ));
+        }
+
         // Check for duplicate type alias definitions
         if self.type_aliases.contains_key(&type_alias.name) {
             return Err(DiagnosticError::Type(
@@ -502,6 +557,13 @@ impl TypeChecker {
     }
 
     fn collect_newtype(&mut self, newtype: &NewtypeDecl) -> Result<(), DiagnosticError> {
+        // Validate newtype name follows TitleCase
+        if !is_title_case(&newtype.name) {
+            return Err(DiagnosticError::Type(
+                format!("Newtype name '{}' must be TitleCase", newtype.name)
+            ));
+        }
+
         // Check for duplicate newtype definitions
         if self.newtypes.contains_key(&newtype.name) {
             return Err(DiagnosticError::Type(
@@ -534,11 +596,34 @@ impl TypeChecker {
     }
 
     fn collect_enum_info(&mut self, enum_decl: &EnumDecl) -> Result<(), DiagnosticError> {
+        // Validate enum name follows TitleCase
+        if !is_title_case(&enum_decl.name) {
+            return Err(DiagnosticError::Type(
+                format!("Enum name '{}' must be TitleCase", enum_decl.name)
+            ));
+        }
+
+        // Validate type parameters follow TitleCase
+        for type_param in &enum_decl.type_params {
+            if !is_title_case(type_param) {
+                return Err(DiagnosticError::Type(
+                    format!("Type parameter '{}' must be TitleCase", type_param)
+                ));
+            }
+        }
+
         let mut variants = HashMap::new();
         let mut methods = HashMap::new();
 
         // Collect variant information
         for variant in &enum_decl.variants {
+            // Validate variant name follows TitleCase
+            if !is_title_case(&variant.name) {
+                return Err(DiagnosticError::Type(
+                    format!("Enum variant '{}' must be TitleCase", variant.name)
+                ));
+            }
+
             let field_types: Result<Vec<HirType>, DiagnosticError> = variant.fields
                 .iter()
                 .map(|field_type| self.ast_type_to_hir_type(field_type))
@@ -588,6 +673,22 @@ impl TypeChecker {
     }
 
     fn register_class_name(&mut self, class_decl: &ClassDecl) -> Result<(), DiagnosticError> {
+        // Validate class name follows TitleCase
+        if !is_title_case(&class_decl.name) {
+            return Err(DiagnosticError::Type(
+                format!("Class name '{}' must be TitleCase", class_decl.name)
+            ));
+        }
+
+        // Validate type parameters follow TitleCase
+        for type_param in &class_decl.type_params {
+            if !is_title_case(type_param) {
+                return Err(DiagnosticError::Type(
+                    format!("Type parameter '{}' must be TitleCase", type_param)
+                ));
+            }
+        }
+
         // Just register the class name with empty info for now
         let class_info = ClassInfo {
             name: class_decl.name.clone(),
@@ -618,6 +719,13 @@ impl TypeChecker {
 
         // Collect field information
         for field in &class_decl.fields {
+            // Validate field name follows snake_case
+            if !is_snake_case(&field.name) {
+                return Err(DiagnosticError::Type(
+                    format!("Field name '{}' must be snake_case", field.name)
+                ));
+            }
+
             let field_type = self.ast_type_to_hir_type(&field.ty)?;
             let field_info = FieldInfo {
                 ty: field_type,
@@ -812,6 +920,32 @@ impl TypeChecker {
     }
 
     fn collect_function_signature_with_name(&mut self, name: &str, function: &Function) -> Result<(), DiagnosticError> {
+        // Validate function name follows snake_case
+        let simple_name = name.split("::").last().unwrap_or(name);
+        if !is_snake_case(simple_name) {
+            return Err(DiagnosticError::Type(
+                format!("Function name '{}' must be snake_case", simple_name)
+            ));
+        }
+
+        // Validate parameter names follow snake_case
+        for param in &function.params {
+            if !is_snake_case(&param.name) {
+                return Err(DiagnosticError::Type(
+                    format!("Parameter name '{}' must be snake_case", param.name)
+                ));
+            }
+        }
+
+        // Validate type parameters follow TitleCase
+        for type_param in &function.type_params {
+            if !is_title_case(type_param) {
+                return Err(DiagnosticError::Type(
+                    format!("Type parameter '{}' must be TitleCase", type_param)
+                ));
+            }
+        }
+
         // In multi-module mode, skip if function is already registered from global symbol table
         // In single-module mode, we need to check for duplicates
         if self.functions.contains_key(name) {
@@ -896,6 +1030,13 @@ impl TypeChecker {
     fn check_statement(&mut self, statement: &Statement) -> Result<(), DiagnosticError> {
         match statement {
             Statement::Let { name, ty, value, .. } => {
+                // Validate variable name follows snake_case
+                if !is_snake_case(name) {
+                    return Err(DiagnosticError::Type(
+                        format!("Variable name '{}' must be snake_case", name)
+                    ));
+                }
+
                 let value_type = self.check_expression(value)?;
 
                 // Determine the static type to store in the symbol table
@@ -924,6 +1065,13 @@ impl TypeChecker {
                 self.scopes.last_mut().unwrap().insert(name.clone(), stored_type);
             }
             Statement::Var { name, ty, value, .. } => {
+                // Validate variable name follows snake_case
+                if !is_snake_case(name) {
+                    return Err(DiagnosticError::Type(
+                        format!("Variable name '{}' must be snake_case", name)
+                    ));
+                }
+
                 let value_type = self.check_expression(value)?;
 
                 // Determine the static type to store in the symbol table

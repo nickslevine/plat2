@@ -24,7 +24,7 @@ mod tests {
     #[test]
     fn test_parse_function_with_params() {
         let input = r#"
-            fn add(x: i32, y: i32) -> i32 {
+            fn add(x: I32, y: I32) -> I32 {
                 return x + y;
             }
         "#;
@@ -48,9 +48,9 @@ mod tests {
         let input = r#"
             fn main() {
                 let x = 10;
-                let y: i32 = 20;
+                let y: I32 = 20;
                 var z = 30;
-                var w: i64 = 40;
+                var w: I64 = 40;
             }
         "#;
 
@@ -377,7 +377,7 @@ mod tests {
     #[test]
     fn test_parse_multiple_functions() {
         let input = r#"
-            fn add(x: i32, y: i32) -> i32 {
+            fn add(x: I32, y: I32) -> I32 {
                 return x + y;
             }
 
@@ -399,8 +399,8 @@ mod tests {
     fn test_parse_literals() {
         let input = r#"
             fn main() {
-                let a = true;
-                let b = false;
+                let a = True;
+                let b = False;
                 let c = 42;
                 let d = 100i64;
                 let e = "hello";
@@ -447,8 +447,8 @@ mod tests {
         let input = r#"
             enum Message {
                 Quit,
-                Move(i32, i32),
-                Write(string)
+                Move(I32, I32),
+                Write(String)
             }
         "#;
 
@@ -498,10 +498,10 @@ mod tests {
         let input = r#"
             enum Message {
                 Quit,
-                Move(i32, i32),
+                Move(I32, I32),
 
-                fn is_quit() -> bool {
-                    return true;
+                fn is_quit() -> Bool {
+                    return True;
                 }
 
                 mut fn process() {
@@ -623,7 +623,7 @@ mod tests {
     #[test]
     fn test_parse_mutable_function() {
         let input = r#"
-            mut fn update(value: i32) {
+            mut fn update(value: I32) {
                 let x = value;
             }
         "#;
@@ -655,7 +655,7 @@ mod tests {
     #[test]
     fn test_for_range_loop() {
         let input = r#"
-            fn main() -> i32 {
+            fn main() -> I32 {
                 for (i in 0..5) {
                     let x = i;
                 }
