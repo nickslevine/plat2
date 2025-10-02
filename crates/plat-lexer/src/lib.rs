@@ -262,7 +262,7 @@ impl Lexer {
     fn scan_number(&mut self, start: usize) -> Result<(), DiagnosticError> {
         // Scan integer part
         while let Some(c) = self.peek() {
-            if c.is_ascii_digit() {
+            if c.is_ascii_digit() || c == '_' {
                 self.advance();
             } else {
                 break;
@@ -277,7 +277,7 @@ impl Lexer {
                     self.advance(); // consume '.'
                     // Scan fractional part
                     while let Some(c) = self.peek() {
-                        if c.is_ascii_digit() {
+                        if c.is_ascii_digit() || c == '_' {
                             self.advance();
                         } else {
                             break;
@@ -311,7 +311,7 @@ impl Lexer {
             }
 
             while let Some(c) = self.peek() {
-                if c.is_ascii_digit() {
+                if c.is_ascii_digit() || c == '_' {
                     self.advance();
                 } else {
                     break;
@@ -322,7 +322,10 @@ impl Lexer {
             false
         };
 
-        let num_str: String = self.input[start..self.current].iter().collect();
+        let num_str: String = self.input[start..self.current]
+            .iter()
+            .filter(|&c| *c != '_')
+            .collect();
 
         // Check for suffix (f32, f64, i32, i64)
         let suffix = if self.peek() == Some('f') || self.peek() == Some('i') {

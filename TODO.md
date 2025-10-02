@@ -1,8 +1,5 @@
-* number formatting with underscores
-* default initializer for classes. 
 * always explicit argument names. 
-* explicit type declarations always
-* change constructor calls to init? 
+
 
 * error handling
   * minimize panics. 
@@ -32,7 +29,7 @@
 * json, etc. 
 * pipeline operator? functional programming, pipelines
 * lambdas 
-
+* change constructor calls to init? 
 --- 
 * plat cli niceties
   * spinner
@@ -48,4 +45,5 @@
 * revisit verbosity. type inference, etc. 
 * docs
 * plat by example / the plat book
+* platitudes. 
 

@@ -20,6 +20,7 @@
 - **Built-in Enums**: `Option<T>`, `Result<T, E>`
 - **Custom Type Aliases**: `type UserID = String;` (interchangeable with underlying type)
 - **Newtypes**: `newtype DocumentID = String;` (distinct type at compile-time, same runtime representation)
+- **Numeric Literals**: Support underscores for readability (e.g., `1_000_000`, `3.141_592_653`)
 
 ### Naming Conventions (Enforced at Compile-Time)
 - **snake_case**: Variables, functions, parameters, module names, field names
@@ -97,6 +98,7 @@ plat2/
 - Type aliases
 - Newtypes (zero-cost distinct types)
 - Float support (Float32/Float64)
+- Numeric literals with underscores (e.g., 1_000_000, 3.141_592_653)
 - String methods (13 built-in functions)
 - Set methods (11 built-in operations)
 - Dict methods (11 built-in operations)

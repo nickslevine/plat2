@@ -275,4 +275,30 @@ mod tests {
             Token::Eof,
         ]);
     }
+
+    #[test]
+    fn test_numbers_with_underscores() {
+        let input = "1_000_000 2_000i32 3_500_000i64";
+        let tokens = tokenize(input);
+        assert_eq!(tokens, vec![
+            Token::IntLiteral(1_000_000),
+            Token::IntLiteral(2_000),
+            Token::IntLiteral(3_500_000),
+            Token::Eof,
+        ]);
+    }
+
+    #[test]
+    fn test_floats_with_underscores() {
+        use crate::FloatType;
+
+        let input = "2_000_000.00 1_234.567_89 9_999.99f32";
+        let tokens = tokenize(input);
+        assert_eq!(tokens, vec![
+            Token::FloatLiteral(2_000_000.00, FloatType::F64),
+            Token::FloatLiteral(1_234.56789, FloatType::F64),
+            Token::FloatLiteral(9_999.99, FloatType::F32),
+            Token::Eof,
+        ]);
+    }
 }
