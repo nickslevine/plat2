@@ -60,8 +60,12 @@ pub struct Parameter {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     Bool,
+    Int8,
+    Int16,
     Int32,
     Int64,
+    Float8,
+    Float16,
     Float32,
     Float64,
     String,

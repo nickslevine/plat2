@@ -133,8 +133,12 @@ pub struct TypeChecker {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum HirType {
     Bool,
+    Int8,
+    Int16,
     Int32,
     Int64,
+    Float8,
+    Float16,
     Float32,
     Float64,
     String,
@@ -1214,7 +1218,7 @@ impl TypeChecker {
                 let value_type = self.check_expression(value)?;
                 // Print accepts any type (will be converted to string)
                 match value_type {
-                    HirType::Bool | HirType::Int32 | HirType::Int64 | HirType::Float32 | HirType::Float64 | HirType::String => {},
+                    HirType::Bool | HirType::Int8 | HirType::Int16 | HirType::Int32 | HirType::Int64 | HirType::Float8 | HirType::Float16 | HirType::Float32 | HirType::Float64 | HirType::String => {},
                     _ => return Err(DiagnosticError::Type(
                         format!("Cannot print value of type {:?}", value_type)
                     )),
@@ -2632,8 +2636,12 @@ impl TypeChecker {
         match op {
             BinaryOp::Add | BinaryOp::Subtract | BinaryOp::Multiply | BinaryOp::Divide => {
                 match (left, right) {
+                    (HirType::Int8, HirType::Int8) => Ok(HirType::Int8),
+                    (HirType::Int16, HirType::Int16) => Ok(HirType::Int16),
                     (HirType::Int32, HirType::Int32) => Ok(HirType::Int32),
                     (HirType::Int64, HirType::Int64) => Ok(HirType::Int64),
+                    (HirType::Float8, HirType::Float8) => Ok(HirType::Float8),
+                    (HirType::Float16, HirType::Float16) => Ok(HirType::Float16),
                     (HirType::Float32, HirType::Float32) => Ok(HirType::Float32),
                     (HirType::Float64, HirType::Float64) => Ok(HirType::Float64),
                     (HirType::String, HirType::String) if matches!(op, BinaryOp::Add) => Ok(HirType::String),
@@ -2645,6 +2653,8 @@ impl TypeChecker {
             BinaryOp::Modulo => {
                 // Modulo only works with integers, not floats
                 match (left, right) {
+                    (HirType::Int8, HirType::Int8) => Ok(HirType::Int8),
+                    (HirType::Int16, HirType::Int16) => Ok(HirType::Int16),
                     (HirType::Int32, HirType::Int32) => Ok(HirType::Int32),
                     (HirType::Int64, HirType::Int64) => Ok(HirType::Int64),
                     _ => Err(DiagnosticError::Type(
@@ -2663,7 +2673,9 @@ impl TypeChecker {
             }
             BinaryOp::Less | BinaryOp::LessEqual | BinaryOp::Greater | BinaryOp::GreaterEqual => {
                 match (left, right) {
+                    (HirType::Int8, HirType::Int8) | (HirType::Int16, HirType::Int16) |
                     (HirType::Int32, HirType::Int32) | (HirType::Int64, HirType::Int64) |
+                    (HirType::Float8, HirType::Float8) | (HirType::Float16, HirType::Float16) |
                     (HirType::Float32, HirType::Float32) | (HirType::Float64, HirType::Float64) => Ok(HirType::Bool),
                     _ => Err(DiagnosticError::Type(
                         format!("Cannot compare types {:?} and {:?}", left, right)
@@ -2693,8 +2705,14 @@ impl TypeChecker {
             }
             UnaryOp::Negate => {
                 match operand {
+                    HirType::Int8 => Ok(HirType::Int8),
+                    HirType::Int16 => Ok(HirType::Int16),
                     HirType::Int32 => Ok(HirType::Int32),
                     HirType::Int64 => Ok(HirType::Int64),
+                    HirType::Float8 => Ok(HirType::Float8),
+                    HirType::Float16 => Ok(HirType::Float16),
+                    HirType::Float32 => Ok(HirType::Float32),
+                    HirType::Float64 => Ok(HirType::Float64),
                     _ => Err(DiagnosticError::Type(
                         format!("Cannot negate type {:?}", operand)
                     ))
@@ -2706,8 +2724,12 @@ impl TypeChecker {
     fn ast_type_to_hir_type(&self, ast_type: &Type) -> Result<HirType, DiagnosticError> {
         match ast_type {
             Type::Bool => Ok(HirType::Bool),
+            Type::Int8 => Ok(HirType::Int8),
+            Type::Int16 => Ok(HirType::Int16),
             Type::Int32 => Ok(HirType::Int32),
             Type::Int64 => Ok(HirType::Int64),
+            Type::Float8 => Ok(HirType::Float8),
+            Type::Float16 => Ok(HirType::Float16),
             Type::Float32 => Ok(HirType::Float32),
             Type::Float64 => Ok(HirType::Float64),
             Type::String => Ok(HirType::String),
@@ -3046,7 +3068,7 @@ impl TypeSubstitutable for HirType {
                 )
             }
             // Primitive types and newtypes don't need substitution
-            HirType::Bool | HirType::Int32 | HirType::Int64 | HirType::Float32 | HirType::Float64 | HirType::String | HirType::Unit | HirType::Newtype(_) => {
+            HirType::Bool | HirType::Int8 | HirType::Int16 | HirType::Int32 | HirType::Int64 | HirType::Float8 | HirType::Float16 | HirType::Float32 | HirType::Float64 | HirType::String | HirType::Unit | HirType::Newtype(_) => {
                 self.clone()
             }
         }

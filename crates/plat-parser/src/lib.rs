@@ -269,9 +269,13 @@ impl Parser {
 
         match type_name.as_str() {
             "Bool" => Ok(Type::Bool),
+            "Int8" => Ok(Type::Int8),
+            "Int16" => Ok(Type::Int16),
             "Int32" => Ok(Type::Int32),
             "Int64" => Ok(Type::Int64),
             "Int" => Ok(Type::Int64), // Alias for Int64
+            "Float8" => Ok(Type::Float8),
+            "Float16" => Ok(Type::Float16),
             "Float32" => Ok(Type::Float32),
             "Float64" => Ok(Type::Float64),
             "Float" => Ok(Type::Float64), // Alias for Float64

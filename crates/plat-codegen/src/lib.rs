@@ -21,8 +21,12 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, PartialEq)]
 pub enum VariableType {
     Bool,
+    Int8,
+    Int16,
     Int32,
     Int64,
+    Float8,
+    Float16,
     Float32,
     Float64,
     String,
@@ -206,15 +210,16 @@ impl CodeGenerator {
                     BinaryOp::Add | BinaryOp::Subtract | BinaryOp::Multiply | BinaryOp::Divide | BinaryOp::Modulo => {
                         let left_type = Self::infer_expression_type(left, variable_types);
                         let right_type = Self::infer_expression_type(right, variable_types);
-                        // Priority: F64 > F32 > I64 > I32
+                        // Priority: F64 > F32/F16/F8 > I64 > I32/I16/I8
                         if left_type == VariableType::Float64 || right_type == VariableType::Float64 {
                             VariableType::Float64
-                        } else if left_type == VariableType::Float32 || right_type == VariableType::Float32 {
-                            VariableType::Float32
+                        } else if matches!(left_type, VariableType::Float32 | VariableType::Float16 | VariableType::Float8)
+                               || matches!(right_type, VariableType::Float32 | VariableType::Float16 | VariableType::Float8) {
+                            left_type.clone()
                         } else if left_type == VariableType::Int64 || right_type == VariableType::Int64 {
                             VariableType::Int64
                         } else {
-                            VariableType::Int32
+                            left_type.clone()
                         }
                     }
                     _ => VariableType::Bool, // Comparison and logical operations return bool
@@ -228,8 +233,12 @@ impl CodeGenerator {
     fn variable_type_to_cranelift_type(var_type: &VariableType) -> Type {
         match var_type {
             VariableType::Bool => I32,      // Booleans are represented as i32
+            VariableType::Int8 => I8,
+            VariableType::Int16 => I16,
             VariableType::Int32 => I32,
             VariableType::Int64 => I64,
+            VariableType::Float8 => F32,    // Using F32 for 8-bit float
+            VariableType::Float16 => F32,   // Using F32 for 16-bit float
             VariableType::Float32 => F32,
             VariableType::Float64 => F64,
             VariableType::String => I64,    // Strings are pointers
@@ -298,7 +307,11 @@ impl CodeGenerator {
             AstType::Dict(_, _) => I64,
             AstType::Set(_) => I64,
             AstType::Named(_, _) => I64, // Custom types (classes, enums) are pointers
-            AstType::Int32 | AstType::Bool => I32,
+            AstType::Int8 | AstType::Bool => I8,
+            AstType::Int16 => I16,
+            AstType::Int32 => I32,
+            AstType::Float8 => F32, // Cranelift doesn't support 8-bit floats, use F32
+            AstType::Float16 => F32, // Cranelift doesn't support 16-bit floats, use F32
             AstType::Float32 => F32,
         }
     }
@@ -313,8 +326,12 @@ impl CodeGenerator {
         let resolved_ty = Self::resolve_type_alias_static(type_aliases, ast_type);
         match resolved_ty {
             AstType::Bool => VariableType::Bool,
+            AstType::Int8 => VariableType::Int8,
+            AstType::Int16 => VariableType::Int16,
             AstType::Int32 => VariableType::Int32,
             AstType::Int64 => VariableType::Int64,
+            AstType::Float8 => VariableType::Float8,
+            AstType::Float16 => VariableType::Float16,
             AstType::Float32 => VariableType::Float32,
             AstType::Float64 => VariableType::Float64,
             AstType::String => VariableType::String,
@@ -393,7 +410,11 @@ impl CodeGenerator {
                 AstType::Dict(_, _) => (I64, 8, 8),
                 AstType::Set(_) => (I64, 8, 8),
                 AstType::Named(_, _) => (I64, 8, 8), // Custom types are pointers
+                AstType::Int8 => (I8, 1, 1),
+                AstType::Int16 => (I16, 2, 2),
                 AstType::Int32 => (I32, 4, 4),
+                AstType::Float8 => (F32, 4, 4), // Using F32 for 8-bit float
+                AstType::Float16 => (F32, 4, 4), // Using F32 for 16-bit float
                 AstType::Float32 => (F32, 4, 4),
                 AstType::Bool => (I32, 4, 4),
             };
@@ -1795,7 +1816,7 @@ impl CodeGenerator {
 
                         // Determine if we're working with floats
                         let left_type = Self::infer_expression_type(left, variable_types);
-                        let is_float = matches!(left_type, VariableType::Float32 | VariableType::Float64);
+                        let is_float = matches!(left_type, VariableType::Float8 | VariableType::Float16 | VariableType::Float32 | VariableType::Float64);
 
                         match op {
                             BinaryOp::Add => {
@@ -3776,8 +3797,14 @@ impl CodeGenerator {
 
             let function_name = match element_type {
                 AstType::Bool => "plat_array_create_bool",
+                AstType::Int8 => "plat_array_create_i8",
+                AstType::Int16 => "plat_array_create_i16",
                 AstType::Int32 => "plat_array_create_i32",
                 AstType::Int64 => "plat_array_create_i64",
+                AstType::Float8 => "plat_array_create_f32", // Using f32 for 8-bit float
+                AstType::Float16 => "plat_array_create_f32", // Using f32 for 16-bit float
+                AstType::Float32 => "plat_array_create_f32",
+                AstType::Float64 => "plat_array_create_f64",
                 AstType::String => "plat_array_create_string",
                 AstType::Named(_, _) => "plat_array_create_class", // Custom class types
                 _ => "plat_array_create_i32", // fallback for unknown types
@@ -3825,8 +3852,14 @@ impl CodeGenerator {
 
         let (element_size, function_name) = match element_type {
             AstType::Bool => (std::mem::size_of::<bool>(), "plat_array_create_bool"),
+            AstType::Int8 => (1, "plat_array_create_i8"),
+            AstType::Int16 => (2, "plat_array_create_i16"),
             AstType::Int32 => (std::mem::size_of::<i32>(), "plat_array_create_i32"),
             AstType::Int64 => (std::mem::size_of::<i64>(), "plat_array_create_i64"),
+            AstType::Float8 => (std::mem::size_of::<f32>(), "plat_array_create_f32"), // Using f32 for 8-bit float
+            AstType::Float16 => (std::mem::size_of::<f32>(), "plat_array_create_f32"), // Using f32 for 16-bit float
+            AstType::Float32 => (std::mem::size_of::<f32>(), "plat_array_create_f32"),
+            AstType::Float64 => (std::mem::size_of::<f64>(), "plat_array_create_f64"),
             AstType::String => (std::mem::size_of::<*const u8>(), "plat_array_create_string"),
             AstType::Named(_, _) => (std::mem::size_of::<*const u8>(), "plat_array_create_class"), // Custom class pointers
             _ => (std::mem::size_of::<i32>(), "plat_array_create_i32"), // fallback
@@ -4119,8 +4152,8 @@ impl CodeGenerator {
                                     let call = builder.ins().call(convert_ref, &[expr_val]);
                                     builder.inst_results(call)[0]
                                 }
-                                Some(VariableType::Int32) | Some(VariableType::Bool) => {
-                                    // I32/boolean variable, convert to string
+                                Some(VariableType::Int8) | Some(VariableType::Int16) | Some(VariableType::Int32) | Some(VariableType::Bool) => {
+                                    // I8/I16/I32/boolean variable, convert to string
                                     let convert_sig = {
                                         let mut sig = module.make_signature();
                                         sig.call_conv = CallConv::SystemV;
@@ -4149,8 +4182,8 @@ impl CodeGenerator {
                                     let call = builder.ins().call(convert_ref, &[expr_val]);
                                     builder.inst_results(call)[0]
                                 }
-                                Some(VariableType::Float32) => {
-                                    // F32 variable, convert to string
+                                Some(VariableType::Float8) | Some(VariableType::Float16) | Some(VariableType::Float32) => {
+                                    // F8/F16/F32 variable, convert to string (using f32)
                                     let convert_sig = {
                                         let mut sig = module.make_signature();
                                         sig.call_conv = CallConv::SystemV;
@@ -4674,7 +4707,7 @@ impl CodeGenerator {
                 // Look up variable type
                 if let Some(var_type) = variable_types.get(name) {
                     match var_type {
-                        VariableType::Int32 => DICT_VALUE_TYPE_I32,
+                        VariableType::Int8 | VariableType::Int16 | VariableType::Int32 => DICT_VALUE_TYPE_I32,
                         VariableType::Int64 => DICT_VALUE_TYPE_I64,
                         VariableType::Bool => DICT_VALUE_TYPE_BOOL,
                         VariableType::String => DICT_VALUE_TYPE_STRING,
@@ -4770,7 +4803,7 @@ impl CodeGenerator {
                 // Look up variable type
                 if let Some(var_type) = variable_types.get(name) {
                     match var_type {
-                        VariableType::Int32 => SET_VALUE_TYPE_I32,
+                        VariableType::Int8 | VariableType::Int16 | VariableType::Int32 => SET_VALUE_TYPE_I32,
                         VariableType::Int64 => SET_VALUE_TYPE_I64,
                         VariableType::Bool => SET_VALUE_TYPE_BOOL,
                         VariableType::String => SET_VALUE_TYPE_STRING,

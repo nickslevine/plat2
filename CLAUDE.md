@@ -14,7 +14,7 @@
 ## 🎯 Core Language Features
 
 ### Type System
-- **Primitives**: `Bool`, `Int32`, `Int64`, `Float32`, `Float64`, `String`
+- **Primitives**: `Bool`, `Int8`, `Int16`, `Int32`, `Int64`, `Float8`, `Float16`, `Float32`, `Float64`, `String`
 - **Type Aliases (Built-in)**: `Int` (alias for `Int64`), `Float` (alias for `Float64`)
 - **Collections**: `List[T]`, `Dict[K, V]`, `Set[T]`
 - **Built-in Enums**: `Option<T>`, `Result<T, E>`

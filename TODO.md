@@ -1,4 +1,3 @@
-* always explicit argument names. 
 * add Float8 and Int8 ... also 16
 
 * error handling

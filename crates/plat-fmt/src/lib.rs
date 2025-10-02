@@ -321,8 +321,12 @@ impl Formatter {
     fn format_type(&mut self, ty: &Type) {
         match ty {
             Type::Bool => self.write("Bool"),
+            Type::Int8 => self.write("Int8"),
+            Type::Int16 => self.write("Int16"),
             Type::Int32 => self.write("Int32"),
             Type::Int64 => self.write("Int64"),
+            Type::Float8 => self.write("Float8"),
+            Type::Float16 => self.write("Float16"),
             Type::Float32 => self.write("Float32"),
             Type::Float64 => self.write("Float64"),
             Type::String => self.write("String"),
