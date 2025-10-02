@@ -27,6 +27,7 @@
 
 ### Object-Oriented Programming
 - **Classes**: Field declarations with `let`/`var` mutability
+- **Default Constructors**: Classes without explicit `init` get auto-generated constructors
 - **Inheritance**: `class Dog : Animal` with virtual methods
 - **Polymorphism**: Safe upcasting, vtable-based dynamic dispatch
 - **Generics**: `class Container<T>`, `fn identity<T>(value: T) -> T`
@@ -100,6 +101,7 @@ plat2/
 - Set methods (11 built-in operations)
 - Dict methods (11 built-in operations)
 - Naming convention enforcement (compile-time validation)
+- Default constructors (auto-generated init methods)
 
 **📋 TODO (Stretch Goals):**
 - [ ] Rich error messages with Ariadne spans
@@ -115,6 +117,7 @@ plat2/
 
 ### Class Definition
 ```plat
+// With explicit init
 class Point {
   let x: Int32;
   var name: String;
@@ -128,6 +131,17 @@ class Point {
   fn get_x() -> Int32 {
     return self.x;
   }
+}
+
+// With default init (auto-generated)
+class Point {
+  let x: Int32;
+  let y: Int32;
+}
+
+fn main() -> Int32 {
+  let p = Point(x = 10, y = 20);  // Default constructor
+  return p.x;
 }
 ```
 
