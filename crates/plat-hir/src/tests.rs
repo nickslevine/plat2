@@ -18,7 +18,7 @@ mod tests {
     fn test_simple_main_function() {
         let input = r#"
             fn main() {
-                print("Hello, world!");
+                print(value = "Hello, world!");
             }
         "#;
 
@@ -29,7 +29,7 @@ mod tests {
     fn test_main_function_required() {
         let input = r#"
             fn hello() {
-                print("Hello!");
+                print(value = "Hello!");
             }
         "#;
 
@@ -42,7 +42,7 @@ mod tests {
     fn test_main_function_wrong_signature() {
         let input = r#"
             fn main(x: Int32) {
-                print("Hello!");
+                print(value = "Hello!");
             }
         "#;
 
@@ -108,7 +108,7 @@ mod tests {
     fn test_undefined_variable() {
         let input = r#"
             fn main() {
-                print(unknown_var);
+                print(value = unknown_var);
             }
         "#;
 
@@ -242,9 +242,9 @@ mod tests {
         let input = r#"
             fn main() {
                 if (true) {
-                    print("yes");
+                    print(value = "yes");
                 } else {
-                    print("no");
+                    print(value = "no");
                 }
             }
         "#;
@@ -257,7 +257,7 @@ mod tests {
         let input = r#"
             fn main() {
                 if (5) {
-                    print("yes");
+                    print(value = "yes");
                 }
             }
         "#;
@@ -286,7 +286,7 @@ mod tests {
         let input = r#"
             fn main() {
                 while (5) {
-                    print("loop");
+                    print(value = "loop");
                 }
             }
         "#;
@@ -466,7 +466,7 @@ mod tests {
             fn main() {
                 let name = "World";
                 let greeting = "Hello, ${name}!";
-                print(greeting);
+                print(value = greeting);
             }
         "#;
 
@@ -477,9 +477,9 @@ mod tests {
     fn test_print_different_types() {
         let input = r#"
             fn main() {
-                print(42);
-                print(true);
-                print("hello");
+                print(value = 42);
+                print(value = true);
+                print(value = "hello");
             }
         "#;
 
@@ -530,7 +530,7 @@ mod tests {
             fn main() {
                 let numbers = [1, 2, 3, 4, 5];
                 for (num in numbers) {
-                    print(num);
+                    print(value = num);
                 }
             }
         "#;
@@ -544,7 +544,7 @@ mod tests {
             fn main() {
                 let x = 42;
                 for (item in x) {
-                    print(item);
+                    print(value = item);
                 }
             }
         "#;
@@ -561,7 +561,7 @@ mod tests {
                 let numbers = [1, 2, 3];
                 for (num in numbers) {
                     let doubled = num * 2;
-                    print(doubled);
+                    print(value = doubled);
                 }
                 // num should not be visible here
             }
@@ -577,9 +577,9 @@ mod tests {
                 let num = 42;
                 let numbers = [1, 2, 3];
                 for (num in numbers) {
-                    print(num); // This shadows the outer 'num'
+                    print(value = num); // This shadows the outer 'num'
                 }
-                print(num); // This refers to the original 'num'
+                print(value = num); // This refers to the original 'num'
             }
         "#;
 
@@ -599,7 +599,7 @@ mod tests {
                         while (y > 0) {
                             y = y - 1;
                             if (y == 1) {
-                                print("found one");
+                                print(value = "found one");
                             }
                         }
                     }
@@ -617,7 +617,7 @@ mod tests {
                 let items = [10, 20, 30];
                 for (item in items) {
                     let result = item + 5;
-                    print(result);
+                    print(value = result);
                 }
             }
         "#;
@@ -632,7 +632,7 @@ mod tests {
                 let arrays = [[1, 2], [3, 4]];
                 for (subarray in arrays) {
                     let length = subarray.len();
-                    print(length);
+                    print(value = length);
                 }
             }
         "#;
@@ -912,7 +912,7 @@ mod tests {
 
             fn main() -> Int32 {
                 let animal: Animal = Dog(species = "Canine", breed = "Golden");
-                print("Animal created");
+                print(value = "Animal created");
                 return 0;
             }
         "#;
@@ -947,7 +947,7 @@ mod tests {
 
             fn main() -> Int32 {
                 var animal: Animal = Cat(name = "Whiskers");
-                print("Cat created as Animal");
+                print(value = "Cat created as Animal");
                 return 0;
             }
         "#;
@@ -988,7 +988,7 @@ mod tests {
             fn main() -> Int32 {
                 let animal: Animal = Dog(name = "Rex");
                 let mammal: Mammal = Dog(name = "Spot");
-                print("Transitive inheritance works!");
+                print(value = "Transitive inheritance works!");
                 return 0;
             }
         "#;
@@ -1033,7 +1033,7 @@ mod tests {
             fn main() -> Int32 {
                 let dog = Dog(name = "Buddy");
                 let container = AnimalContainer(animal = dog);
-                print("Dog stored in Animal field");
+                print(value = "Dog stored in Animal field");
                 return 0;
             }
         "#;
@@ -1142,7 +1142,7 @@ mod tests {
             fn main() -> Int32 {
                 var animal: Animal = Dog(name = "Buddy");
                 animal = Cat(name = "Whiskers");
-                print("Can reassign different derived types to base type variable");
+                print(value = "Can reassign different derived types to base type variable");
                 return 0;
             }
         "#;

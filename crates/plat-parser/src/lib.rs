@@ -457,6 +457,16 @@ impl Parser {
         let start = self.previous_span().start;
 
         self.consume(Token::LeftParen, "Expected '(' after 'print'")?;
+
+        // Expect named argument: value = expression
+        let param_name = self.consume_identifier("Expected parameter name 'value'")?;
+        if param_name != "value" {
+            return Err(DiagnosticError::Syntax(
+                format!("Expected parameter name 'value', found '{}'", param_name)
+            ));
+        }
+        self.consume(Token::Assign, "Expected '=' after parameter name")?;
+
         let value = self.parse_expression()?;
         self.consume(Token::RightParen, "Expected ')' after print argument")?;
         self.consume(Token::Semicolon, "Expected ';' after print statement")?;

@@ -7,7 +7,7 @@ mod tests {
     fn test_parse_simple_function() {
         let input = r#"
             fn main() {
-                print("Hello, world!");
+                print(value = "Hello, world!");
             }
         "#;
 
@@ -98,9 +98,9 @@ mod tests {
         let input = r#"
             fn main() {
                 if (x > 10) {
-                    print("greater");
+                    print(value = "greater");
                 } else {
-                    print("less or equal");
+                    print(value = "less or equal");
                 }
             }
         "#;
@@ -150,7 +150,7 @@ mod tests {
         let input = r#"
             fn main() {
                 for (item in items) {
-                    print(item);
+                    print(value = item);
                 }
             }
         "#;
@@ -181,7 +181,7 @@ mod tests {
         let input = r#"
             fn main() {
                 for (num in [1, 2, 3]) {
-                    print("Number: ${num}");
+                    print(value = "Number: ${num}");
                 }
             }
         "#;
@@ -214,7 +214,7 @@ mod tests {
                 if (x > 0) {
                     for (i in items) {
                         if (i > 5) {
-                            print("Large: ${i}");
+                            print(value = "Large: ${i}");
                         } else {
                             while (i < 10) {
                                 i = i + 1;
@@ -268,7 +268,7 @@ mod tests {
     fn test_parse_function_calls() {
         let input = r#"
             fn main() {
-                print("Hello");
+                print(value = "Hello");
                 let result = add(x = 10, y = 20);
                 let complex = multiply(a = add(x = 1, y = 2), b = subtract(a = 5, b = 3));
             }
@@ -304,8 +304,8 @@ mod tests {
         let input = r#"
             fn main() {
                 let name = "World";
-                print("Hello, ${name}!");
-                print("The sum of 2 + 2 is ${2 + 2}");
+                print(value = "Hello, ${name}!");
+                print(value = "The sum of 2 + 2 is ${2 + 2}");
             }
         "#;
 
@@ -383,7 +383,7 @@ mod tests {
 
             fn main() {
                 let result = add(x = 5, y = 3);
-                print("Result: ${result}");
+                print(value = "Result: ${result}");
             }
         "#;
 
@@ -505,7 +505,7 @@ mod tests {
                 }
 
                 mut fn process() {
-                    print("Processing message");
+                    print(value = "Processing message");
                 }
             }
         "#;

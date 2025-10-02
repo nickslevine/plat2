@@ -9,7 +9,7 @@ use tempfile::TempDir;
 fn test_hello_world_compilation() {
     let source = r#"
 fn main() -> Int32 {
-    print("Hello, World!");
+    print(value = "Hello, World!");
     return 0;
 }
 "#;
@@ -92,7 +92,7 @@ fn test_string_interpolation_compilation() {
     let source = r#"
 fn main() -> Int32 {
     let name = "World";
-    print("Hello, ${name}!");
+    print(value = "Hello, ${name}!");
     return 0;
 }
 "#;

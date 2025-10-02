@@ -454,7 +454,7 @@ impl Formatter {
                 self.format_if_block(body);
             }
             Statement::Print { value, .. } => {
-                self.write("print(");
+                self.write("print(value = ");
                 self.format_expression(value);
                 self.write_line(");");
             }

@@ -307,7 +307,8 @@ impl CodeGenerator {
             AstType::Dict(_, _) => I64,
             AstType::Set(_) => I64,
             AstType::Named(_, _) => I64, // Custom types (classes, enums) are pointers
-            AstType::Int8 | AstType::Bool => I8,
+            AstType::Bool => I32, // Booleans are I32
+            AstType::Int8 => I8,
             AstType::Int16 => I16,
             AstType::Int32 => I32,
             AstType::Float8 => F32, // Cranelift doesn't support 8-bit floats, use F32

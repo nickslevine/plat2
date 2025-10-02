@@ -4,10 +4,10 @@ mod tests {
 
     #[test]
     fn test_format_simple_function() {
-        let input = r#"fn main(){print("Hello, world!");}"#;
+        let input = r#"fn main(){print(value = "Hello, world!");}"#;
 
         let expected = r#"fn main() {
-  print("Hello, world!");
+  print(value = "Hello, world!");
 }
 "#;
 
@@ -45,13 +45,13 @@ mod tests {
 
     #[test]
     fn test_format_if_else() {
-        let input = r#"fn main(){if(x>10){print("greater");}else{print("less");}}"#;
+        let input = r#"fn main(){if(x>10){print(value = "greater");}else{print(value = "less");}}"#;
 
         let expected = r#"fn main() {
   if (x > 10) {
-    print("greater");
+    print(value = "greater");
   } else {
-    print("less");
+    print(value = "less");
   }}
 "#;
 
@@ -103,11 +103,11 @@ mod tests {
 
     #[test]
     fn test_format_string_literals() {
-        let input = r#"fn main(){let s="hello\nworld";print("tab\there");}"#;
+        let input = r#"fn main(){let s="hello\nworld";print(value = "tab\there");}"#;
 
         let expected = r#"fn main() {
   let s = "hello\nworld";
-  print("tab\there");
+  print(value = "tab\there");
 }
 "#;
 
@@ -117,12 +117,12 @@ mod tests {
 
     #[test]
     fn test_format_string_interpolation() {
-        let input = r#"fn main(){let name="World";print("Hello, ${name}!");print("Sum: ${2+2}");}"#;
+        let input = r#"fn main(){let name="World";print(value = "Hello, ${name}!");print(value = "Sum: ${2+2}");}"#;
 
         let expected = r#"fn main() {
   let name = "World";
-  print("Hello, ${name}!");
-  print("Sum: ${2 + 2}");
+  print(value = "Hello, ${name}!");
+  print(value = "Sum: ${2 + 2}");
 }
 "#;
 
@@ -149,16 +149,16 @@ fn main() {
 
     #[test]
     fn test_format_complex_nested_code() {
-        let input = r#"fn main(){if(x>0){let y=x*2;while(y>0){print("${y}");y=y-1;}}else{print("negative");}}"#;
+        let input = r#"fn main(){if(x>0){let y=x*2;while(y>0){print(value = "${y}");y=y-1;}}else{print(value = "negative");}}"#;
 
         let expected = r#"fn main() {
   if (x > 0) {
     let y = x * 2;
     while (y > 0) {
-      print("${y}");
+      print(value = "${y}");
       y = y - 1;
     }  } else {
-    print("negative");
+    print(value = "negative");
   }}
 "#;
 
@@ -171,9 +171,9 @@ fn main() {
         let input = r#"fn main() {
   let x = 10;
   if (x > 5) {
-    print("Greater than 5");
+    print(value = "Greater than 5");
   } else {
-    print("Less than or equal to 5");
+    print(value = "Less than or equal to 5");
   }
 }
 "#;

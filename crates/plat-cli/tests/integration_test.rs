@@ -50,7 +50,7 @@ fn test_hello_world_execution() {
 
     let source = r#"
 fn main() -> Int32 {
-    print("Hello, World!");
+    print(value = "Hello, World!");
     return 0;
 }
 "#;
@@ -84,7 +84,7 @@ fn main() -> Int32 {
     let x = 5;
     let y = 3;
     let result = add(a = x, b = y);
-    print("Math works!");
+    print(value = "Math works!");
     return 0;
 }
 "#;
@@ -134,7 +134,7 @@ fn test_build_command() {
 
     let source = r#"
 fn main() -> Int32 {
-    print("Built successfully!");
+    print(value = "Built successfully!");
     return 0;
 }
 "#;
@@ -171,7 +171,7 @@ fn test_fmt_command() {
 
     // Badly formatted source
     let source = r#"fn   main( )  ->Int32{
-print(  "Hello"  )  ;
+print( value = "Hello"  )  ;
     return   0 ;
     }"#;
 
@@ -191,7 +191,7 @@ print(  "Hello"  )  ;
 
     // Check that it's properly formatted (has consistent spacing)
     assert!(formatted.contains("fn main() -> Int32"));
-    assert!(formatted.contains("  print("));  // 2-space indent
+    assert!(formatted.contains("  print(value = "));  // 2-space indent
 }
 
 #[test]
@@ -201,14 +201,14 @@ fn test_boolean_short_circuit() {
 
     let source = r#"
 fn should_not_call() -> Bool {
-    print("ERROR: This should not be printed!");
+    print(value = "ERROR: This should not be printed!");
     return true;
 }
 
 fn main() -> Int32 {
-    print("Testing short-circuit...");
+    print(value = "Testing short-circuit...");
     let result = false and should_not_call();
-    print("Short-circuit works!");
+    print(value = "Short-circuit works!");
     return 0;
 }
 "#;
@@ -240,7 +240,7 @@ fn main() -> Int32 {
     var x = 10;
     x = x + 5;
     x = x * 2;
-    print("Mutation works!");
+    print(value = "Mutation works!");
     return 0;
 }
 "#;
@@ -267,9 +267,9 @@ fn test_string_literals() {
 
     let source = r#"
 fn main() -> Int32 {
-    print("String with spaces");
-    print("String with special chars: !@#$%");
-    print("");  // Empty string
+    print(value = "String with spaces");
+    print(value = "String with special chars: !@#$%");
+    print(value = "");  // Empty string
     return 0;
 }
 "#;
