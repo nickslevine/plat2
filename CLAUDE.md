@@ -103,14 +103,14 @@ plat2/
 - Module system with cross-module function calls
 - Type aliases
 - Newtypes (zero-cost distinct types)
-- Float support (Float32/Float64)
+- Full numeric type support (Int8, Int16, Int32, Int64, Float8, Float16, Float32, Float64)
 - Numeric literals with underscores (e.g., 1_000_000, 3.141_592_653)
 - String methods (13 built-in functions)
 - Set methods (11 built-in operations)
 - Dict methods (11 built-in operations)
 - Naming convention enforcement (compile-time validation)
 - Default constructors (auto-generated init methods)
-- Named arguments (required for all function/method/constructor calls)
+- Named arguments (required for all function/method/constructor/print calls)
 
 **📋 TODO (Stretch Goals):**
 - [ ] Rich error messages with Ariadne spans
@@ -150,6 +150,7 @@ class Point {
 
 fn main() -> Int32 {
   let p = Point(x = 10, y = 20);  // Default constructor
+  print(value = "Point created!");  // Named argument required
   return p.x;
 }
 ```
