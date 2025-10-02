@@ -75,11 +75,11 @@ mod tests {
 
     #[test]
     fn test_format_nested_expressions() {
-        let input = r#"fn main(){let result=(1+2)*3;let complex=add(multiply(1,2),subtract(5,3));}"#;
+        let input = r#"fn main(){let result=(1+2)*3;let complex=add(a=multiply(x=1,y=2),b=subtract(a=5,b=3));}"#;
 
         let expected = r#"fn main() {
   let result = 1 + 2 * 3;
-  let complex = add(multiply(1, 2), subtract(5, 3));
+  let complex = add(a = multiply(x = 1, y = 2), b = subtract(a = 5, b = 3));
 }
 "#;
 
@@ -132,14 +132,14 @@ mod tests {
 
     #[test]
     fn test_format_multiple_functions() {
-        let input = r#"fn add(x:i32,y:i32)->i32{return x+y;}fn main(){let result=add(5,3);}"#;
+        let input = r#"fn add(x:i32,y:i32)->i32{return x+y;}fn main(){let result=add(x=5,y=3);}"#;
 
         let expected = r#"fn add(x: i32, y: i32) -> i32 {
   return x + y;
 }
 
 fn main() {
-  let result = add(5, 3);
+  let result = add(x = 5, y = 3);
 }
 "#;
 

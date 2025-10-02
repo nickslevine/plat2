@@ -269,8 +269,8 @@ mod tests {
         let input = r#"
             fn main() {
                 print("Hello");
-                let result = add(10, 20);
-                let complex = multiply(add(1, 2), subtract(5, 3));
+                let result = add(x = 10, y = 20);
+                let complex = multiply(a = add(x = 1, y = 2), b = subtract(a = 5, b = 3));
             }
         "#;
 
@@ -382,7 +382,7 @@ mod tests {
             }
 
             fn main() {
-                let result = add(5, 3);
+                let result = add(x = 5, y = 3);
                 print("Result: ${result}");
             }
         "#;
@@ -531,8 +531,8 @@ mod tests {
         let input = r#"
             fn main() {
                 let msg1 = Message::Quit;
-                let msg2 = Message::Move(10, 20);
-                let msg3 = Message::Write("Hello");
+                let msg2 = Message::Move(field_0 = 10, field_1 = 20);
+                let msg3 = Message::Write(value = "Hello");
             }
         "#;
 

@@ -139,7 +139,7 @@ pub enum Expression {
     },
     Call {
         function: String,
-        args: Vec<Expression>,
+        args: Vec<NamedArg>,
         span: Span,
     },
     Assignment {
@@ -155,14 +155,14 @@ pub enum Expression {
     MethodCall {
         object: Box<Expression>,
         method: String,
-        args: Vec<Expression>,
+        args: Vec<NamedArg>,
         span: Span,
     },
     Block(Block),
     EnumConstructor {
         enum_name: String,
         variant: String,
-        args: Vec<Expression>,
+        args: Vec<NamedArg>,
         span: Span,
     },
     Match {
@@ -189,7 +189,7 @@ pub enum Expression {
     },
     SuperCall {
         method: String,
-        args: Vec<Expression>,
+        args: Vec<NamedArg>,
         span: Span,
     },
     Range {

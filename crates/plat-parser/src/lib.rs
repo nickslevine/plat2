@@ -700,20 +700,19 @@ impl Parser {
         loop {
             if self.match_token(&Token::LeftParen) {
                 if let Expression::Identifier { name, span } = expr {
-                    // Check if this is a constructor call with named arguments
-                    if self.is_named_arg() {
-                        let args = self.parse_named_arguments()?;
-                        self.consume(Token::RightParen, "Expected ')' after constructor arguments")?;
-                        let end = self.previous_span().end;
+                    // All calls now use named arguments
+                    let args = self.parse_named_arguments()?;
+                    self.consume(Token::RightParen, "Expected ')' after arguments")?;
+                    let end = self.previous_span().end;
+
+                    // Check if it's a constructor call (TitleCase identifier)
+                    if name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
                         expr = Expression::ConstructorCall {
                             class_name: name,
                             args,
                             span: Span::new(span.start, end),
                         };
                     } else {
-                        let args = self.parse_arguments()?;
-                        self.consume(Token::RightParen, "Expected ')' after arguments")?;
-                        let end = self.previous_span().end;
                         expr = Expression::Call {
                             function: name,
                             args,
@@ -739,8 +738,8 @@ impl Parser {
                 let member = self.consume_identifier("Expected member name after '.'")?;
 
                 if self.match_token(&Token::LeftParen) {
-                    // Method call
-                    let args = self.parse_arguments()?;
+                    // Method call - now with named arguments
+                    let args = self.parse_named_arguments()?;
                     self.consume(Token::RightParen, "Expected ')' after method arguments")?;
                     let end = self.previous_span().end;
                     let start = self.get_expression_span(&expr, end).start;
@@ -775,20 +774,6 @@ impl Parser {
         Ok(expr)
     }
 
-    fn parse_arguments(&mut self) -> Result<Vec<Expression>, DiagnosticError> {
-        let mut args = Vec::new();
-
-        if !self.check(&Token::RightParen) {
-            loop {
-                args.push(self.parse_expression()?);
-                if !self.match_token(&Token::Comma) {
-                    break;
-                }
-            }
-        }
-
-        Ok(args)
-    }
 
     fn parse_primary(&mut self) -> Result<Expression, DiagnosticError> {
         if self.match_token(&Token::Match) {
@@ -849,7 +834,7 @@ impl Parser {
                 self.consume_identifier("Expected method name after 'super.'")?
             };
             self.consume(Token::LeftParen, "Expected '(' after super method name")?;
-            let args = self.parse_arguments()?;
+            let args = self.parse_named_arguments()?;
             self.consume(Token::RightParen, "Expected ')' after super method arguments")?;
             let end = self.previous_span().end;
             return Ok(Expression::SuperCall {
@@ -871,7 +856,7 @@ impl Parser {
 
                 // Check if this is an enum constructor with arguments
                 if is_likely_enum && self.match_token(&Token::LeftParen) {
-                    let args = self.parse_arguments()?;
+                    let args = self.parse_named_arguments()?;
                     self.consume(Token::RightParen, "Expected ')' after enum constructor arguments")?;
                     let end = self.previous_span().end;
                     return Ok(Expression::EnumConstructor {
@@ -1540,23 +1525,6 @@ impl Parser {
             methods,
             span: Span::new(start, end),
         })
-    }
-
-    fn is_named_arg(&mut self) -> bool {
-        // Look ahead to see if this looks like a named argument: identifier = expression
-        let saved_current = self.current;
-
-        let looks_like_named_arg = match &self.peek().token {
-            Token::Ident(_) => {
-                self.advance();
-                self.check(&Token::Assign)
-            }
-            _ => false,
-        };
-
-        // Restore position
-        self.current = saved_current;
-        looks_like_named_arg
     }
 
     fn parse_named_arguments(&mut self) -> Result<Vec<NamedArg>, DiagnosticError> {

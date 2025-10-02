@@ -83,7 +83,7 @@ fn add(a: Int32, b: Int32) -> Int32 {
 fn main() -> Int32 {
     let x = 5;
     let y = 3;
-    let result = add(x, y);
+    let result = add(a = x, b = y);
     print("Math works!");
     return 0;
 }

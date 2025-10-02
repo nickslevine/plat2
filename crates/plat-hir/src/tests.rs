@@ -304,7 +304,7 @@ mod tests {
             }
 
             fn main() {
-                let result = add(5, 3);
+                let result = add(x = 5, y = 3);
             }
         "#;
 
@@ -323,7 +323,7 @@ mod tests {
             }
 
             fn main() {
-                let result = add(5);
+                let result = add(x = 5);
             }
         "#;
 
@@ -340,13 +340,14 @@ mod tests {
             }
 
             fn main() {
-                let result = add(5, "hello");
+                let result = add(x = 5, y = "hello");
             }
         "#;
 
         let result = type_check(input);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("expects argument of type"));
+        let err_msg = result.unwrap_err().to_string();
+        assert!(err_msg.contains("parameter") && err_msg.contains("expects type"));
     }
 
     #[test]
@@ -436,7 +437,7 @@ mod tests {
             }
 
             fn main() {
-                let result = test(5, 10);
+                let result = test(x = 5, y = 10);
             }
         "#;
 
@@ -666,8 +667,8 @@ mod tests {
 
             fn main() {
                 let msg1 = Message::Quit;
-                let msg2 = Message::Move(10, 20);
-                let msg3 = Message::Write("Hello");
+                let msg2 = Message::Move(field0 = 10, field1 = 20);
+                let msg3 = Message::Write(field0 = "Hello");
             }
         "#;
 
@@ -684,7 +685,7 @@ mod tests {
             }
 
             fn main() {
-                let msg = Message::Move(10);
+                let msg = Message::Move(field0 = 10);
             }
         "#;
 
@@ -703,7 +704,7 @@ mod tests {
             }
 
             fn main() {
-                let msg = Message::Move("hello", 20);
+                let msg = Message::Move(field0 = "hello", field1 = 20);
             }
         "#;
 
@@ -740,7 +741,7 @@ mod tests {
             }
 
             fn main() {
-                let msg = Message::Move(10, 20);
+                let msg = Message::Move(field0 = 10, field1 = 20);
                 let result = match msg {
                     Message::Quit -> 0,
                     Message::Move(x, y) -> x + y,
@@ -762,7 +763,7 @@ mod tests {
             }
 
             fn main() {
-                let msg = Message::Move(10, 20);
+                let msg = Message::Move(field0 = 10, field1 = 20);
                 let result = match msg {
                     Message::Quit -> 0,
                     Message::Move(x, y) -> x + y
@@ -786,7 +787,7 @@ mod tests {
             }
 
             fn main() {
-                let msg = Message::Move(10, 20);
+                let msg = Message::Move(field0 = 10, field1 = 20);
                 let result = match msg {
                     Message::Quit -> 0,
                     Message::Move(x, y) -> "hello"
@@ -808,7 +809,7 @@ mod tests {
             }
 
             fn main() {
-                let msg = Message::Write("hello");
+                let msg = Message::Write(field0 = "hello");
                 let result = match msg {
                     Message::Move(x, y) -> x + y,
                     Message::Write(text) -> text

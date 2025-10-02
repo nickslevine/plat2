@@ -1,5 +1,5 @@
 * always explicit argument names. 
-
+* add Float8 and Int8 ... also 16
 
 * error handling
   * minimize panics. 
@@ -23,13 +23,16 @@
 * cli/tui framework
 * logging package
 * get rid of integer exit codes. 
-* add Float8 and Int8 ... also 16
 * type casting (especially with numeric types)
 * serde etc. 
 * json, etc. 
-* pipeline operator? functional programming, pipelines
+* pipeline operator? 
+* functional programming, pipelines
 * lambdas 
 * change constructor calls to init? 
+* default arguments? 
+* overflow / underflow handling 
+
 --- 
 * plat cli niceties
   * spinner
@@ -46,4 +49,7 @@
 * docs
 * plat by example / the plat book
 * platitudes. 
+* linting / suggestions - dead code, unused imports
+* central package repository
 
+* language code reviews. 

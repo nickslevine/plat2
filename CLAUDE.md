@@ -38,6 +38,12 @@
 - **Match Expressions**: Exhaustiveness checking, pattern binding
 - **Example**: `match status { Status::Success -> 1, Status::Error(code) -> code }`
 
+### Function Calls
+- **Named Arguments Required**: All function, method, and constructor calls must use explicit named arguments
+- **Format**: `function_name(param1 = value1, param2 = value2)`
+- **Benefits**: Prevents argument order mistakes, improves code clarity and self-documentation
+- **Example**: `add(x = 5, y = 3)` instead of `add(5, 3)`
+
 ### Control Flow
 - **If-Expressions**: `let max = if (x > y) { x } else { y }`
 - **Range Loops**: `for (i in 0..10)` (exclusive), `for (i in 0..=10)` (inclusive)
@@ -104,6 +110,7 @@ plat2/
 - Dict methods (11 built-in operations)
 - Naming convention enforcement (compile-time validation)
 - Default constructors (auto-generated init methods)
+- Named arguments (required for all function/method/constructor calls)
 
 **📋 TODO (Stretch Goals):**
 - [ ] Rich error messages with Ariadne spans
@@ -156,7 +163,7 @@ enum Status {
 }
 
 fn main() -> Int32 {
-  let status = Status::Warning(42);
+  let status = Status::Warning(field0 = 42);
   let code = match status {
     Status::Success -> 0,
     Status::Warning(x) -> x + 100,
@@ -173,8 +180,8 @@ fn identity<T>(value: T) -> T {
 }
 
 fn main() -> Int32 {
-  let x = identity(10);
-  let name = identity("hello");
+  let x = identity(value = 10);
+  let name = identity(value = "hello");
   return x;
 }
 ```
@@ -192,7 +199,7 @@ fn add(a: Int32, b: Int32) -> Int32 {
 use math;
 
 fn main() -> Int32 {
-  return math::add(5, 10);
+  return math::add(a = 5, b = 10);
 }
 ```
 

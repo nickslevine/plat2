@@ -40,7 +40,7 @@ fn add(a: Int32, b: Int32) -> Int32 {
 fn main() -> Int32 {
     let x = 10;
     let y = 20;
-    let result = add(x, y);
+    let result = add(a = x, b = y);
     return result;
 }
 "#;

@@ -151,7 +151,7 @@ pub enum HirType {
 #[derive(Debug, Clone)]
 pub struct FunctionSignature {
     pub type_params: Vec<String>, // Generic type parameters
-    pub params: Vec<HirType>,
+    pub params: Vec<(String, HirType)>, // (param_name, param_type)
     pub return_type: HirType,
     pub is_mutable: bool,
 }
@@ -300,8 +300,8 @@ impl TypeChecker {
         // Collect all function declarations
         for func in &program.functions {
             // Build function signature
-            let params: Result<Vec<HirType>, _> = func.params.iter()
-                .map(|p| self.ast_type_to_hir_type(&p.ty))
+            let params: Result<Vec<(String, HirType)>, _> = func.params.iter()
+                .map(|p| Ok((p.name.clone(), self.ast_type_to_hir_type(&p.ty)?)))
                 .collect();
             let params = params?;
 
@@ -636,9 +636,9 @@ impl TypeChecker {
 
         // Collect method signatures
         for method in &enum_decl.methods {
-            let param_types: Result<Vec<HirType>, DiagnosticError> = method.params
+            let param_types: Result<Vec<(String, HirType)>, DiagnosticError> = method.params
                 .iter()
-                .map(|param| self.ast_type_to_hir_type(&param.ty))
+                .map(|param| Ok((param.name.clone(), self.ast_type_to_hir_type(&param.ty)?)))
                 .collect();
 
             let return_type = match &method.return_type {
@@ -744,7 +744,7 @@ impl TypeChecker {
             let mut param_types = Vec::new();
             for param in &method.params {
                 let param_type = self.ast_type_to_hir_type(&param.ty)?;
-                param_types.push(param_type);
+                param_types.push((param.name.clone(), param_type));
             }
 
             let return_type = match &method.return_type {
@@ -777,7 +777,7 @@ impl TypeChecker {
             let mut param_types = Vec::new();
             for field in &class_decl.fields {
                 let field_type = self.ast_type_to_hir_type(&field.ty)?;
-                param_types.push(field_type);
+                param_types.push((field.name.clone(), field_type));
             }
 
             // Default init returns the class type
@@ -994,9 +994,9 @@ impl TypeChecker {
         let old_type_params = self.type_parameters.clone();
         self.type_parameters.extend(function.type_params.iter().cloned());
 
-        let param_types: Result<Vec<HirType>, DiagnosticError> = function.params
+        let param_types: Result<Vec<(String, HirType)>, DiagnosticError> = function.params
             .iter()
-            .map(|param| self.ast_type_to_hir_type(&param.ty))
+            .map(|param| Ok((param.name.clone(), self.ast_type_to_hir_type(&param.ty)?)))
             .collect();
 
         let return_type = match &function.return_type {
@@ -1031,7 +1031,7 @@ impl TypeChecker {
         self.current_function_return_type = Some(signature.return_type.clone());
 
         // Add parameters to scope
-        for (param, param_type) in function.params.iter().zip(signature.params.iter()) {
+        for (param, (param_name, param_type)) in function.params.iter().zip(signature.params.iter()) {
             if self.scopes.last_mut().unwrap().insert(param.name.clone(), param_type.clone()).is_some() {
                 return Err(DiagnosticError::Type(
                     format!("Parameter '{}' is defined multiple times", param.name)
@@ -1276,11 +1276,18 @@ impl TypeChecker {
                     ));
                 }
 
-                for (arg, expected_type) in args.iter().zip(signature.params.iter()) {
-                    let arg_type = self.check_expression(arg)?;
-                    if arg_type != *expected_type {
+                // Validate named arguments match parameter names and types
+                for arg in args {
+                    let param = signature.params.iter()
+                        .find(|(param_name, _)| param_name == &arg.name)
+                        .ok_or_else(|| DiagnosticError::Type(
+                            format!("Function '{}' has no parameter named '{}'", function, arg.name)
+                        ))?;
+
+                    let arg_type = self.check_expression(&arg.value)?;
+                    if arg_type != param.1 {
                         return Err(DiagnosticError::Type(
-                            format!("Function '{}' expects argument of type {:?}, got {:?}", function, expected_type, arg_type)
+                            format!("Function '{}' parameter '{}' expects type {:?}, got {:?}", function, arg.name, param.1, arg_type)
                         ));
                     }
                 }
@@ -1399,7 +1406,7 @@ impl TypeChecker {
                                 "get() method takes exactly one argument".to_string()
                             ));
                         }
-                        let index_type = self.check_expression(&args[0])?;
+                        let index_type = self.check_expression(&args[0].value)?;
                         if index_type != HirType::Int32 {
                             return Err(DiagnosticError::Type(
                                 format!("get() method expects i32 index, got {:?}", index_type)
@@ -1414,8 +1421,8 @@ impl TypeChecker {
                                 "set() method takes exactly two arguments".to_string()
                             ));
                         }
-                        let index_type = self.check_expression(&args[0])?;
-                        let value_type = self.check_expression(&args[1])?;
+                        let index_type = self.check_expression(&args[0].value)?;
+                        let value_type = self.check_expression(&args[1].value)?;
                         if index_type != HirType::Int32 {
                             return Err(DiagnosticError::Type(
                                 format!("set() method expects i32 index, got {:?}", index_type)
@@ -1434,7 +1441,7 @@ impl TypeChecker {
                                 "append() method takes exactly one argument".to_string()
                             ));
                         }
-                        let value_type = self.check_expression(&args[0])?;
+                        let value_type = self.check_expression(&args[0].value)?;
                         if value_type != **element_type {
                             return Err(DiagnosticError::Type(
                                 format!("append() method expects value of type {:?}, got {:?}", element_type, value_type)
@@ -1448,8 +1455,8 @@ impl TypeChecker {
                                 "insert_at() method takes exactly two arguments".to_string()
                             ));
                         }
-                        let index_type = self.check_expression(&args[0])?;
-                        let value_type = self.check_expression(&args[1])?;
+                        let index_type = self.check_expression(&args[0].value)?;
+                        let value_type = self.check_expression(&args[1].value)?;
                         if index_type != HirType::Int32 {
                             return Err(DiagnosticError::Type(
                                 format!("insert_at() method expects i32 index, got {:?}", index_type)
@@ -1468,7 +1475,7 @@ impl TypeChecker {
                                 "remove_at() method takes exactly one argument".to_string()
                             ));
                         }
-                        let index_type = self.check_expression(&args[0])?;
+                        let index_type = self.check_expression(&args[0].value)?;
                         if index_type != HirType::Int32 {
                             return Err(DiagnosticError::Type(
                                 format!("remove_at() method expects i32 index, got {:?}", index_type)
@@ -1491,7 +1498,7 @@ impl TypeChecker {
                                 "contains() method takes exactly one argument".to_string()
                             ));
                         }
-                        let value_type = self.check_expression(&args[0])?;
+                        let value_type = self.check_expression(&args[0].value)?;
                         if value_type != **element_type {
                             return Err(DiagnosticError::Type(
                                 format!("contains() method expects value of type {:?}, got {:?}", element_type, value_type)
@@ -1505,7 +1512,7 @@ impl TypeChecker {
                                 "index_of() method takes exactly one argument".to_string()
                             ));
                         }
-                        let value_type = self.check_expression(&args[0])?;
+                        let value_type = self.check_expression(&args[0].value)?;
                         if value_type != **element_type {
                             return Err(DiagnosticError::Type(
                                 format!("index_of() method expects value of type {:?}, got {:?}", element_type, value_type)
@@ -1520,7 +1527,7 @@ impl TypeChecker {
                                 "count() method takes exactly one argument".to_string()
                             ));
                         }
-                        let value_type = self.check_expression(&args[0])?;
+                        let value_type = self.check_expression(&args[0].value)?;
                         if value_type != **element_type {
                             return Err(DiagnosticError::Type(
                                 format!("count() method expects value of type {:?}, got {:?}", element_type, value_type)
@@ -1534,8 +1541,8 @@ impl TypeChecker {
                                 "slice() method takes exactly two arguments".to_string()
                             ));
                         }
-                        let start_type = self.check_expression(&args[0])?;
-                        let end_type = self.check_expression(&args[1])?;
+                        let start_type = self.check_expression(&args[0].value)?;
+                        let end_type = self.check_expression(&args[1].value)?;
                         if start_type != HirType::Int32 {
                             return Err(DiagnosticError::Type(
                                 format!("slice() method expects i32 start index, got {:?}", start_type)
@@ -1555,7 +1562,7 @@ impl TypeChecker {
                                 "concat() method takes exactly one argument".to_string()
                             ));
                         }
-                        let other_type = self.check_expression(&args[0])?;
+                        let other_type = self.check_expression(&args[0].value)?;
                         match other_type {
                             HirType::List(other_element_type) if *other_element_type == **element_type => {
                                 Ok(HirType::List(element_type.clone()))
@@ -1573,7 +1580,7 @@ impl TypeChecker {
                         }
                         // For now, accept any function - in a more advanced type system,
                         // we'd check that it's a function T -> bool
-                        let _predicate_type = self.check_expression(&args[0])?;
+                        let _predicate_type = self.check_expression(&args[0].value)?;
                         Ok(HirType::Bool)
                     }
                     (HirType::List(_element_type), "any") => {
@@ -1584,7 +1591,7 @@ impl TypeChecker {
                         }
                         // For now, accept any function - in a more advanced type system,
                         // we'd check that it's a function T -> bool
-                        let _predicate_type = self.check_expression(&args[0])?;
+                        let _predicate_type = self.check_expression(&args[0].value)?;
                         Ok(HirType::Bool)
                     }
                     // String methods
@@ -1602,7 +1609,7 @@ impl TypeChecker {
                                 "concat() method takes exactly one argument".to_string()
                             ));
                         }
-                        let arg_type = self.check_expression(&args[0])?;
+                        let arg_type = self.check_expression(&args[0].value)?;
                         if arg_type != HirType::String {
                             return Err(DiagnosticError::Type(
                                 format!("concat() method expects string argument, got {:?}", arg_type)
@@ -1616,7 +1623,7 @@ impl TypeChecker {
                                 "contains() method takes exactly one argument".to_string()
                             ));
                         }
-                        let arg_type = self.check_expression(&args[0])?;
+                        let arg_type = self.check_expression(&args[0].value)?;
                         if arg_type != HirType::String {
                             return Err(DiagnosticError::Type(
                                 format!("contains() method expects string argument, got {:?}", arg_type)
@@ -1630,7 +1637,7 @@ impl TypeChecker {
                                 "starts_with() method takes exactly one argument".to_string()
                             ));
                         }
-                        let arg_type = self.check_expression(&args[0])?;
+                        let arg_type = self.check_expression(&args[0].value)?;
                         if arg_type != HirType::String {
                             return Err(DiagnosticError::Type(
                                 format!("starts_with() method expects string argument, got {:?}", arg_type)
@@ -1644,7 +1651,7 @@ impl TypeChecker {
                                 "ends_with() method takes exactly one argument".to_string()
                             ));
                         }
-                        let arg_type = self.check_expression(&args[0])?;
+                        let arg_type = self.check_expression(&args[0].value)?;
                         if arg_type != HirType::String {
                             return Err(DiagnosticError::Type(
                                 format!("ends_with() method expects string argument, got {:?}", arg_type)
@@ -1682,8 +1689,8 @@ impl TypeChecker {
                                 "replace() method takes exactly two arguments".to_string()
                             ));
                         }
-                        let from_type = self.check_expression(&args[0])?;
-                        let to_type = self.check_expression(&args[1])?;
+                        let from_type = self.check_expression(&args[0].value)?;
+                        let to_type = self.check_expression(&args[1].value)?;
                         if from_type != HirType::String || to_type != HirType::String {
                             return Err(DiagnosticError::Type(
                                 format!("replace() method expects two string arguments, got {:?} and {:?}", from_type, to_type)
@@ -1697,8 +1704,8 @@ impl TypeChecker {
                                 "replace_all() method takes exactly two arguments".to_string()
                             ));
                         }
-                        let from_type = self.check_expression(&args[0])?;
-                        let to_type = self.check_expression(&args[1])?;
+                        let from_type = self.check_expression(&args[0].value)?;
+                        let to_type = self.check_expression(&args[1].value)?;
                         if from_type != HirType::String || to_type != HirType::String {
                             return Err(DiagnosticError::Type(
                                 format!("replace_all() method expects two string arguments, got {:?} and {:?}", from_type, to_type)
@@ -1712,7 +1719,7 @@ impl TypeChecker {
                                 "split() method takes exactly one argument".to_string()
                             ));
                         }
-                        let arg_type = self.check_expression(&args[0])?;
+                        let arg_type = self.check_expression(&args[0].value)?;
                         if arg_type != HirType::String {
                             return Err(DiagnosticError::Type(
                                 format!("split() method expects string argument, got {:?}", arg_type)
@@ -1751,7 +1758,7 @@ impl TypeChecker {
                                 "get() method takes exactly one argument".to_string()
                             ));
                         }
-                        let arg_type = self.check_expression(&args[0])?;
+                        let arg_type = self.check_expression(&args[0].value)?;
                         if arg_type != **key_type {
                             return Err(DiagnosticError::Type(
                                 format!("get() method expects key of type {:?}, got {:?}", key_type, arg_type)
@@ -1765,13 +1772,13 @@ impl TypeChecker {
                                 "set() method takes exactly two arguments".to_string()
                             ));
                         }
-                        let key_arg_type = self.check_expression(&args[0])?;
+                        let key_arg_type = self.check_expression(&args[0].value)?;
                         if key_arg_type != **key_type {
                             return Err(DiagnosticError::Type(
                                 format!("set() method expects key of type {:?}, got {:?}", key_type, key_arg_type)
                             ));
                         }
-                        let value_arg_type = self.check_expression(&args[1])?;
+                        let value_arg_type = self.check_expression(&args[1].value)?;
                         if value_arg_type != **value_type {
                             return Err(DiagnosticError::Type(
                                 format!("set() method expects value of type {:?}, got {:?}", value_type, value_arg_type)
@@ -1785,7 +1792,7 @@ impl TypeChecker {
                                 "remove() method takes exactly one argument".to_string()
                             ));
                         }
-                        let arg_type = self.check_expression(&args[0])?;
+                        let arg_type = self.check_expression(&args[0].value)?;
                         if arg_type != **key_type {
                             return Err(DiagnosticError::Type(
                                 format!("remove() method expects key of type {:?}, got {:?}", key_type, arg_type)
@@ -1833,7 +1840,7 @@ impl TypeChecker {
                                 "has_key() method takes exactly one argument".to_string()
                             ));
                         }
-                        let arg_type = self.check_expression(&args[0])?;
+                        let arg_type = self.check_expression(&args[0].value)?;
                         if arg_type != **key_type {
                             return Err(DiagnosticError::Type(
                                 format!("has_key() method expects key of type {:?}, got {:?}", key_type, arg_type)
@@ -1847,7 +1854,7 @@ impl TypeChecker {
                                 "has_value() method takes exactly one argument".to_string()
                             ));
                         }
-                        let arg_type = self.check_expression(&args[0])?;
+                        let arg_type = self.check_expression(&args[0].value)?;
                         if arg_type != **value_type {
                             return Err(DiagnosticError::Type(
                                 format!("has_value() method expects value of type {:?}, got {:?}", value_type, arg_type)
@@ -1861,7 +1868,7 @@ impl TypeChecker {
                                 "merge() method takes exactly one argument".to_string()
                             ));
                         }
-                        let arg_type = self.check_expression(&args[0])?;
+                        let arg_type = self.check_expression(&args[0].value)?;
                         let expected_type = HirType::Dict(key_type.clone(), value_type.clone());
                         if arg_type != expected_type {
                             return Err(DiagnosticError::Type(
@@ -1876,13 +1883,13 @@ impl TypeChecker {
                                 "get_or() method takes exactly two arguments".to_string()
                             ));
                         }
-                        let key_arg_type = self.check_expression(&args[0])?;
+                        let key_arg_type = self.check_expression(&args[0].value)?;
                         if key_arg_type != **key_type {
                             return Err(DiagnosticError::Type(
                                 format!("get_or() method expects key of type {:?}, got {:?}", key_type, key_arg_type)
                             ));
                         }
-                        let default_arg_type = self.check_expression(&args[1])?;
+                        let default_arg_type = self.check_expression(&args[1].value)?;
                         if default_arg_type != **value_type {
                             return Err(DiagnosticError::Type(
                                 format!("get_or() method expects default value of type {:?}, got {:?}", value_type, default_arg_type)
@@ -1897,7 +1904,7 @@ impl TypeChecker {
                                 "add() method takes exactly one argument".to_string()
                             ));
                         }
-                        let value_type = self.check_expression(&args[0])?;
+                        let value_type = self.check_expression(&args[0].value)?;
                         if value_type != **element_type {
                             return Err(DiagnosticError::Type(
                                 format!("add() method expects value of type {:?}, got {:?}", element_type, value_type)
@@ -1911,7 +1918,7 @@ impl TypeChecker {
                                 "remove() method takes exactly one argument".to_string()
                             ));
                         }
-                        let value_type = self.check_expression(&args[0])?;
+                        let value_type = self.check_expression(&args[0].value)?;
                         if value_type != **element_type {
                             return Err(DiagnosticError::Type(
                                 format!("remove() method expects value of type {:?}, got {:?}", element_type, value_type)
@@ -1941,7 +1948,7 @@ impl TypeChecker {
                                 "contains() method takes exactly one argument".to_string()
                             ));
                         }
-                        let value_type = self.check_expression(&args[0])?;
+                        let value_type = self.check_expression(&args[0].value)?;
                         if value_type != **element_type {
                             return Err(DiagnosticError::Type(
                                 format!("contains() method expects value of type {:?}, got {:?}", element_type, value_type)
@@ -1955,7 +1962,7 @@ impl TypeChecker {
                                 "union() method takes exactly one argument".to_string()
                             ));
                         }
-                        let other_type = self.check_expression(&args[0])?;
+                        let other_type = self.check_expression(&args[0].value)?;
                         match other_type {
                             HirType::Set(other_element_type) if *other_element_type == **element_type => {
                                 Ok(HirType::Set(element_type.clone()))
@@ -1971,7 +1978,7 @@ impl TypeChecker {
                                 "intersection() method takes exactly one argument".to_string()
                             ));
                         }
-                        let other_type = self.check_expression(&args[0])?;
+                        let other_type = self.check_expression(&args[0].value)?;
                         match other_type {
                             HirType::Set(other_element_type) if *other_element_type == **element_type => {
                                 Ok(HirType::Set(element_type.clone()))
@@ -1987,7 +1994,7 @@ impl TypeChecker {
                                 "difference() method takes exactly one argument".to_string()
                             ));
                         }
-                        let other_type = self.check_expression(&args[0])?;
+                        let other_type = self.check_expression(&args[0].value)?;
                         match other_type {
                             HirType::Set(other_element_type) if *other_element_type == **element_type => {
                                 Ok(HirType::Set(element_type.clone()))
@@ -2003,7 +2010,7 @@ impl TypeChecker {
                                 "is_subset_of() method takes exactly one argument".to_string()
                             ));
                         }
-                        let other_type = self.check_expression(&args[0])?;
+                        let other_type = self.check_expression(&args[0].value)?;
                         match other_type {
                             HirType::Set(other_element_type) if *other_element_type == **element_type => {
                                 Ok(HirType::Bool)
@@ -2019,7 +2026,7 @@ impl TypeChecker {
                                 "is_superset_of() method takes exactly one argument".to_string()
                             ));
                         }
-                        let other_type = self.check_expression(&args[0])?;
+                        let other_type = self.check_expression(&args[0].value)?;
                         match other_type {
                             HirType::Set(other_element_type) if *other_element_type == **element_type => {
                                 Ok(HirType::Bool)
@@ -2035,7 +2042,7 @@ impl TypeChecker {
                                 "is_disjoint_from() method takes exactly one argument".to_string()
                             ));
                         }
-                        let other_type = self.check_expression(&args[0])?;
+                        let other_type = self.check_expression(&args[0].value)?;
                         match other_type {
                             HirType::Set(other_element_type) if *other_element_type == **element_type => {
                                 Ok(HirType::Bool)
@@ -2063,8 +2070,8 @@ impl TypeChecker {
                             }
 
                             // Check argument types
-                            for (i, (arg, expected_type)) in args.iter().zip(method_signature.params.iter()).enumerate() {
-                                let arg_type = self.check_expression(arg)?;
+                            for (i, (arg, (param_name, expected_type))) in args.iter().zip(method_signature.params.iter()).enumerate() {
+                                let arg_type = self.check_expression(&arg.value)?;
                                 if arg_type != *expected_type {
                                     return Err(DiagnosticError::Type(
                                         format!("Argument {} of method '{}::{}' has type {:?}, expected {:?}",
@@ -2109,7 +2116,7 @@ impl TypeChecker {
 
                 if enum_name == "Option" && variant == "Some" && args.len() == 1 {
                     // Option::Some(value) - infer T from value type
-                    let arg_type = self.check_expression(&args[0])?;
+                    let arg_type = self.check_expression(&args[0].value)?;
                     inferred_type_params.push(arg_type.clone());
 
                     // Check argument count
@@ -2130,7 +2137,7 @@ impl TypeChecker {
                     }
                 } else if enum_name == "Result" && variant == "Ok" && args.len() == 1 {
                     // Result::Ok(value) - infer T from value type
-                    let arg_type = self.check_expression(&args[0])?;
+                    let arg_type = self.check_expression(&args[0].value)?;
                     inferred_type_params.push(arg_type.clone());
                     inferred_type_params.push(HirType::Int32); // E defaults to I32
 
@@ -2141,7 +2148,7 @@ impl TypeChecker {
                     }
                 } else if enum_name == "Result" && variant == "Err" && args.len() == 1 {
                     // Result::Err(error) - infer E from error type
-                    let arg_type = self.check_expression(&args[0])?;
+                    let arg_type = self.check_expression(&args[0].value)?;
                     inferred_type_params.push(HirType::Int32); // T defaults to I32
                     inferred_type_params.push(arg_type.clone());
 
@@ -2162,7 +2169,7 @@ impl TypeChecker {
 
                     // Check argument types
                     for (i, (arg, expected_type)) in args.iter().zip(variant_fields.iter()).enumerate() {
-                        let arg_type = self.check_expression(arg)?;
+                        let arg_type = self.check_expression(&arg.value)?;
                         // For built-in generic types, skip type checking here as we handle it above
                         if !enum_info.type_params.is_empty() && *expected_type == HirType::Unit {
                             continue;
@@ -2455,13 +2462,18 @@ impl TypeChecker {
                     ));
                 }
 
-                // Check argument types
-                for (i, (arg, expected_type)) in args.iter().zip(parent_method_signature.params.iter()).enumerate() {
-                    let arg_type = self.check_expression(arg)?;
-                    if arg_type != *expected_type {
+                // Validate named arguments match parameter names and types
+                for arg in args {
+                    let param = parent_method_signature.params.iter()
+                        .find(|(param_name, _)| param_name == &arg.name)
+                        .ok_or_else(|| DiagnosticError::Type(
+                            format!("Super method '{}' has no parameter named '{}'", method, arg.name)
+                        ))?;
+
+                    let arg_type = self.check_expression(&arg.value)?;
+                    if arg_type != param.1 {
                         return Err(DiagnosticError::Type(
-                            format!("Argument {} of super method '{}' has type {:?}, expected {:?}",
-                                   i + 1, method, arg_type, expected_type)
+                            format!("Super method '{}' parameter '{}' expects type {:?}, got {:?}", method, arg.name, param.1, arg_type)
                         ));
                     }
                 }
@@ -3054,7 +3066,7 @@ impl TypeSubstitutable for FunctionSignature {
     fn substitute_types(&self, substitution: &TypeSubstitution) -> Self {
         FunctionSignature {
             type_params: self.type_params.clone(), // Type params don't need substitution
-            params: self.params.iter().map(|t| t.substitute_types(substitution)).collect(),
+            params: self.params.iter().map(|(name, ty)| (name.clone(), ty.substitute_types(substitution))).collect(),
             return_type: self.return_type.substitute_types(substitution),
             is_mutable: self.is_mutable,
         }
@@ -3234,8 +3246,8 @@ impl Monomorphizer {
         self.specialization_counter += 1;
 
         // Create specialized function signature
-        let specialized_params: Vec<HirType> = func_sig.params.iter()
-            .map(|ty| ty.substitute_types(&substitution))
+        let specialized_params: Vec<(String, HirType)> = func_sig.params.iter()
+            .map(|(name, ty)| (name.clone(), ty.substitute_types(&substitution)))
             .collect();
 
         let specialized_return = func_sig.return_type.substitute_types(&substitution);

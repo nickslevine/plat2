@@ -2096,7 +2096,7 @@ impl CodeGenerator {
                 // Evaluate arguments
                 let mut arg_values = Vec::new();
                 for arg in args {
-                    let arg_val = Self::generate_expression_helper(builder, arg, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
+                    let arg_val = Self::generate_expression_helper(builder, &arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
                     arg_values.push(arg_val);
                 }
 
@@ -2261,7 +2261,7 @@ impl CodeGenerator {
                         }
 
                         let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
-                        let arg_val = Self::generate_expression_helper(builder, &args[0], variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
+                        let arg_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
 
                         let func_sig = {
                             let mut sig = module.make_signature();
@@ -2285,14 +2285,14 @@ impl CodeGenerator {
                         }
 
                         let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
-                        let arg_val = Self::generate_expression_helper(builder, &args[0], variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
+                        let arg_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
 
                         // Determine object type for dispatch
                         let is_set = Self::is_set_type(object, variable_types);
 
                         if is_set {
                             // Set contains
-                            let value_type = Self::get_set_value_type(&args[0], variable_types);
+                            let value_type = Self::get_set_value_type(&args[0].value, variable_types);
 
                             let func_sig = {
                                 let mut sig = module.make_signature();
@@ -2343,7 +2343,7 @@ impl CodeGenerator {
                         }
 
                         let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
-                        let arg_val = Self::generate_expression_helper(builder, &args[0], variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
+                        let arg_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
 
                         let func_sig = {
                             let mut sig = module.make_signature();
@@ -2391,8 +2391,8 @@ impl CodeGenerator {
                         }
 
                         let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
-                        let from_val = Self::generate_expression_helper(builder, &args[0], variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
-                        let to_val = Self::generate_expression_helper(builder, &args[1], variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
+                        let from_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
+                        let to_val = Self::generate_expression_helper(builder, &args[1].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
 
                         let func_sig = {
                             let mut sig = module.make_signature();
@@ -2418,7 +2418,7 @@ impl CodeGenerator {
                         }
 
                         let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
-                        let delimiter_val = Self::generate_expression_helper(builder, &args[0], variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
+                        let delimiter_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
 
                         let func_sig = {
                             let mut sig = module.make_signature();
@@ -2466,7 +2466,7 @@ impl CodeGenerator {
                         }
 
                         let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
-                        let index_val = Self::generate_expression_helper(builder, &args[0], variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
+                        let index_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
 
                         let func_sig = {
                             let mut sig = module.make_signature();
@@ -2500,8 +2500,8 @@ impl CodeGenerator {
                         }
 
                         let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
-                        let index_val = Self::generate_expression_helper(builder, &args[0], variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
-                        let value_val = Self::generate_expression_helper(builder, &args[1], variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
+                        let index_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
+                        let value_val = Self::generate_expression_helper(builder, &args[1].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
 
                         // Convert value to i64 if needed
                         let value_64 = if builder.func.dfg.value_type(value_val) == I32 {
@@ -2535,7 +2535,7 @@ impl CodeGenerator {
                         }
 
                         let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
-                        let value_val = Self::generate_expression_helper(builder, &args[0], variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
+                        let value_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
 
                         // Convert value to i64 if needed
                         let value_64 = if builder.func.dfg.value_type(value_val) == I32 {
@@ -2568,8 +2568,8 @@ impl CodeGenerator {
                         }
 
                         let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
-                        let index_val = Self::generate_expression_helper(builder, &args[0], variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
-                        let value_val = Self::generate_expression_helper(builder, &args[1], variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
+                        let index_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
+                        let value_val = Self::generate_expression_helper(builder, &args[1].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
 
                         // Convert value to i64 if needed
                         let value_64 = if builder.func.dfg.value_type(value_val) == I32 {
@@ -2603,7 +2603,7 @@ impl CodeGenerator {
                         }
 
                         let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
-                        let index_val = Self::generate_expression_helper(builder, &args[0], variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
+                        let index_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
 
                         let func_sig = {
                             let mut sig = module.make_signature();
@@ -2699,7 +2699,7 @@ impl CodeGenerator {
                         }
 
                         let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
-                        let value_val = Self::generate_expression_helper(builder, &args[0], variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
+                        let value_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
 
                         // Convert value to i64 if needed
                         let value_64 = if builder.func.dfg.value_type(value_val) == I32 {
@@ -2740,7 +2740,7 @@ impl CodeGenerator {
                         }
 
                         let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
-                        let value_val = Self::generate_expression_helper(builder, &args[0], variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
+                        let value_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
 
                         // Convert value to i64 if needed
                         let value_64 = if builder.func.dfg.value_type(value_val) == I32 {
@@ -2771,8 +2771,8 @@ impl CodeGenerator {
                         }
 
                         let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
-                        let start_val = Self::generate_expression_helper(builder, &args[0], variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
-                        let end_val = Self::generate_expression_helper(builder, &args[1], variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
+                        let start_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
+                        let end_val = Self::generate_expression_helper(builder, &args[1].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
 
                         let func_sig = {
                             let mut sig = module.make_signature();
@@ -2846,7 +2846,7 @@ impl CodeGenerator {
                                 }
 
                                 let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
-                                let key_val = Self::generate_expression_helper(builder, &args[0], variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
+                                let key_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
 
                                 let func_sig = {
                                     let mut sig = module.make_signature();
@@ -2870,11 +2870,11 @@ impl CodeGenerator {
                                 }
 
                                 let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
-                                let key_val = Self::generate_expression_helper(builder, &args[0], variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
-                                let value_val = Self::generate_expression_helper(builder, &args[1], variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
+                                let key_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
+                                let value_val = Self::generate_expression_helper(builder, &args[1].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
 
                                 // Determine value type
-                                let value_type = Self::get_dict_value_type(&args[1], variable_types);
+                                let value_type = Self::get_dict_value_type(&args[1].value, variable_types);
 
                                 let func_sig = {
                                     let mut sig = module.make_signature();
@@ -2901,7 +2901,7 @@ impl CodeGenerator {
                                 }
 
                                 let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
-                                let key_val = Self::generate_expression_helper(builder, &args[0], variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
+                                let key_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
 
                                 let func_sig = {
                                     let mut sig = module.make_signature();
@@ -3012,7 +3012,7 @@ impl CodeGenerator {
                                 }
 
                                 let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
-                                let key_val = Self::generate_expression_helper(builder, &args[0], variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
+                                let key_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
 
                                 let func_sig = {
                                     let mut sig = module.make_signature();
@@ -3036,10 +3036,10 @@ impl CodeGenerator {
                                 }
 
                                 let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
-                                let value_val = Self::generate_expression_helper(builder, &args[0], variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
+                                let value_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
 
                                 // Determine value type
-                                let value_type = Self::get_dict_value_type(&args[0], variable_types);
+                                let value_type = Self::get_dict_value_type(&args[0].value, variable_types);
 
                                 let func_sig = {
                                     let mut sig = module.make_signature();
@@ -3065,7 +3065,7 @@ impl CodeGenerator {
                                 }
 
                                 let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
-                                let other_val = Self::generate_expression_helper(builder, &args[0], variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
+                                let other_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
 
                                 let func_sig = {
                                     let mut sig = module.make_signature();
@@ -3088,8 +3088,8 @@ impl CodeGenerator {
                                 }
 
                                 let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
-                                let key_val = Self::generate_expression_helper(builder, &args[0], variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
-                                let default_val = Self::generate_expression_helper(builder, &args[1], variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
+                                let key_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
+                                let default_val = Self::generate_expression_helper(builder, &args[1].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
 
                                 let func_sig = {
                                     let mut sig = module.make_signature();
@@ -3120,10 +3120,10 @@ impl CodeGenerator {
                                 }
 
                                 let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
-                                let value_val = Self::generate_expression_helper(builder, &args[0], variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
+                                let value_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
 
                                 // Determine value type
-                                let value_type = Self::get_set_value_type(&args[0], variable_types);
+                                let value_type = Self::get_set_value_type(&args[0].value, variable_types);
 
                                 let func_sig = {
                                     let mut sig = module.make_signature();
@@ -3157,7 +3157,7 @@ impl CodeGenerator {
                                 }
 
                                 let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
-                                let other_val = Self::generate_expression_helper(builder, &args[0], variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
+                                let other_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
 
                                 let func_sig = {
                                     let mut sig = module.make_signature();
@@ -3182,7 +3182,7 @@ impl CodeGenerator {
                                 }
 
                                 let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
-                                let other_val = Self::generate_expression_helper(builder, &args[0], variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
+                                let other_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
 
                                 let func_sig = {
                                     let mut sig = module.make_signature();
@@ -3219,7 +3219,7 @@ impl CodeGenerator {
                         let mut call_args = vec![object_val]; // Start with self
                         for (i, arg) in args.iter().enumerate() {
                             eprintln!("DEBUG: Processing argument {} of type {:?}", i, arg);
-                            let arg_val = Self::generate_expression_helper(builder, arg, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
+                            let arg_val = Self::generate_expression_helper(builder, &arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
                             call_args.push(arg_val);
                         }
 
@@ -3312,10 +3312,10 @@ impl CodeGenerator {
                 } else if args.len() == 1 {
                     // Check if the argument is a pointer type (String, Array, etc.)
                     // that cannot be packed into 32 bits
-                    let arg_val = Self::generate_expression_helper(builder, &args[0], variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
+                    let arg_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
 
                     // Determine if we need heap allocation based on the argument type
-                    let needs_heap = match &args[0] {
+                    let needs_heap = match &args[0].value {
                         Expression::Literal(Literal::String(_, _)) => true,
                         Expression::Literal(Literal::InterpolatedString(_, _)) => true,
                         Expression::Literal(Literal::Array(_, _)) => true,
@@ -3396,7 +3396,7 @@ impl CodeGenerator {
 
                     // Store each field
                     for (i, arg) in args.iter().enumerate() {
-                        let arg_val = Self::generate_expression_helper(builder, arg, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
+                        let arg_val = Self::generate_expression_helper(builder, &arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
                         let offset = 4 + (i * 4) as i32; // discriminant + field index * field_size
                         builder.ins().store(MemFlags::new(), arg_val, ptr, offset);
                     }

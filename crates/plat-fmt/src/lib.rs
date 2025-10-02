@@ -479,7 +479,9 @@ impl Formatter {
                     if i > 0 {
                         self.write(", ");
                     }
-                    self.format_expression(arg);
+                    self.write(&arg.name);
+                    self.write(" = ");
+                    self.format_expression(&arg.value);
                 }
                 self.write(")");
             }
@@ -503,7 +505,9 @@ impl Formatter {
                     if i > 0 {
                         self.write(", ");
                     }
-                    self.format_expression(arg);
+                    self.write(&arg.name);
+                    self.write(" = ");
+                    self.format_expression(&arg.value);
                 }
                 self.write(")");
             }
@@ -520,7 +524,9 @@ impl Formatter {
                         if i > 0 {
                             self.write(", ");
                         }
-                        self.format_expression(arg);
+                        self.write(&arg.name);
+                        self.write(" = ");
+                        self.format_expression(&arg.value);
                     }
                     self.write(")");
                 }
@@ -574,7 +580,9 @@ impl Formatter {
                     if i > 0 {
                         self.write(", ");
                     }
-                    self.format_expression(arg);
+                    self.write(&arg.name);
+                    self.write(" = ");
+                    self.format_expression(&arg.value);
                 }
                 self.write(")");
             }
