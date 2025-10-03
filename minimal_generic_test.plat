@@ -7,5 +7,5 @@ class Vector<T> {
 }
 
 fn main() {
-  print("test");
+  print(value = "test");
 }

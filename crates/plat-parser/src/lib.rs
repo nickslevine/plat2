@@ -787,20 +787,12 @@ impl Parser {
                     self.consume(Token::RightParen, "Expected ')' after arguments")?;
                     let end = self.previous_span().end;
 
-                    // Check if it's a constructor call (TitleCase identifier)
-                    if name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
-                        expr = Expression::ConstructorCall {
-                            class_name: name,
-                            args,
-                            span: Span::new(span.start, end),
-                        };
-                    } else {
-                        expr = Expression::Call {
-                            function: name,
-                            args,
-                            span: Span::new(span.start, end),
-                        };
-                    }
+                    // Regular function call (constructors now use Type.init() syntax)
+                    expr = Expression::Call {
+                        function: name,
+                        args,
+                        span: Span::new(span.start, end),
+                    };
                 } else {
                     return Err(DiagnosticError::Syntax(
                         "Can only call functions".to_string()
@@ -817,10 +809,35 @@ impl Parser {
                     span: Span::new(start, end),
                 };
             } else if self.match_token(&Token::Dot) {
-                let member = self.consume_identifier("Expected member name after '.'")?;
+                // Handle init keyword specially since it's a reserved token
+                let member = if self.check(&Token::Init) {
+                    self.advance();
+                    "init".to_string()
+                } else {
+                    self.consume_identifier("Expected member name after '.'")?
+                };
 
                 if self.match_token(&Token::LeftParen) {
-                    // Method call - now with named arguments
+                    // Check if this is a constructor call (Type.init())
+                    if member == "init" {
+                        if let Expression::Identifier { ref name, span } = expr {
+                            if name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) {
+                                // Constructor call: Type.init(args)
+                                let class_name = name.clone();
+                                let args = self.parse_named_arguments()?;
+                                self.consume(Token::RightParen, "Expected ')' after constructor arguments")?;
+                                let end = self.previous_span().end;
+                                expr = Expression::ConstructorCall {
+                                    class_name,
+                                    args,
+                                    span: Span::new(span.start, end),
+                                };
+                                continue;
+                            }
+                        }
+                    }
+
+                    // Regular method call - now with named arguments
                     let args = self.parse_named_arguments()?;
                     self.consume(Token::RightParen, "Expected ')' after method arguments")?;
                     let end = self.previous_span().end;

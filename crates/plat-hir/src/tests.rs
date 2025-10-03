@@ -911,7 +911,7 @@ mod tests {
             }
 
             fn main() -> Int32 {
-                let animal: Animal = Dog(species = "Canine", breed = "Golden");
+                let animal: Animal = Dog.init(species = "Canine", breed = "Golden");
                 print(value = "Animal created");
                 return 0;
             }
@@ -946,7 +946,7 @@ mod tests {
             }
 
             fn main() -> Int32 {
-                var animal: Animal = Cat(name = "Whiskers");
+                var animal: Animal = Cat.init(name = "Whiskers");
                 print(value = "Cat created as Animal");
                 return 0;
             }
@@ -986,8 +986,8 @@ mod tests {
             }
 
             fn main() -> Int32 {
-                let animal: Animal = Dog(name = "Rex");
-                let mammal: Mammal = Dog(name = "Spot");
+                let animal: Animal = Dog.init(name = "Rex");
+                let mammal: Mammal = Dog.init(name = "Spot");
                 print(value = "Transitive inheritance works!");
                 return 0;
             }
@@ -1031,8 +1031,8 @@ mod tests {
             }
 
             fn main() -> Int32 {
-                let dog = Dog(name = "Buddy");
-                let container = AnimalContainer(animal = dog);
+                let dog = Dog.init(name = "Buddy");
+                let container = AnimalContainer.init(animal = dog);
                 print(value = "Dog stored in Animal field");
                 return 0;
             }
@@ -1067,7 +1067,7 @@ mod tests {
             }
 
             fn main() -> Int32 {
-                let dog: Dog = Animal(name = "Generic");
+                let dog: Dog = Animal.init(name = "Generic");
                 return 0;
             }
         "#;
@@ -1099,7 +1099,7 @@ mod tests {
             }
 
             fn main() -> Int32 {
-                let animal: Animal = Vehicle(model = "Car");
+                let animal: Animal = Vehicle.init(model = "Car");
                 return 0;
             }
         "#;
@@ -1140,8 +1140,8 @@ mod tests {
             }
 
             fn main() -> Int32 {
-                var animal: Animal = Dog(name = "Buddy");
-                animal = Cat(name = "Whiskers");
+                var animal: Animal = Dog.init(name = "Buddy");
+                animal = Cat.init(name = "Whiskers");
                 print(value = "Can reassign different derived types to base type variable");
                 return 0;
             }

@@ -10,7 +10,7 @@ class Point {
     return self;
   }
   fn add(other: Point) -> Point {
-    return Point(x = self.x + other.x, y = self.y + other.y, name = "sum");
+    return Point.init(x = self.x + other.x, y = self.y + other.y, name = "sum");
   }
   fn change_name(new_name: String) {
     self.name = new_name;
@@ -34,14 +34,14 @@ class Vector<T> {
 }
 
 fn main() {
-  let p1 = Point(x = 10, y = 20, name = "first");
-  let p2 = Point(x = 5, y = 15, name = "second");
-  let sum = p1.add(p2);
-  print("Point 1: (${p1.x}, ${p1.y}) named '${p1.name}'");
-  print("Point 2: (${p2.x}, ${p2.y}) named '${p2.name}'");
-  print("Sum: (${sum.x}, ${sum.y}) named '${sum.name}'");
-  sum.change_name("result");
-  print("Sum after rename: (${sum.x}, ${sum.y}) named '${sum.name}'");
+  let p1 = Point.init(x = 10, y = 20, name = "first");
+  let p2 = Point.init(x = 5, y = 15, name = "second");
+  let sum = p1.add(other = p2);
+  print(value = "Point 1: (${p1.x}, ${p1.y}) named '${p1.name}'");
+  print(value = "Point 2: (${p2.x}, ${p2.y}) named '${p2.name}'");
+  print(value = "Sum: (${sum.x}, ${sum.y}) named '${sum.name}'");
+  sum.change_name(new_name = "result");
+  print(value = "Sum after rename: (${sum.x}, ${sum.y}) named '${sum.name}'");
   let magnitude = p1.get_magnitude();
-  print("P1 magnitude: ${magnitude}");
+  print(value = "P1 magnitude: ${magnitude}");
 }

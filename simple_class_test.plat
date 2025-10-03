@@ -14,7 +14,7 @@ class Point {
 }
 
 fn main() {
-  let p1 = Point(x = 10, y = 20);
+  let p1 = Point.init(x = 10, y = 20);
   let magnitude = p1.get_magnitude();
-  print("Magnitude: ${magnitude}");
+  print(value = "Magnitude: ${magnitude}");
 }

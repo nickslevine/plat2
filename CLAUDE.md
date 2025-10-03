@@ -172,7 +172,7 @@ class Point {
 }
 
 fn main() -> Int32 {
-  let p = Point(x = 10, y = 20);  // Default constructor
+  let p = Point.init(x = 10, y = 20);  // Constructor call
   print(value = "Point created!");  // Named argument required
   return p.x;
 }
@@ -261,7 +261,7 @@ class Point {
   let y: Int32;
 
   fn add(other: Point) -> Point {
-    return Point(x = self.x + other.x, y = self.y + other.y);
+    return Point.init(x = self.x + other.x, y = self.y + other.y);
   }
 
   fn magnitude() -> Int32 {
@@ -271,21 +271,21 @@ class Point {
 
 test "point operations" {
   fn test_addition() {
-    let p1 = Point(x = 1, y = 2);
-    let p2 = Point(x = 2, y = 4);
+    let p1 = Point.init(x = 1, y = 2);
+    let p2 = Point.init(x = 2, y = 4);
     let p3 = p1.add(other = p2);
     assert(condition = p3.x == 3, message = "X coordinate should be 3");
     assert(condition = p3.y == 6, message = "Y coordinate should be 6");
   }
 
   fn test_magnitude() {
-    let p = Point(x = 3, y = 4);
+    let p = Point.init(x = 3, y = 4);
     assert(condition = p.magnitude() == 25, message = "3² + 4² = 25");
   }
 
   // Helper function (not a test, doesn't start with test_)
   fn create_origin() -> Point {
-    return Point(x = 0, y = 0);
+    return Point.init(x = 0, y = 0);
   }
 
   fn test_origin_magnitude() {
@@ -295,7 +295,7 @@ test "point operations" {
 }
 
 fn main() -> Int32 {
-  let p = Point(x = 5, y = 10);
+  let p = Point.init(x = 5, y = 10);
   print(value = "Point created!");
   return 0;
 }
@@ -319,7 +319,7 @@ class Point {
   let y: Int32;
 
   fn add(other: Point) -> Point {
-    return Point(x = self.x + other.x, y = self.y + other.y);
+    return Point.init(x = self.x + other.x, y = self.y + other.y);
   }
 
   fn magnitude() -> Int32 {
@@ -330,16 +330,16 @@ class Point {
 bench "point operations" {
   // Helper function (not a benchmark, doesn't start with bench_)
   fn create_test_point() -> Point {
-    return Point(x = 42, y = 84);
+    return Point.init(x = 42, y = 84);
   }
 
   fn bench_point_creation() {
-    let p = Point(x = 10, y = 20);
+    let p = Point.init(x = 10, y = 20);
   }
 
   fn bench_point_addition() {
-    let p1 = Point(x = 1, y = 2);
-    let p2 = Point(x = 3, y = 4);
+    let p1 = Point.init(x = 1, y = 2);
+    let p2 = Point.init(x = 3, y = 4);
     let p3 = p1.add(other = p2);
   }
 
@@ -350,7 +350,7 @@ bench "point operations" {
 }
 
 fn main() -> Int32 {
-  let p = Point(x = 5, y = 10);
+  let p = Point.init(x = 5, y = 10);
   return 0;
 }
 ```

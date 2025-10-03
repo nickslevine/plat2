@@ -3,7 +3,6 @@
   * minimize panics. 
   * use result/option where it makes sense. 
   * ? operator. 
-
 * beautiful error messages (ariadne)
 * modules
   * private vs public. 
@@ -13,7 +12,6 @@
   * test filtering 
   * conditional compilation
   * don't fail fast - run all tests
-* benchmarking
 * visibility 
 * parallel loops
 * blas
@@ -24,11 +22,9 @@
   * rate limiting, backoff etc
 * caching
 * cli/tui framework
-* logging package
 * get rid of integer exit codes. 
 * type casting (especially with numeric types)
 * serde etc. 
-* json, etc. 
 * pipeline operator? 
 * functional programming, pipelines
 * lambdas 
@@ -37,6 +33,9 @@
 * overflow / underflow handling 
 * objects: member access
 
+* plat stdlib
+  * logging package
+  * json, etc
 --- 
 * plat cli niceties
   * spinner

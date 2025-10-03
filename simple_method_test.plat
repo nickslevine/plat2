@@ -13,7 +13,7 @@ class Point {
 }
 
 fn main() {
-  let p1 = Point(x = 10, name = "first");
-  p1.change_name("changed");
-  print("Done");
+  let p1 = Point.init(x = 10, name = "first");
+  p1.change_name(new_name = "changed");
+  print(value = "Done");
 }
