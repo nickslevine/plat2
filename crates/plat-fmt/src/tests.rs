@@ -242,9 +242,9 @@ fn main() {
 
     #[test]
     fn test_format_empty_return() {
-        let input = r#"fn test(){return;}"#;
+        let input = r#"fn my_func(){return;}"#;
 
-        let expected = r#"fn test() {
+        let expected = r#"fn my_func() {
   return;
 }
 "#;

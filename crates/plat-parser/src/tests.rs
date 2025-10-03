@@ -639,7 +639,7 @@ mod tests {
     #[test]
     fn test_range_expression() {
         let input = r#"
-            fn test() {
+            fn my_func() {
                 let x = 0..5;
                 let y = 10..=20;
             }

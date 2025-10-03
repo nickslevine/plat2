@@ -384,10 +384,10 @@ mod tests {
     #[test]
     fn test_function_duplicate_definition() {
         let input = r#"
-            fn test() {
+            fn my_func() {
             }
 
-            fn test() {
+            fn my_func() {
             }
 
             fn main() {
@@ -431,13 +431,13 @@ mod tests {
     #[test]
     fn test_parameter_scoping() {
         let input = r#"
-            fn test(x: Int32, y: Int32) -> Int32 {
+            fn my_func(x: Int32, y: Int32) -> Int32 {
                 let z = x + y;
                 return z;
             }
 
             fn main() {
-                let result = test(x = 5, y = 10);
+                let result = my_func(x = 5, y = 10);
             }
         "#;
 
@@ -447,7 +447,7 @@ mod tests {
     #[test]
     fn test_duplicate_parameters() {
         let input = r#"
-            fn test(x: Int32, x: Int32) -> Int32 {
+            fn my_func(x: Int32, x: Int32) -> Int32 {
                 return x;
             }
 
