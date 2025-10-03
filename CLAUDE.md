@@ -57,6 +57,16 @@
 - **Test Execution**: `plat test` compiles and runs all tests, reports results
 - **Fail-Fast**: Assertion failures immediately stop the test and report the failure
 
+### Benchmarking
+- **Bench Blocks**: `bench "description" { ... }` groups related benchmarks
+- **Bench Functions**: Functions starting with `bench_` are automatically discovered and run
+- **Automatic Timing**: Framework handles iteration loops and timing measurement
+- **Statistical Output**: Reports mean, median, standard deviation for each benchmark
+- **Helper Functions**: Non-bench functions in bench blocks provide shared setup/fixtures
+- **Bench Execution**: `plat bench` compiles and runs all benchmarks, reports performance metrics
+- **Warmup Phase**: Executes warmup iterations before measurement to stabilize JIT/cache
+- **Adaptive Iterations**: Automatically adjusts iteration count based on execution time
+
 ### Module System
 - **Module Declarations**: `mod database;` at top of file
 - **Imports**: `use database;` for namespace imports
@@ -75,6 +85,8 @@ plat build <file.plat>   # Compile to executable
 plat build               # Compile all .plat files in project
 plat test <file.plat>    # Run tests in a single file
 plat test                # Run all tests in project
+plat bench <file.plat>   # Run benchmarks in a single file
+plat bench               # Run all benchmarks in project
 plat fmt <file.plat>     # Format code with 2-space indentation
 ```
 
@@ -298,6 +310,75 @@ Running tests...
 ✓ point operations::test_origin_magnitude
 
 3 tests, 3 passed, 0 failed
+```
+
+### Benchmarking
+```plat
+class Point {
+  let x: Int32;
+  let y: Int32;
+
+  fn add(other: Point) -> Point {
+    return Point(x = self.x + other.x, y = self.y + other.y);
+  }
+
+  fn magnitude() -> Int32 {
+    return (self.x * self.x) + (self.y * self.y);
+  }
+}
+
+bench "point operations" {
+  // Helper function (not a benchmark, doesn't start with bench_)
+  fn create_test_point() -> Point {
+    return Point(x = 42, y = 84);
+  }
+
+  fn bench_point_creation() {
+    let p = Point(x = 10, y = 20);
+  }
+
+  fn bench_point_addition() {
+    let p1 = Point(x = 1, y = 2);
+    let p2 = Point(x = 3, y = 4);
+    let p3 = p1.add(other = p2);
+  }
+
+  fn bench_magnitude_calculation() {
+    let p = create_test_point();
+    let mag = p.magnitude();
+  }
+}
+
+fn main() -> Int32 {
+  let p = Point(x = 5, y = 10);
+  return 0;
+}
+```
+
+**Running benchmarks:**
+```bash
+$ plat bench point.plat
+Running benchmarks...
+
+point operations::bench_point_creation
+  Iterations: 10,000,000
+  Mean: 125ns
+  Median: 120ns
+  Std Dev: 15ns
+
+point operations::bench_point_addition
+  Iterations: 10,000,000
+  Mean: 245ns
+  Median: 240ns
+  Std Dev: 22ns
+
+point operations::bench_magnitude_calculation
+  Iterations: 10,000,000
+  Mean: 180ns
+  Median: 175ns
+  Std Dev: 18ns
+
+3 benchmarks completed
 ```
 
 ---

@@ -77,6 +77,7 @@ pub struct CodeGenerator {
     type_aliases: HashMap<String, AstType>, // Type aliases resolved from program
     newtypes: HashMap<String, AstType>, // Newtypes map to their underlying type
     test_mode: bool, // Whether we're in test mode
+    bench_mode: bool, // Whether we're in bench mode
 }
 
 impl CodeGenerator {
@@ -375,12 +376,19 @@ impl CodeGenerator {
             type_aliases: HashMap::new(),
             newtypes: HashMap::new(),
             test_mode: false,
+            bench_mode: false,
         })
     }
 
     /// Enable test mode for this code generator
     pub fn with_test_mode(mut self) -> Self {
         self.test_mode = true;
+        self
+    }
+
+    /// Enable bench mode for this code generator
+    pub fn with_bench_mode(mut self) -> Self {
+        self.bench_mode = true;
         self
     }
 
@@ -699,6 +707,15 @@ impl CodeGenerator {
             }
         }
 
+        // Declare bench functions (only in bench mode)
+        if self.bench_mode {
+            for bench_block in &program.bench_blocks {
+                for function in &bench_block.functions {
+                    self.declare_function(function)?;
+                }
+            }
+        }
+
         // Generate vtables for classes with virtual methods
         self.generate_vtables(program)?;
 
@@ -727,6 +744,15 @@ impl CodeGenerator {
         if self.test_mode {
             for test_block in &program.test_blocks {
                 for function in &test_block.functions {
+                    self.generate_function(function)?;
+                }
+            }
+        }
+
+        // Generate code for bench functions (only in bench mode)
+        if self.bench_mode {
+            for bench_block in &program.bench_blocks {
+                for function in &bench_block.functions {
                     self.generate_function(function)?;
                 }
             }

@@ -30,6 +30,7 @@ pub enum Token {
     Type,
     Newtype,
     Test,
+    Bench,
 
     // Identifiers and literals
     Ident(String),
@@ -120,6 +121,7 @@ impl Token {
             "type" => Some(Token::Type),
             "newtype" => Some(Token::Newtype),
             "test" => Some(Token::Test),
+            "bench" => Some(Token::Bench),
             "and" => Some(Token::And),
             "or" => Some(Token::Or),
             "not" => Some(Token::Not),

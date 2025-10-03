@@ -129,6 +129,7 @@ pub struct TypeChecker {
     module_table: ModuleSymbolTable, // Module-aware symbol table
     require_main: bool, // Whether to require a main function (false for library modules)
     test_mode: bool, // Whether we're in test mode (compiling tests)
+    bench_mode: bool, // Whether we're in bench mode (compiling benchmarks)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -214,6 +215,7 @@ impl TypeChecker {
             module_table: ModuleSymbolTable::new(module_path),
             require_main: true, // Default: require main function
             test_mode: false, // Default: not in test mode
+            bench_mode: false, // Default: not in bench mode
         };
 
         // Register built-in Option<T> type
@@ -242,6 +244,7 @@ impl TypeChecker {
             module_table,
             require_main: false, // Multi-module: don't require main in every module
             test_mode: false, // Default: not in test mode
+            bench_mode: false, // Default: not in bench mode
         };
 
         // Register built-in Option<T> type
@@ -260,6 +263,12 @@ impl TypeChecker {
     pub fn with_test_mode(mut self) -> Self {
         self.test_mode = true;
         self.require_main = false; // Tests don't need main function
+        self
+    }
+
+    pub fn with_bench_mode(mut self) -> Self {
+        self.bench_mode = true;
+        self.require_main = false; // Benchmarks don't need main function
         self
     }
 
@@ -339,6 +348,34 @@ impl TypeChecker {
         if self.test_mode {
             for test_block in &program.test_blocks {
                 for func in &test_block.functions {
+                    // Build function signature
+                    let params: Result<Vec<(String, HirType)>, _> = func.params.iter()
+                        .map(|p| Ok((p.name.clone(), self.ast_type_to_hir_type(&p.ty)?)))
+                        .collect();
+                    let params = params?;
+
+                    let return_type = if let Some(ref rt) = func.return_type {
+                        self.ast_type_to_hir_type(rt)?
+                    } else {
+                        HirType::Unit
+                    };
+
+                    let sig = FunctionSignature {
+                        type_params: func.type_params.clone(),
+                        params,
+                        return_type,
+                        is_mutable: func.is_mutable,
+                    };
+
+                    global_symbols.register(&func.name, Symbol::Function(sig));
+                }
+            }
+        }
+
+        // Collect bench functions if in bench mode
+        if self.bench_mode {
+            for bench_block in &program.bench_blocks {
+                for func in &bench_block.functions {
                     // Build function signature
                     let params: Result<Vec<(String, HirType)>, _> = func.params.iter()
                         .map(|p| Ok((p.name.clone(), self.ast_type_to_hir_type(&p.ty)?)))
@@ -517,6 +554,15 @@ impl TypeChecker {
             }
         }
 
+        // Collect bench function signatures if in bench mode
+        if self.bench_mode {
+            for bench_block in &program.bench_blocks {
+                for function in &bench_block.functions {
+                    self.collect_function_signature(function)?;
+                }
+            }
+        }
+
         // Collect enum method signatures
         for enum_decl in &program.enums {
             for method in &enum_decl.methods {
@@ -574,6 +620,13 @@ impl TypeChecker {
         if self.test_mode {
             for test_block in &program.test_blocks {
                 self.check_test_block(test_block)?;
+            }
+        }
+
+        // Type check bench blocks (only in bench mode)
+        if self.bench_mode {
+            for bench_block in &program.bench_blocks {
+                self.check_bench_block(bench_block)?;
             }
         }
 
@@ -3132,6 +3185,33 @@ impl TypeChecker {
                 if function.return_type.is_some() {
                     return Err(DiagnosticError::Type(
                         format!("Test function '{}' must not have a return type", function.name)
+                    ));
+                }
+            }
+
+            // Type check the function
+            self.check_function(function)?;
+        }
+
+        Ok(())
+    }
+
+    fn check_bench_block(&mut self, bench_block: &BenchBlock) -> Result<(), DiagnosticError> {
+        // Check each function in the bench block
+        for function in &bench_block.functions {
+            // Validate bench function naming convention
+            if function.name.starts_with("bench_") {
+                // This is a bench function - validate it
+                if !function.params.is_empty() {
+                    return Err(DiagnosticError::Type(
+                        format!("Bench function '{}' must not have parameters", function.name)
+                    ));
+                }
+
+                // Bench functions should return Unit (no return value)
+                if function.return_type.is_some() {
+                    return Err(DiagnosticError::Type(
+                        format!("Bench function '{}' must not have a return type", function.name)
                     ));
                 }
             }

@@ -44,6 +44,7 @@ impl Parser {
         }
 
         let mut test_blocks = Vec::new();
+        let mut bench_blocks = Vec::new();
         let mut functions = Vec::new();
         let mut enums = Vec::new();
         let mut classes = Vec::new();
@@ -59,12 +60,14 @@ impl Parser {
                 newtypes.push(self.parse_newtype()?);
             } else if self.check(&Token::Test) {
                 test_blocks.push(self.parse_test_block()?);
+            } else if self.check(&Token::Bench) {
+                bench_blocks.push(self.parse_bench_block()?);
             } else {
                 functions.push(self.parse_function()?);
             }
         }
 
-        Ok(Program { module_decl, use_decls, type_aliases, newtypes, test_blocks, functions, enums, classes })
+        Ok(Program { module_decl, use_decls, type_aliases, newtypes, test_blocks, bench_blocks, functions, enums, classes })
     }
 
     fn parse_module_decl(&mut self) -> Result<ModuleDecl, DiagnosticError> {
@@ -174,6 +177,37 @@ impl Parser {
         let end = self.previous_span().end;
 
         Ok(TestBlock {
+            name,
+            functions,
+            span: Span::new(start, end),
+        })
+    }
+
+    fn parse_bench_block(&mut self) -> Result<BenchBlock, DiagnosticError> {
+        let start = self.current_span().start;
+        self.consume(Token::Bench, "Expected 'bench'")?;
+
+        // Parse bench block name (must be a string literal)
+        let name = if let Token::StringLiteral(s) = &self.peek().token {
+            let name = s.clone();
+            self.advance();
+            name
+        } else {
+            return Err(DiagnosticError::Syntax("Expected string literal for bench block name".to_string()));
+        };
+
+        self.consume(Token::LeftBrace, "Expected '{' after bench block name")?;
+
+        // Parse all functions within the bench block
+        let mut functions = Vec::new();
+        while !self.check(&Token::RightBrace) && !self.is_at_end() {
+            functions.push(self.parse_function()?);
+        }
+
+        self.consume(Token::RightBrace, "Expected '}' after bench block")?;
+        let end = self.previous_span().end;
+
+        Ok(BenchBlock {
             name,
             functions,
             span: Span::new(start, end),

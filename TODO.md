@@ -1,4 +1,3 @@
-* break up plat-runtime/src/lib.rs
 
 * error handling
   * minimize panics. 
@@ -12,7 +11,6 @@
 * testing
   * setup/teardown 
   * test filtering 
-  * test runner
   * conditional compilation
   * don't fail fast - run all tests
 * benchmarking

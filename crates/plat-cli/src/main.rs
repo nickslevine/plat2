@@ -36,6 +36,11 @@ enum Commands {
         /// The Plat source file to test (optional - tests all .plat files in current directory if not specified)
         file: Option<PathBuf>,
     },
+    /// Run benchmarks in a Plat source file
+    Bench {
+        /// The Plat source file to benchmark (optional - benchmarks all .plat files in current directory if not specified)
+        file: Option<PathBuf>,
+    },
 }
 
 fn main() {
@@ -53,6 +58,7 @@ fn run() -> Result<()> {
         Commands::Run { file } => run_command(file),
         Commands::Fmt { file } => fmt_command(file),
         Commands::Test { file } => test_command(file),
+        Commands::Bench { file } => bench_command(file),
     }
 }
 
@@ -761,6 +767,254 @@ fn resolve_modules(files: &[PathBuf], root_dir: &Path) -> Result<Vec<PathBuf>> {
     }
 
     Ok(ordered_files)
+}
+
+fn bench_command(file: Option<PathBuf>) -> Result<()> {
+    match file {
+        Some(f) => bench_single_file(f),
+        None => bench_project(),
+    }
+}
+
+fn bench_single_file(file: PathBuf) -> Result<()> {
+    validate_plat_file(&file)?;
+
+    let source = fs::read_to_string(&file)
+        .with_context(|| format!("Failed to read file: {}", file.display()))?;
+
+    println!("{}", "Running benchmarks...".green().bold());
+
+    // Parse the source code
+    let parser = plat_parser::Parser::new(&source)
+        .with_context(|| "Failed to create parser")?;
+    let mut program = parser.parse()
+        .with_context(|| "Failed to parse program")?;
+
+    // Discover all bench functions
+    let bench_functions = discover_benches(&program);
+
+    if bench_functions.is_empty() {
+        println!("{} No benchmarks found", "✓".yellow().bold());
+        return Ok(());
+    }
+
+    // Generate bench runner main function
+    let bench_main = generate_bench_main(&bench_functions);
+
+    // Parse the bench main function
+    let bench_main_parser = plat_parser::Parser::new(&bench_main)
+        .with_context(|| "Failed to create parser for bench main")?;
+    let bench_main_program = bench_main_parser.parse()
+        .with_context(|| "Failed to parse bench main")?;
+
+    // Replace or add the main function while keeping bench blocks
+    if let Some(main_idx) = program.functions.iter().position(|f| f.name == "main") {
+        program.functions[main_idx] = bench_main_program.functions[0].clone();
+    } else {
+        program.functions.push(bench_main_program.functions[0].clone());
+    }
+
+    // Compile and run the bench program
+    let output_path = get_output_path(&file);
+    compile_bench_program(&program, &output_path)?;
+
+    // Execute the benchmarks
+    let bench_result = Command::new(&output_path)
+        .output()
+        .with_context(|| format!("Failed to execute bench binary: {}", output_path.display()))?;
+
+    // Print stdout (bench results)
+    if !bench_result.stdout.is_empty() {
+        print!("{}", String::from_utf8_lossy(&bench_result.stdout));
+    }
+
+    // Print stderr (bench failures)
+    if !bench_result.stderr.is_empty() {
+        eprint!("{}", String::from_utf8_lossy(&bench_result.stderr));
+    }
+
+    // Check bench result
+    if bench_result.status.success() {
+        Ok(())
+    } else {
+        anyhow::bail!("Benchmarks failed");
+    }
+}
+
+fn bench_project() -> Result<()> {
+    let current_dir = std::env::current_dir()
+        .with_context(|| "Failed to get current directory")?;
+
+    // Discover all .plat files
+    let files = discover_plat_files(&current_dir)?;
+
+    if files.is_empty() {
+        anyhow::bail!("No .plat files found in current directory");
+    }
+
+    // Run benchmarks for each file that contains bench blocks
+    let mut files_with_benches = 0;
+
+    for file in files {
+        let source = fs::read_to_string(&file)
+            .with_context(|| format!("Failed to read file: {}", file.display()))?;
+
+        let parser = plat_parser::Parser::new(&source)
+            .with_context(|| "Failed to create parser")?;
+        let program = parser.parse()
+            .with_context(|| "Failed to parse program")?;
+
+        if program.bench_blocks.is_empty() {
+            continue;
+        }
+
+        files_with_benches += 1;
+        println!("\n{} {}", "Benchmarking".green().bold(), file.display());
+
+        bench_single_file(file)?;
+    }
+
+    if files_with_benches == 0 {
+        println!("{} No bench blocks found", "✓".yellow().bold());
+        return Ok(());
+    }
+
+    println!("\n{}", "═".repeat(50));
+    println!("All benchmarks completed");
+
+    Ok(())
+}
+
+/// Discover all bench functions in a program
+fn discover_benches(program: &plat_ast::Program) -> Vec<(String, String)> {
+    let mut benches = Vec::new();
+
+    for bench_block in &program.bench_blocks {
+        for function in &bench_block.functions {
+            if function.name.starts_with("bench_") {
+                benches.push((bench_block.name.clone(), function.name.clone()));
+            }
+        }
+    }
+
+    benches
+}
+
+/// Generate a bench runner main function
+fn generate_bench_main(bench_functions: &[(String, String)]) -> String {
+    let mut output = String::new();
+
+    // Generate bench runner main function
+    output.push_str("fn main() -> Int32 {\n");
+    output.push_str("  let iterations = 10_000_000;\n");
+    output.push_str("  let warmup_iterations = 1_000;\n");
+    output.push_str("\n");
+
+    for (idx, (bench_block_name, bench_func_name)) in bench_functions.iter().enumerate() {
+        output.push_str(&format!("  print(value = \"\");\n"));
+        output.push_str(&format!("  print(value = \"{}::{}\");\n", bench_block_name, bench_func_name));
+
+        // Warmup phase - use unique variable name
+        let warmup_var = format!("warmup_{}", idx);
+        output.push_str(&format!("  var {} = 0;\n", warmup_var));
+        output.push_str(&format!("  while ({} < warmup_iterations) {{\n", warmup_var));
+        output.push_str(&format!("    {}();\n", bench_func_name));
+        output.push_str(&format!("    {} = {} + 1;\n", warmup_var, warmup_var));
+        output.push_str("  }\n");
+        output.push_str("\n");
+
+        // Benchmark phase - use unique variable name
+        let bench_var = format!("bench_{}", idx);
+        output.push_str(&format!("  var {} = 0;\n", bench_var));
+        output.push_str(&format!("  while ({} < iterations) {{\n", bench_var));
+        output.push_str(&format!("    {}();\n", bench_func_name));
+        output.push_str(&format!("    {} = {} + 1;\n", bench_var, bench_var));
+        output.push_str("  }\n");
+        output.push_str(&format!("  print(value = \"  Iterations: {}\");\n", "10,000,000"));
+        output.push_str(&format!("  print(value = \"  (Timing not yet implemented)\");\n"));
+        output.push_str("\n");
+    }
+
+    output.push_str(&format!("  print(value = \"{} benchmarks completed\");\n", bench_functions.len()));
+    output.push_str("  return 0;\n");
+    output.push_str("}\n");
+
+    output
+}
+
+/// Compile a bench program with bench mode enabled
+fn compile_bench_program(program: &plat_ast::Program, output_path: &Path) -> Result<()> {
+    // Type check with bench mode enabled
+    let type_checker = plat_hir::TypeChecker::new().with_bench_mode();
+    if let Err(e) = type_checker.check_program(program) {
+        anyhow::bail!("Type checking failed: {:?}", e);
+    }
+
+    // Generate code with bench mode enabled
+    let codegen = plat_codegen::CodeGenerator::new()
+        .with_context(|| "Failed to initialize code generator")?
+        .with_bench_mode();
+
+    let object_bytes = codegen
+        .generate_code(program)
+        .map_err(|e| {
+            eprintln!("Code generation error details: {:?}", e);
+            anyhow::anyhow!("Code generation failed: {:?}", e)
+        })?;
+
+    // Write object file
+    let object_file = output_path.with_extension("o");
+    std::fs::write(&object_file, &object_bytes)
+        .with_context(|| format!("Failed to write object file: {}", object_file.display()))?;
+
+    // Build runtime library
+    let build_result = Command::new("cargo")
+        .args(&["build", "--lib", "--package", "plat-runtime"])
+        .current_dir(get_project_root()?)
+        .output()
+        .with_context(|| "Failed to build runtime library")?;
+
+    if !build_result.status.success() {
+        anyhow::bail!(
+            "Runtime library build failed: {}",
+            String::from_utf8_lossy(&build_result.stderr)
+        );
+    }
+
+    // Find runtime library
+    let target_dir = get_project_root()?.join("target").join("debug");
+    let runtime_lib = if cfg!(target_os = "macos") {
+        target_dir.join("libplat_runtime.dylib")
+    } else if cfg!(target_os = "windows") {
+        target_dir.join("plat_runtime.dll")
+    } else {
+        target_dir.join("libplat_runtime.so")
+    };
+
+    // Create output directory
+    if let Some(parent) = output_path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("Failed to create output directory: {}", parent.display()))?;
+    }
+
+    // Link
+    let link_result = Command::new("cc")
+        .arg("-o")
+        .arg(output_path)
+        .arg(&object_file)
+        .arg(&runtime_lib)
+        .output()
+        .with_context(|| "Failed to run linker")?;
+
+    if !link_result.status.success() {
+        let stderr = String::from_utf8_lossy(&link_result.stderr);
+        anyhow::bail!("Linking failed:\n{}", stderr);
+    }
+
+    // Clean up object file
+    std::fs::remove_file(&object_file).ok();
+
+    Ok(())
 }
 
 #[cfg(test)]
