@@ -1,5 +1,4 @@
 * break up plat-runtime/src/lib.rs
-* initial test work. 
 
 * error handling
   * minimize panics. 
