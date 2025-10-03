@@ -1,0 +1,29 @@
+// Test example to verify assert functionality
+
+test "basic assertions" {
+  fn test_passing_assert() {
+    assert(condition = true, message = "This should pass");
+    print(value = "✓ Passing assert works");
+  }
+
+  fn test_arithmetic() {
+    let x = 5 + 3;
+    assert(condition = x == 8, message = "5 + 3 should equal 8");
+    print(value = "✓ Arithmetic test passed");
+  }
+
+  fn helper_add(a: Int32, b: Int32) -> Int32 {
+    return a + b;
+  }
+
+  fn test_helper_usage() {
+    let result = helper_add(a = 10, b = 20);
+    assert(condition = result == 30);
+    print(value = "✓ Helper function test passed");
+  }
+}
+
+fn main() -> Int32 {
+  print(value = "This is a test file - run with 'plat test'");
+  return 0;
+}

@@ -335,6 +335,34 @@ impl TypeChecker {
             global_symbols.register(&func.name, Symbol::Function(sig));
         }
 
+        // Collect test functions if in test mode
+        if self.test_mode {
+            for test_block in &program.test_blocks {
+                for func in &test_block.functions {
+                    // Build function signature
+                    let params: Result<Vec<(String, HirType)>, _> = func.params.iter()
+                        .map(|p| Ok((p.name.clone(), self.ast_type_to_hir_type(&p.ty)?)))
+                        .collect();
+                    let params = params?;
+
+                    let return_type = if let Some(ref rt) = func.return_type {
+                        self.ast_type_to_hir_type(rt)?
+                    } else {
+                        HirType::Unit
+                    };
+
+                    let sig = FunctionSignature {
+                        type_params: func.type_params.clone(),
+                        params,
+                        return_type,
+                        is_mutable: func.is_mutable,
+                    };
+
+                    global_symbols.register(&func.name, Symbol::Function(sig));
+                }
+            }
+        }
+
         // Collect all enum declarations
         for enum_decl in &program.enums {
             // Build enum info (simplified for now)
@@ -478,6 +506,15 @@ impl TypeChecker {
         // Second pass: collect all function signatures (including enum and class methods)
         for function in &program.functions {
             self.collect_function_signature(function)?;
+        }
+
+        // Collect test function signatures if in test mode
+        if self.test_mode {
+            for test_block in &program.test_blocks {
+                for function in &test_block.functions {
+                    self.collect_function_signature(function)?;
+                }
+            }
         }
 
         // Collect enum method signatures

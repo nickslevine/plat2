@@ -412,16 +412,239 @@ fn fmt_command(file: PathBuf) -> Result<()> {
 }
 
 fn test_command(file: Option<PathBuf>) -> Result<()> {
+    match file {
+        Some(f) => test_single_file(f),
+        None => test_project(),
+    }
+}
+
+fn test_single_file(file: PathBuf) -> Result<()> {
+    validate_plat_file(&file)?;
+
+    let source = fs::read_to_string(&file)
+        .with_context(|| format!("Failed to read file: {}", file.display()))?;
+
     println!("{}", "Running tests...".green().bold());
-    println!("");
-    println!("Note: Test runner not yet fully implemented.");
-    println!("Tests are compiled and assert() works, but automatic test discovery");
-    println!("and execution is not yet implemented.");
-    println!("");
-    println!("To test your code:");
-    println!("1. Use test blocks: test \"name\" {{ fn test_foo() {{ ... }} }}");
-    println!("2. Use assert(condition = expr) or assert(condition = expr, message = \"...\")");
-    println!("3. Test functions compile and can be called manually from main()");
+
+    // Parse the source code
+    let parser = plat_parser::Parser::new(&source)
+        .with_context(|| "Failed to create parser")?;
+    let mut program = parser.parse()
+        .with_context(|| "Failed to parse program")?;
+
+    // Discover all test functions
+    let test_functions = discover_tests(&program);
+
+    if test_functions.is_empty() {
+        println!("{} No tests found", "✓".yellow().bold());
+        return Ok(());
+    }
+
+    // Generate test runner main function
+    let test_main = generate_test_main(&test_functions);
+
+    // Parse the test main function
+    let test_main_parser = plat_parser::Parser::new(&test_main)
+        .with_context(|| "Failed to create parser for test main")?;
+    let test_main_program = test_main_parser.parse()
+        .with_context(|| "Failed to parse test main")?;
+
+    // Replace or add the main function while keeping test blocks
+    if let Some(main_idx) = program.functions.iter().position(|f| f.name == "main") {
+        program.functions[main_idx] = test_main_program.functions[0].clone();
+    } else {
+        program.functions.push(test_main_program.functions[0].clone());
+    }
+
+    // Compile and run the test program
+    let output_path = get_output_path(&file);
+    compile_test_program(&program, &output_path)?;
+
+    // Execute the tests
+    let test_result = Command::new(&output_path)
+        .output()
+        .with_context(|| format!("Failed to execute test binary: {}", output_path.display()))?;
+
+    // Print stdout (test results)
+    if !test_result.stdout.is_empty() {
+        print!("{}", String::from_utf8_lossy(&test_result.stdout));
+    }
+
+    // Print stderr (test failures)
+    if !test_result.stderr.is_empty() {
+        eprint!("{}", String::from_utf8_lossy(&test_result.stderr));
+    }
+
+    // Check test result
+    if test_result.status.success() {
+        Ok(())
+    } else {
+        anyhow::bail!("Tests failed");
+    }
+}
+
+fn test_project() -> Result<()> {
+    let current_dir = std::env::current_dir()
+        .with_context(|| "Failed to get current directory")?;
+
+    // Discover all .plat files
+    let files = discover_plat_files(&current_dir)?;
+
+    if files.is_empty() {
+        anyhow::bail!("No .plat files found in current directory");
+    }
+
+    // Run tests for each file that contains test blocks
+    let mut total_passed = 0;
+    let mut total_failed = 0;
+    let mut files_with_tests = 0;
+
+    for file in files {
+        let source = fs::read_to_string(&file)
+            .with_context(|| format!("Failed to read file: {}", file.display()))?;
+
+        let parser = plat_parser::Parser::new(&source)
+            .with_context(|| "Failed to create parser")?;
+        let program = parser.parse()
+            .with_context(|| "Failed to parse program")?;
+
+        if program.test_blocks.is_empty() {
+            continue;
+        }
+
+        files_with_tests += 1;
+        println!("\n{} {}", "Testing".green().bold(), file.display());
+
+        match test_single_file(file) {
+            Ok(_) => total_passed += 1,
+            Err(_) => total_failed += 1,
+        }
+    }
+
+    if files_with_tests == 0 {
+        println!("{} No test blocks found", "✓".yellow().bold());
+        return Ok(());
+    }
+
+    println!("\n{}", "═".repeat(50));
+    println!("Test Summary: {} passed, {} failed", total_passed, total_failed);
+
+    if total_failed > 0 {
+        anyhow::bail!("Some tests failed");
+    }
+
+    Ok(())
+}
+
+/// Discover all test functions in a program
+fn discover_tests(program: &plat_ast::Program) -> Vec<(String, String)> {
+    let mut tests = Vec::new();
+
+    for test_block in &program.test_blocks {
+        for function in &test_block.functions {
+            if function.name.starts_with("test_") {
+                tests.push((test_block.name.clone(), function.name.clone()));
+            }
+        }
+    }
+
+    tests
+}
+
+/// Generate a test runner main function
+fn generate_test_main(test_functions: &[(String, String)]) -> String {
+    let mut output = String::new();
+
+    // Generate test runner main function
+    output.push_str("fn main() -> Int32 {\n");
+    output.push_str("  var passed = 0;\n");
+    output.push_str("\n");
+
+    for (test_block_name, test_func_name) in test_functions {
+        output.push_str(&format!("  print(value = \"✓ {}::{}\");\n", test_block_name, test_func_name));
+        output.push_str(&format!("  {}();\n", test_func_name));
+        output.push_str("  passed = passed + 1;\n");
+        output.push_str("\n");
+    }
+
+    output.push_str(&format!("  print(value = \"{} tests, {} passed, 0 failed\");\n", test_functions.len(), test_functions.len()));
+    output.push_str("  return 0;\n");
+    output.push_str("}\n");
+
+    output
+}
+
+/// Compile a test program with test mode enabled
+fn compile_test_program(program: &plat_ast::Program, output_path: &Path) -> Result<()> {
+    // Type check with test mode enabled
+    let type_checker = plat_hir::TypeChecker::new().with_test_mode();
+    if let Err(e) = type_checker.check_program(program) {
+        anyhow::bail!("Type checking failed: {:?}", e);
+    }
+
+    // Generate code with test mode enabled
+    let codegen = plat_codegen::CodeGenerator::new()
+        .with_context(|| "Failed to initialize code generator")?
+        .with_test_mode();
+
+    let object_bytes = codegen
+        .generate_code(program)
+        .map_err(|e| {
+            eprintln!("Code generation error details: {:?}", e);
+            anyhow::anyhow!("Code generation failed: {:?}", e)
+        })?;
+
+    // Write object file
+    let object_file = output_path.with_extension("o");
+    std::fs::write(&object_file, &object_bytes)
+        .with_context(|| format!("Failed to write object file: {}", object_file.display()))?;
+
+    // Build runtime library
+    let build_result = Command::new("cargo")
+        .args(&["build", "--lib", "--package", "plat-runtime"])
+        .current_dir(get_project_root()?)
+        .output()
+        .with_context(|| "Failed to build runtime library")?;
+
+    if !build_result.status.success() {
+        anyhow::bail!(
+            "Runtime library build failed: {}",
+            String::from_utf8_lossy(&build_result.stderr)
+        );
+    }
+
+    // Find runtime library
+    let target_dir = get_project_root()?.join("target").join("debug");
+    let runtime_lib = if cfg!(target_os = "macos") {
+        target_dir.join("libplat_runtime.dylib")
+    } else if cfg!(target_os = "windows") {
+        target_dir.join("plat_runtime.dll")
+    } else {
+        target_dir.join("libplat_runtime.so")
+    };
+
+    // Create output directory
+    if let Some(parent) = output_path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("Failed to create output directory: {}", parent.display()))?;
+    }
+
+    // Link
+    let link_result = Command::new("cc")
+        .arg("-o")
+        .arg(output_path)
+        .arg(&object_file)
+        .arg(&runtime_lib)
+        .output()
+        .with_context(|| "Failed to run linker")?;
+
+    if !link_result.status.success() {
+        let stderr = String::from_utf8_lossy(&link_result.stderr);
+        anyhow::bail!("Linking failed:\n{}", stderr);
+    }
+
+    // Clean up object file
+    std::fs::remove_file(&object_file).ok();
 
     Ok(())
 }

@@ -669,7 +669,7 @@ impl CodeGenerator {
         }
         eprintln!("DEBUG: Built metadata for {} classes", self.class_metadata.len());
 
-        // First pass: declare all functions (including enum methods)
+        // First pass: declare all functions (including enum methods and test functions)
         for function in &program.functions {
             self.declare_function(function)?;
         }
@@ -687,6 +687,15 @@ impl CodeGenerator {
             for method in &class_decl.methods {
                 let method_name = format!("{}__{}", class_decl.name, method.name);
                 self.declare_function_with_name(&method_name, method)?;
+            }
+        }
+
+        // Declare test functions (only in test mode)
+        if self.test_mode {
+            for test_block in &program.test_blocks {
+                for function in &test_block.functions {
+                    self.declare_function(function)?;
+                }
             }
         }
 
@@ -714,15 +723,9 @@ impl CodeGenerator {
             }
         }
 
-        // Generate code for test blocks (only in test mode)
+        // Generate code for test functions (only in test mode)
         if self.test_mode {
             for test_block in &program.test_blocks {
-                // Declare all test functions
-                for function in &test_block.functions {
-                    self.declare_function(function)?;
-                }
-
-                // Generate code for all test functions
                 for function in &test_block.functions {
                     self.generate_function(function)?;
                 }
