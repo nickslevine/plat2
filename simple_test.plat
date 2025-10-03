@@ -1,6 +1,0 @@
-fn main() -> Int32 {
-  assert(true = 1 == 1, message = "One equals one");
-  assert(true = 2 + 2 == 4);
-  print(value = "All assertions passed!");
-  return 0;
-}

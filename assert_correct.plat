@@ -1,6 +1,0 @@
-fn main() -> Int32 {
-  let result: Bool = true;
-  assert(condition = result, message = "Result should be true");
-  print(value = "Assert passed!");
-  return 0;
-}
