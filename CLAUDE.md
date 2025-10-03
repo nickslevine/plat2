@@ -121,7 +121,7 @@ plat2/
 - Naming convention enforcement (compile-time validation)
 - Default constructors (auto-generated init methods)
 - Named arguments (required for all function/method/constructor/print calls)
-- Built-in test framework with test blocks and assertions
+- Built-in test framework with automatic test discovery, assertions, and runner
 
 **📋 TODO (Stretch Goals):**
 - [ ] Rich error messages with Ariadne spans
