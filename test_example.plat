@@ -1,0 +1,34 @@
+class Point {
+  let x: Int32;
+  let y: Int32;
+
+  fn add(other: Point) -> Point {
+    return Point(x = self.x + other.x, y = self.y + other.y);
+  }
+}
+
+test "point operations" {
+  fn test_addition() {
+    let p1 = Point(x = 1, y = 2);
+    let p2 = Point(x = 2, y = 4);
+    let p3 = p1.add(other = p2);
+    assert(true = p3.x == 3, message = "X should be 3");
+    assert(true = p3.y == 6, message = "Y should be 6");
+    print(value = "Addition test passed!");
+  }
+
+  fn test_basic() {
+    let p = Point(x = 10, y = 20);
+    assert(true = p.x == 10);
+    assert(true = p.y == 20);
+    print(value = "Basic test passed!");
+  }
+}
+
+fn main() -> Int32 {
+  print(value = "Running tests manually...");
+  test_addition();
+  test_basic();
+  print(value = "All tests passed!");
+  return 0;
+}

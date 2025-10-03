@@ -6,6 +6,7 @@ pub struct Program {
     pub use_decls: Vec<UseDecl>,
     pub type_aliases: Vec<TypeAlias>,
     pub newtypes: Vec<NewtypeDecl>,
+    pub test_blocks: Vec<TestBlock>,
     pub functions: Vec<Function>,
     pub enums: Vec<EnumDecl>,
     pub classes: Vec<ClassDecl>,
@@ -34,6 +35,13 @@ pub struct TypeAlias {
 pub struct NewtypeDecl {
     pub name: String,
     pub underlying_type: Type,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct TestBlock {
+    pub name: String, // Test block description
+    pub functions: Vec<Function>, // All functions within the test block
     pub span: Span,
 }
 

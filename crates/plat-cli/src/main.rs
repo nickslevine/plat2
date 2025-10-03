@@ -31,6 +31,11 @@ enum Commands {
         /// The Plat source file to format
         file: PathBuf,
     },
+    /// Run tests in a Plat source file
+    Test {
+        /// The Plat source file to test (optional - tests all .plat files in current directory if not specified)
+        file: Option<PathBuf>,
+    },
 }
 
 fn main() {
@@ -47,6 +52,7 @@ fn run() -> Result<()> {
         Commands::Build { file } => build_command(file),
         Commands::Run { file } => run_command(file),
         Commands::Fmt { file } => fmt_command(file),
+        Commands::Test { file } => test_command(file),
     }
 }
 
@@ -401,6 +407,21 @@ fn fmt_command(file: PathBuf) -> Result<()> {
         .with_context(|| format!("Failed to write formatted file: {}", file.display()))?;
 
     println!("{} Formatted successfully", "✓".green().bold());
+
+    Ok(())
+}
+
+fn test_command(file: Option<PathBuf>) -> Result<()> {
+    println!("{}", "Running tests...".green().bold());
+    println!("");
+    println!("Note: Test runner not yet fully implemented.");
+    println!("Tests are compiled and assert() works, but automatic test discovery");
+    println!("and execution is not yet implemented.");
+    println!("");
+    println!("To test your code:");
+    println!("1. Use test blocks: test \"name\" {{ fn test_foo() {{ ... }} }}");
+    println!("2. Use assert(condition = expr) or assert(condition = expr, message = \"...\")");
+    println!("3. Test functions compile and can be called manually from main()");
 
     Ok(())
 }

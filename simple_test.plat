@@ -1,14 +1,6 @@
-class Point {
-  let x: Int32;
-  let y: Int32;
-
-  init(x: Int32, y: Int32) {
-    self.x = x;
-    self.y = y;
-  }
-}
-
-fn main() {
-  let p = Point(x = 1, y = 2);
-  print("Point: (${p.x}, ${p.y})");
+fn main() -> Int32 {
+  assert(true = 1 == 1, message = "One equals one");
+  assert(true = 2 + 2 == 4);
+  print(value = "All assertions passed!");
+  return 0;
 }

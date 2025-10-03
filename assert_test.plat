@@ -1,0 +1,5 @@
+fn main() -> Int32 {
+  assert(true = 1 == 1);
+  print(value = "Assert passed!");
+  return 0;
+}

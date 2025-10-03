@@ -1,14 +1,21 @@
-* add Float8 and Int8 ... also 16
+* break up plat-runtime/src/lib.rs
+* initial test work. 
 
 * error handling
   * minimize panics. 
   * use result/option where it makes sense. 
   * ? operator. 
+
 * beautiful error messages (ariadne)
 * modules
   * private vs public. 
 * regex
 * testing
+  * setup/teardown 
+  * test filtering 
+  * test runner
+  * conditional compilation
+  * don't fail fast - run all tests
 * benchmarking
 * visibility 
 * parallel loops
@@ -31,6 +38,7 @@
 * change constructor calls to init? 
 * default arguments? 
 * overflow / underflow handling 
+* objects: member access
 
 --- 
 * plat cli niceties

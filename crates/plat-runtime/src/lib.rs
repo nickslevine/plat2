@@ -594,6 +594,33 @@ pub extern "C" fn plat_print(str_ptr: *const c_char) {
     }
 }
 
+/// C-compatible assert function for testing
+///
+/// # Arguments
+/// * `condition` - Boolean condition to check
+/// * `message_ptr` - Pointer to optional error message (can be null)
+///
+/// # Safety
+/// This function is unsafe because it dereferences raw pointers
+#[no_mangle]
+pub extern "C" fn plat_assert(condition: bool, message_ptr: *const c_char) {
+    if !condition {
+        let message = if message_ptr.is_null() {
+            "Assertion failed".to_string()
+        } else {
+            unsafe {
+                CStr::from_ptr(message_ptr)
+                    .to_str()
+                    .unwrap_or("Assertion failed (invalid UTF-8 in message)")
+                    .to_string()
+            }
+        };
+
+        eprintln!("✗ {}", message);
+        std::process::exit(1);
+    }
+}
+
 /// C-compatible GC allocation function that can be called from generated code
 ///
 /// # Safety

@@ -76,6 +76,7 @@ pub struct CodeGenerator {
     module_name: Option<String>, // Name of the current module for name mangling
     type_aliases: HashMap<String, AstType>, // Type aliases resolved from program
     newtypes: HashMap<String, AstType>, // Newtypes map to their underlying type
+    test_mode: bool, // Whether we're in test mode
 }
 
 impl CodeGenerator {
@@ -373,7 +374,14 @@ impl CodeGenerator {
             module_name: None,
             type_aliases: HashMap::new(),
             newtypes: HashMap::new(),
+            test_mode: false,
         })
+    }
+
+    /// Enable test mode for this code generator
+    pub fn with_test_mode(mut self) -> Self {
+        self.test_mode = true;
+        self
     }
 
     fn build_class_metadata(&mut self, class_decl: &ast::ClassDecl) -> Result<(), CodegenError> {
@@ -703,6 +711,21 @@ impl CodeGenerator {
             for method in &class_decl.methods {
                 let method_name = format!("{}__{}", class_decl.name, method.name);
                 self.generate_function_with_name(&method_name, method)?;
+            }
+        }
+
+        // Generate code for test blocks (only in test mode)
+        if self.test_mode {
+            for test_block in &program.test_blocks {
+                // Declare all test functions
+                for function in &test_block.functions {
+                    self.declare_function(function)?;
+                }
+
+                // Generate code for all test functions
+                for function in &test_block.functions {
+                    self.generate_function(function)?;
+                }
             }
         }
 
@@ -2033,6 +2056,52 @@ impl CodeGenerator {
                 }
             }
             Expression::Call { function, args, .. } => {
+                // Handle built-in assert function
+                if function == "assert" {
+                    // Find the 'condition' and optional 'message' arguments
+                    let condition_arg = args.iter()
+                        .find(|arg| arg.name == "condition")
+                        .ok_or_else(|| CodegenError::AssertError("Missing 'condition' argument in assert".to_string()))?;
+
+                    let message_arg = args.iter().find(|arg| arg.name == "message");
+
+                    // Generate code for the condition
+                    let condition_val = Self::generate_expression_helper(
+                        builder, &condition_arg.value, variables, variable_types,
+                        functions, module, string_counter, variable_counter, class_metadata
+                    )?;
+
+                    // Generate code for the optional message
+                    let message_val = if let Some(msg_arg) = message_arg {
+                        Self::generate_expression_helper(
+                            builder, &msg_arg.value, variables, variable_types,
+                            functions, module, string_counter, variable_counter, class_metadata
+                        )?
+                    } else {
+                        // Use null pointer for default message
+                        builder.ins().iconst(I64, 0)
+                    };
+
+                    // Declare plat_assert function
+                    let assert_sig = {
+                        let mut sig = module.make_signature();
+                        sig.call_conv = CallConv::SystemV;
+                        sig.params.push(AbiParam::new(I32)); // condition (bool as i32)
+                        sig.params.push(AbiParam::new(I64)); // message pointer
+                        sig
+                    };
+
+                    let assert_id = module.declare_function("plat_assert", Linkage::Import, &assert_sig)
+                        .map_err(CodegenError::ModuleError)?;
+                    let assert_ref = module.declare_func_in_func(assert_id, builder.func);
+
+                    // Call plat_assert
+                    builder.ins().call(assert_ref, &[condition_val, message_val]);
+
+                    // assert returns Unit, represented as 0
+                    return Ok(builder.ins().iconst(I64, 0));
+                }
+
                 // Check if this is actually a class constructor with no arguments (e.g., Empty())
                 // This happens when a class has no fields and uses a default init
                 if args.is_empty() && class_metadata.contains_key(function) {
@@ -4829,6 +4898,7 @@ pub enum CodegenError {
     UndefinedVariable(String),
     UndefinedFunction(String),
     SettingsError(cranelift_codegen::settings::SetError),
+    AssertError(String),
 }
 
 impl From<cranelift_codegen::settings::SetError> for CodegenError {
@@ -4848,6 +4918,7 @@ impl std::fmt::Display for CodegenError {
             CodegenError::UndefinedVariable(name) => write!(f, "Undefined variable: {}", name),
             CodegenError::UndefinedFunction(name) => write!(f, "Undefined function: {}", name),
             CodegenError::SettingsError(e) => write!(f, "Settings error: {}", e),
+            CodegenError::AssertError(msg) => write!(f, "Assert error: {}", msg),
         }
     }
 }

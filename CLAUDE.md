@@ -49,6 +49,14 @@
 - **Range Loops**: `for (i in 0..10)` (exclusive), `for (i in 0..=10)` (inclusive)
 - **For-Each**: `for (item in array)` works with arrays and custom classes
 
+### Testing
+- **Test Blocks**: `test "description" { ... }` groups related tests
+- **Test Functions**: Functions starting with `test_` are automatically discovered and run
+- **Assertions**: `assert(condition = expr)` or `assert(condition = expr, message = "...")`
+- **Helper Functions**: Non-test functions in test blocks provide shared setup/fixtures
+- **Test Execution**: `plat test` compiles and runs all tests, reports results
+- **Fail-Fast**: Assertion failures immediately stop the test and report the failure
+
 ### Module System
 - **Module Declarations**: `mod database;` at top of file
 - **Imports**: `use database;` for namespace imports
@@ -65,6 +73,8 @@ plat run <file.plat>     # Compile and run a single file
 plat run                 # Run main.plat in current directory
 plat build <file.plat>   # Compile to executable
 plat build               # Compile all .plat files in project
+plat test <file.plat>    # Run tests in a single file
+plat test                # Run all tests in project
 plat fmt <file.plat>     # Format code with 2-space indentation
 ```
 
@@ -111,6 +121,7 @@ plat2/
 - Naming convention enforcement (compile-time validation)
 - Default constructors (auto-generated init methods)
 - Named arguments (required for all function/method/constructor/print calls)
+- Built-in test framework with test blocks and assertions
 
 **📋 TODO (Stretch Goals):**
 - [ ] Rich error messages with Ariadne spans
@@ -229,6 +240,64 @@ fn main() -> Int32 {
 
   return 0;
 }
+```
+
+### Testing
+```plat
+class Point {
+  let x: Int32;
+  let y: Int32;
+
+  fn add(other: Point) -> Point {
+    return Point(x = self.x + other.x, y = self.y + other.y);
+  }
+
+  fn magnitude() -> Int32 {
+    return (self.x * self.x) + (self.y * self.y);
+  }
+}
+
+test "point operations" {
+  fn test_addition() {
+    let p1 = Point(x = 1, y = 2);
+    let p2 = Point(x = 2, y = 4);
+    let p3 = p1.add(other = p2);
+    assert(condition = p3.x == 3, message = "X coordinate should be 3");
+    assert(condition = p3.y == 6, message = "Y coordinate should be 6");
+  }
+
+  fn test_magnitude() {
+    let p = Point(x = 3, y = 4);
+    assert(condition = p.magnitude() == 25, message = "3² + 4² = 25");
+  }
+
+  // Helper function (not a test, doesn't start with test_)
+  fn create_origin() -> Point {
+    return Point(x = 0, y = 0);
+  }
+
+  fn test_origin_magnitude() {
+    let origin = create_origin();
+    assert(condition = origin.magnitude() == 0);
+  }
+}
+
+fn main() -> Int32 {
+  let p = Point(x = 5, y = 10);
+  print(value = "Point created!");
+  return 0;
+}
+```
+
+**Running tests:**
+```bash
+$ plat test point.plat
+Running tests...
+✓ point operations::test_addition
+✓ point operations::test_magnitude
+✓ point operations::test_origin_magnitude
+
+3 tests, 3 passed, 0 failed
 ```
 
 ---

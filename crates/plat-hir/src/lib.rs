@@ -128,6 +128,7 @@ pub struct TypeChecker {
     monomorphizer: Monomorphizer, // For generic type specialization
     module_table: ModuleSymbolTable, // Module-aware symbol table
     require_main: bool, // Whether to require a main function (false for library modules)
+    test_mode: bool, // Whether we're in test mode (compiling tests)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -212,6 +213,7 @@ impl TypeChecker {
             monomorphizer: Monomorphizer::new(),
             module_table: ModuleSymbolTable::new(module_path),
             require_main: true, // Default: require main function
+            test_mode: false, // Default: not in test mode
         };
 
         // Register built-in Option<T> type
@@ -239,6 +241,7 @@ impl TypeChecker {
             monomorphizer: Monomorphizer::new(),
             module_table,
             require_main: false, // Multi-module: don't require main in every module
+            test_mode: false, // Default: not in test mode
         };
 
         // Register built-in Option<T> type
@@ -251,6 +254,13 @@ impl TypeChecker {
         checker.load_symbols_from_module_table();
 
         checker
+    }
+
+    /// Enable test mode (allows test blocks and disables main function requirement)
+    pub fn with_test_mode(mut self) -> Self {
+        self.test_mode = true;
+        self.require_main = false; // Tests don't need main function
+        self
     }
 
     /// Load symbols from the module table into local type checker maps
@@ -520,6 +530,13 @@ impl TypeChecker {
         for class_decl in &program.classes {
             for method in &class_decl.methods {
                 self.check_class_method(class_decl, method)?;
+            }
+        }
+
+        // Type check test blocks (only in test mode)
+        if self.test_mode {
+            for test_block in &program.test_blocks {
+                self.check_test_block(test_block)?;
             }
         }
 
@@ -1244,6 +1261,57 @@ impl TypeChecker {
                 self.check_unary_op(op, &operand_type)
             }
             Expression::Call { function, args, .. } => {
+                // Handle built-in assert function
+                if function == "assert" {
+                    // assert(condition = expr) or assert(condition = expr, message = "...")
+                    if args.is_empty() {
+                        return Err(DiagnosticError::Type(
+                            "assert requires at least one argument: 'condition'".to_string()
+                        ));
+                    }
+
+                    // Check required 'condition' parameter
+                    let condition_arg = args.iter()
+                        .find(|arg| arg.name == "condition")
+                        .ok_or_else(|| DiagnosticError::Type(
+                            "assert requires a 'condition' parameter".to_string()
+                        ))?;
+
+                    let condition_type = self.check_expression(&condition_arg.value)?;
+                    if condition_type != HirType::Bool {
+                        return Err(DiagnosticError::Type(
+                            format!("assert 'condition' parameter must be Bool, got {:?}", condition_type)
+                        ));
+                    }
+
+                    // Check optional 'message' parameter
+                    if let Some(message_arg) = args.iter().find(|arg| arg.name == "message") {
+                        let message_type = self.check_expression(&message_arg.value)?;
+                        if message_type != HirType::String {
+                            return Err(DiagnosticError::Type(
+                                format!("assert 'message' parameter must be String, got {:?}", message_type)
+                            ));
+                        }
+                    }
+
+                    // Validate we only have 'condition' and optionally 'message'
+                    for arg in args {
+                        if arg.name != "condition" && arg.name != "message" {
+                            return Err(DiagnosticError::Type(
+                                format!("assert does not have a parameter named '{}'", arg.name)
+                            ));
+                        }
+                    }
+
+                    if args.len() > 2 {
+                        return Err(DiagnosticError::Type(
+                            "assert accepts at most 2 parameters: 'condition' and 'message'".to_string()
+                        ));
+                    }
+
+                    return Ok(HirType::Unit);
+                }
+
                 // Try to resolve the function name (handles both local and qualified names)
                 let resolved_name = self.module_table.resolve(function)
                     .unwrap_or_else(|| function.clone());
@@ -3008,6 +3076,33 @@ impl TypeChecker {
         self.type_parameters = old_type_params;
 
         self.pop_scope();
+        Ok(())
+    }
+
+    fn check_test_block(&mut self, test_block: &TestBlock) -> Result<(), DiagnosticError> {
+        // Check each function in the test block
+        for function in &test_block.functions {
+            // Validate test function naming convention
+            if function.name.starts_with("test_") {
+                // This is a test function - validate it
+                if !function.params.is_empty() {
+                    return Err(DiagnosticError::Type(
+                        format!("Test function '{}' must not have parameters", function.name)
+                    ));
+                }
+
+                // Test functions should return Unit (no return value)
+                if function.return_type.is_some() {
+                    return Err(DiagnosticError::Type(
+                        format!("Test function '{}' must not have a return type", function.name)
+                    ));
+                }
+            }
+
+            // Type check the function
+            self.check_function(function)?;
+        }
+
         Ok(())
     }
 
