@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use std::process::{self, Command};
 use anyhow::{Context, Result};
 use plat_modules::{ModuleResolver, ModuleError};
+use plat_diags::{DiagnosticError, Span};
 
 #[derive(Parser)]
 #[command(name = "plat")]
@@ -50,6 +51,24 @@ fn main() {
     }
 }
 
+/// Helper function to report diagnostic errors with beautiful formatting
+fn report_diagnostic_error(err: DiagnosticError, filename: &str, source: &str) -> anyhow::Error {
+    match err {
+        DiagnosticError::Rich(diag) => {
+            // Report the rich diagnostic using Ariadne
+            diag.report(source);
+            // Return a simple error for anyhow
+            anyhow::anyhow!("Compilation failed")
+        }
+        // For legacy errors, convert to diagnostic and report
+        _ => {
+            let diag = err.to_diagnostic(filename, Span::new(0, 0));
+            diag.report(source);
+            anyhow::anyhow!("Compilation failed")
+        }
+    }
+}
+
 fn run() -> Result<()> {
     let cli = Cli::parse();
 
@@ -83,10 +102,11 @@ fn build_single_file(file: PathBuf) -> Result<()> {
     println!("  {} Lexing...", "→".cyan());
     println!("  {} Parsing...", "→".cyan());
 
-    let parser = plat_parser::Parser::new(&source)
-        .with_context(|| "Failed to create parser")?;
+    let filename = file.to_string_lossy();
+    let parser = plat_parser::Parser::with_filename(&source, filename.as_ref())
+        .map_err(|e| report_diagnostic_error(e, &filename, &source))?;
     let mut program = parser.parse()
-        .with_context(|| "Failed to parse program")?;
+        .map_err(|e| report_diagnostic_error(e, &filename, &source))?;
 
     // Type check the program
     println!("  {} Type checking...", "→".cyan());

@@ -17,6 +17,12 @@ impl Parser {
         Ok(Self { tokens, current: 0 })
     }
 
+    pub fn with_filename(input: &str, filename: impl Into<String>) -> Result<Self, DiagnosticError> {
+        let lexer = Lexer::with_filename(input, filename);
+        let tokens = lexer.tokenize()?;
+        Ok(Self { tokens, current: 0 })
+    }
+
     pub fn parse(mut self) -> Result<Program, DiagnosticError> {
         // Parse optional module declaration
         let module_decl = if self.check(&Token::Mod) {
