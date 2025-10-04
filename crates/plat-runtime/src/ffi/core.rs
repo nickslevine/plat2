@@ -1,5 +1,9 @@
 use std::ffi::CStr;
 use std::os::raw::c_char;
+use std::sync::Once;
+use super::gc_bindings::{gc_alloc, init_gc, gc_collect, gc_stats};
+
+static GC_INIT: Once = Once::new();
 
 /// C-compatible print function that can be called from generated code
 ///
@@ -51,19 +55,33 @@ pub extern "C" fn plat_assert(condition: bool, message_ptr: *const c_char) {
     }
 }
 
+/// Initialize GC on first allocation
+fn ensure_gc_initialized() {
+    GC_INIT.call_once(|| {
+        init_gc();
+        eprintln!("[GC] Boehm GC initialized");
+    });
+}
+
 /// C-compatible GC allocation function that can be called from generated code
 ///
 /// # Safety
 /// This function is unsafe because it returns raw pointers to GC memory
 #[no_mangle]
 pub extern "C" fn plat_gc_alloc(size: usize) -> *mut u8 {
-    // Temporary fix: use simple heap allocation instead of GC
-    // TODO: Replace with proper GC allocation once the issue is resolved
-    let layout = std::alloc::Layout::from_size_align(size, 1).unwrap();
-    let ptr = unsafe { std::alloc::alloc_zeroed(layout) };
+    ensure_gc_initialized();
+
+    // Allocate using Boehm GC (conservative, scans for pointers)
+    let ptr = gc_alloc(size, false);
 
     if ptr.is_null() {
-        return std::ptr::null_mut();
+        eprintln!("[GC] FATAL: Out of memory (requested {} bytes)", size);
+        std::process::abort();
+    }
+
+    // Zero the memory (Boehm GC doesn't guarantee zeroing)
+    unsafe {
+        std::ptr::write_bytes(ptr, 0, size);
     }
 
     ptr
@@ -72,12 +90,12 @@ pub extern "C" fn plat_gc_alloc(size: usize) -> *mut u8 {
 /// C-compatible GC collection function that can be called from generated code
 #[no_mangle]
 pub extern "C" fn plat_gc_collect() {
-    gc::force_collect();
+    gc_collect();
 }
 
-/// C-compatible function to get GC stats (mock)
+/// C-compatible function to get GC stats (returns heap size)
 #[no_mangle]
 pub extern "C" fn plat_gc_stats() -> usize {
-    // The gc crate doesn't expose detailed stats
-    0
+    let stats = gc_stats();
+    stats.heap_size
 }
