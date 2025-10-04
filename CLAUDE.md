@@ -71,6 +71,10 @@
 - **Test Functions**: Functions starting with `test_` are automatically discovered and run
 - **Assertions**: `assert(condition = expr)` or `assert(condition = expr, message = "...")`
 - **Helper Functions**: Non-test functions in test blocks provide shared setup/fixtures
+- **Lifecycle Hooks**: `before_each()` and `after_each()` for setup/teardown
+  - `before_each()` returns a context value injected into each test
+  - `after_each(ctx)` receives the context for cleanup
+  - Both hooks are optional
 - **Test Execution**: `plat test` compiles and runs all tests, reports results
 - **Fail-Fast**: Assertion failures immediately stop the test and report the failure
 
@@ -475,6 +479,38 @@ test "point operations" {
   }
 }
 
+// Testing with setup/teardown
+class Connection {
+  var is_open: Bool;
+
+  fn close() {
+    self.is_open = false;
+  }
+}
+
+test "database operations" {
+  // Lifecycle hook: runs before each test, returns context
+  fn before_each() -> Connection {
+    let conn: Connection = Connection.init(is_open = true);
+    return conn;
+  }
+
+  // Lifecycle hook: runs after each test, receives context
+  fn after_each(ctx: Connection) {
+    ctx.close();
+  }
+
+  // Context is automatically injected into test functions
+  fn test_connection_starts_open(ctx: Connection) {
+    assert(condition = ctx.is_open == true);
+  }
+
+  fn test_can_close_connection(ctx: Connection) {
+    ctx.close();
+    assert(condition = ctx.is_open == false);
+  }
+}
+
 fn main() -> Int32 {
   let p: Point = Point.init(x = 5, y = 10);
   print(value = "Point created!");
@@ -489,8 +525,10 @@ Running tests...
 ✓ point operations::test_addition
 ✓ point operations::test_magnitude
 ✓ point operations::test_origin_magnitude
+✓ database operations::test_connection_starts_open
+✓ database operations::test_can_close_connection
 
-3 tests, 3 passed, 0 failed
+5 tests, 5 passed, 0 failed
 ```
 
 ### Benchmarking

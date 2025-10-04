@@ -438,16 +438,16 @@ fn test_single_file(file: PathBuf) -> Result<()> {
     let mut program = parser.parse()
         .with_context(|| "Failed to parse program")?;
 
-    // Discover all test functions
-    let test_functions = discover_tests(&program);
+    // Discover all test blocks with lifecycle hooks
+    let test_blocks = discover_test_blocks(&program);
 
-    if test_functions.is_empty() {
+    if test_blocks.is_empty() {
         println!("{} No tests found", "✓".yellow().bold());
         return Ok(());
     }
 
-    // Generate test runner main function
-    let test_main = generate_test_main(&test_functions);
+    // Generate test runner main function with hooks support
+    let test_main = generate_test_main_with_hooks(&test_blocks);
 
     // Parse the test main function
     let test_main_parser = plat_parser::Parser::new(&test_main)
@@ -542,6 +542,15 @@ fn test_project() -> Result<()> {
     Ok(())
 }
 
+/// Information about a test block including tests and hooks
+struct TestBlockInfo {
+    block_name: String,
+    test_functions: Vec<String>,
+    has_before_each: bool,
+    has_after_each: bool,
+    before_each_return_type: Option<String>,
+}
+
 /// Discover all test functions in a program
 fn discover_tests(program: &plat_ast::Program) -> Vec<(String, String)> {
     let mut tests = Vec::new();
@@ -555,6 +564,73 @@ fn discover_tests(program: &plat_ast::Program) -> Vec<(String, String)> {
     }
 
     tests
+}
+
+/// Discover all test blocks with their functions and lifecycle hooks
+fn discover_test_blocks(program: &plat_ast::Program) -> Vec<TestBlockInfo> {
+    let mut test_blocks = Vec::new();
+
+    for test_block in &program.test_blocks {
+        let mut test_functions = Vec::new();
+        let mut has_before_each = false;
+        let mut has_after_each = false;
+        let mut before_each_return_type: Option<String> = None;
+
+        for function in &test_block.functions {
+            if function.name == "before_each" {
+                has_before_each = true;
+                // Extract return type from function signature
+                if let Some(return_type) = &function.return_type {
+                    before_each_return_type = Some(type_to_string(return_type));
+                }
+            } else if function.name == "after_each" {
+                has_after_each = true;
+            } else if function.name.starts_with("test_") {
+                test_functions.push(function.name.clone());
+            }
+        }
+
+        if !test_functions.is_empty() {
+            test_blocks.push(TestBlockInfo {
+                block_name: test_block.name.clone(),
+                test_functions,
+                has_before_each,
+                has_after_each,
+                before_each_return_type,
+            });
+        }
+    }
+
+    test_blocks
+}
+
+/// Convert a Type to a string representation for code generation
+fn type_to_string(ty: &plat_ast::Type) -> String {
+    match ty {
+        plat_ast::Type::Int32 => "Int32".to_string(),
+        plat_ast::Type::Int64 => "Int64".to_string(),
+        plat_ast::Type::Int8 => "Int8".to_string(),
+        plat_ast::Type::Int16 => "Int16".to_string(),
+        plat_ast::Type::Float32 => "Float32".to_string(),
+        plat_ast::Type::Float64 => "Float64".to_string(),
+        plat_ast::Type::Float8 => "Float8".to_string(),
+        plat_ast::Type::Float16 => "Float16".to_string(),
+        plat_ast::Type::Bool => "Bool".to_string(),
+        plat_ast::Type::String => "String".to_string(),
+        plat_ast::Type::List(inner) => format!("List[{}]", type_to_string(inner)),
+        plat_ast::Type::Dict(key, value) => {
+            format!("Dict[{}, {}]", type_to_string(key), type_to_string(value))
+        }
+        plat_ast::Type::Set(inner) => format!("Set[{}]", type_to_string(inner)),
+        plat_ast::Type::Named(name, params) => {
+            if params.is_empty() {
+                name.clone()
+            } else {
+                let params_str = params.iter().map(|p| type_to_string(p)).collect::<Vec<_>>().join(", ");
+                format!("{}<{}>", name, params_str)
+            }
+        }
+    }
 }
 
 /// Generate a test runner main function
@@ -574,6 +650,64 @@ fn generate_test_main(test_functions: &[(String, String)]) -> String {
     }
 
     output.push_str(&format!("  print(value = \"{} tests, {} passed, 0 failed\");\n", test_functions.len(), test_functions.len()));
+    output.push_str("  return 0;\n");
+    output.push_str("}\n");
+
+    output
+}
+
+/// Generate a test runner main function with lifecycle hooks support
+fn generate_test_main_with_hooks(test_blocks: &[TestBlockInfo]) -> String {
+    let mut output = String::new();
+
+    // Count total tests
+    let total_tests: usize = test_blocks.iter().map(|tb| tb.test_functions.len()).sum();
+
+    // Generate test runner main function
+    output.push_str("fn main() -> Int32 {\n");
+    output.push_str("  var passed: Int32 = 0;\n");
+    output.push_str("\n");
+
+    let mut test_idx = 0;
+    for test_block in test_blocks {
+        for test_func_name in &test_block.test_functions {
+            output.push_str(&format!("  print(value = \"✓ {}::{}\");\n", test_block.block_name, test_func_name));
+
+            // Call before_each if it exists
+            if test_block.has_before_each {
+                if let Some(return_type) = &test_block.before_each_return_type {
+                    output.push_str(&format!("  let ctx_{}: {} = before_each();\n", test_idx, return_type));
+                } else {
+                    // Fallback if no return type found (shouldn't happen)
+                    output.push_str(&format!("  let ctx_{} = before_each();\n", test_idx));
+                }
+            }
+
+            // Call the test function with context if before_each exists
+            if test_block.has_before_each {
+                output.push_str(&format!("  {}(ctx = ctx_{});\n", test_func_name, test_idx));
+            } else {
+                output.push_str(&format!("  {}();\n", test_func_name));
+            }
+
+            // Call after_each if it exists
+            if test_block.has_after_each {
+                if test_block.has_before_each {
+                    output.push_str(&format!("  after_each(ctx = ctx_{});\n", test_idx));
+                } else {
+                    // Error: after_each without before_each doesn't make sense
+                    // For now, we'll just skip it
+                }
+            }
+
+            output.push_str("  passed = passed + 1;\n");
+            output.push_str("\n");
+
+            test_idx += 1;
+        }
+    }
+
+    output.push_str(&format!("  print(value = \"{} tests, {} passed, 0 failed\");\n", total_tests, total_tests));
     output.push_str("  return 0;\n");
     output.push_str("}\n");
 

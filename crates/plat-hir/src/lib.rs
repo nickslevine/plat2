@@ -3494,15 +3494,33 @@ impl TypeChecker {
     }
 
     fn check_test_block(&mut self, test_block: &TestBlock) -> Result<(), DiagnosticError> {
+        // Check if there's a before_each hook
+        let has_before_each = test_block.functions.iter().any(|f| f.name == "before_each");
+
         // Check each function in the test block
         for function in &test_block.functions {
             // Validate test function naming convention
             if function.name.starts_with("test_") {
                 // This is a test function - validate it
-                if !function.params.is_empty() {
-                    return Err(DiagnosticError::Type(
-                        format!("Test function '{}' must not have parameters", function.name)
-                    ));
+                if has_before_each {
+                    // When before_each exists, test functions can have exactly one parameter named "ctx"
+                    if function.params.len() > 1 {
+                        return Err(DiagnosticError::Type(
+                            format!("Test function '{}' can have at most one parameter (ctx) when using before_each", function.name)
+                        ));
+                    }
+                    if function.params.len() == 1 && function.params[0].name != "ctx" {
+                        return Err(DiagnosticError::Type(
+                            format!("Test function '{}' parameter must be named 'ctx' when using before_each", function.name)
+                        ));
+                    }
+                } else {
+                    // Without before_each, test functions must have no parameters
+                    if !function.params.is_empty() {
+                        return Err(DiagnosticError::Type(
+                            format!("Test function '{}' must not have parameters (use before_each hook to provide context)", function.name)
+                        ));
+                    }
                 }
 
                 // Test functions should return Unit (no return value)

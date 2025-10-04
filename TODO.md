@@ -1,9 +1,3 @@
-
-## Visibility
-* objects: member access
-* modules
-  * private vs public. 
-
 ## Tooling
 * testing
   * setup/teardown 
