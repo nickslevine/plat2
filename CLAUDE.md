@@ -79,7 +79,7 @@
 - **Fail-Fast**: Assertion failures immediately stop the test and report the failure
 
 ### Benchmarking
-- **Bench Blocks**: `bench "description" { ... }` groups related benchmarks
+- **Bench Blocks**: `bench bench_block_name { ... }` groups related benchmarks (snake_case identifier required)
 - **Bench Functions**: Functions starting with `bench_` are automatically discovered and run
 - **Automatic Timing**: Framework handles iteration loops and timing measurement
 - **Statistical Output**: Reports mean, median, standard deviation for each benchmark
@@ -550,7 +550,7 @@ class Point {
   }
 }
 
-bench "point operations" {
+bench point_operations {
   // Helper function (not a benchmark, doesn't start with bench_)
   fn create_test_point() -> Point {
     return Point.init(x = 42, y = 84);
@@ -583,19 +583,19 @@ fn main() -> Int32 {
 $ plat bench point.plat
 Running benchmarks...
 
-point operations::bench_point_creation
+point_operations::bench_point_creation
   Iterations: 10,000,000
   Mean: 125ns
   Median: 120ns
   Std Dev: 15ns
 
-point operations::bench_point_addition
+point_operations::bench_point_addition
   Iterations: 10,000,000
   Mean: 245ns
   Median: 240ns
   Std Dev: 22ns
 
-point operations::bench_magnitude_calculation
+point_operations::bench_magnitude_calculation
   Iterations: 10,000,000
   Mean: 180ns
   Median: 175ns

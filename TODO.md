@@ -1,10 +1,8 @@
 ## Tooling
 * testing
-  * test block names.
   * test filtering - module, block, function
   * conditional compilation
-  * don't fail fast - run all tests
-  * bench block names. 
+  * don't fail fast - run all tests 
 
 
 

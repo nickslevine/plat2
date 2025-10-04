@@ -1059,8 +1059,8 @@ fn generate_bench_main(bench_functions: &[(String, String)]) -> String {
 
     // Generate bench runner main function
     output.push_str("fn main() -> Int32 {\n");
-    output.push_str("  let iterations = 10_000_000;\n");
-    output.push_str("  let warmup_iterations = 1_000;\n");
+    output.push_str("  let iterations: Int32 = 10_000_000;\n");
+    output.push_str("  let warmup_iterations: Int32 = 1_000;\n");
     output.push_str("\n");
 
     for (idx, (bench_block_name, bench_func_name)) in bench_functions.iter().enumerate() {
@@ -1069,7 +1069,7 @@ fn generate_bench_main(bench_functions: &[(String, String)]) -> String {
 
         // Warmup phase - use unique variable name
         let warmup_var = format!("warmup_{}", idx);
-        output.push_str(&format!("  var {} = 0;\n", warmup_var));
+        output.push_str(&format!("  var {}: Int32 = 0;\n", warmup_var));
         output.push_str(&format!("  while ({} < warmup_iterations) {{\n", warmup_var));
         output.push_str(&format!("    {}();\n", bench_func_name));
         output.push_str(&format!("    {} = {} + 1;\n", warmup_var, warmup_var));
@@ -1078,7 +1078,7 @@ fn generate_bench_main(bench_functions: &[(String, String)]) -> String {
 
         // Benchmark phase - use unique variable name
         let bench_var = format!("bench_{}", idx);
-        output.push_str(&format!("  var {} = 0;\n", bench_var));
+        output.push_str(&format!("  var {}: Int32 = 0;\n", bench_var));
         output.push_str(&format!("  while ({} < iterations) {{\n", bench_var));
         output.push_str(&format!("    {}();\n", bench_func_name));
         output.push_str(&format!("    {} = {} + 1;\n", bench_var, bench_var));

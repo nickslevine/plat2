@@ -246,8 +246,8 @@ impl Parser {
         let start = self.current_span().start;
         self.consume(Token::Bench, "Expected 'bench'")?;
 
-        // Parse bench block name (must be a string literal)
-        let name = if let Token::StringLiteral(s) = &self.peek().token {
+        // Parse bench block name (must be an identifier)
+        let name = if let Token::Ident(s) = &self.peek().token {
             let name = s.clone();
             self.advance();
             name
@@ -256,10 +256,10 @@ impl Parser {
                 Diagnostic::syntax_error(
                     &self.filename,
                     self.current_span(),
-                    "Expected string literal for bench block name"
+                    "Expected identifier for bench block name"
                 )
-                .with_label("expected a string like \"benchmark description\" here")
-                .with_help("Benchmark blocks require a descriptive name: bench \"description\" { ... }")
+                .with_label("expected a snake_case identifier here")
+                .with_help("Benchmark blocks require a snake_case identifier: bench my_bench_block { ... }")
             ));
         };
 

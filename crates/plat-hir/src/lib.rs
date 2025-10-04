@@ -148,6 +148,7 @@ pub struct TypeChecker {
     test_mode: bool, // Whether we're in test mode (compiling tests)
     bench_mode: bool, // Whether we're in bench mode (compiling benchmarks)
     test_block_names: HashSet<String>, // Track test block names for uniqueness validation
+    bench_block_names: HashSet<String>, // Track bench block names for uniqueness validation
     filename: String, // Source filename for error reporting
 }
 
@@ -241,6 +242,7 @@ impl TypeChecker {
             test_mode: false, // Default: not in test mode
             bench_mode: false, // Default: not in bench mode
             test_block_names: HashSet::new(), // Track test block names
+            bench_block_names: HashSet::new(), // Track bench block names
             filename: "<unknown>".to_string(), // Default filename
         };
 
@@ -272,6 +274,7 @@ impl TypeChecker {
             test_mode: false, // Default: not in test mode
             bench_mode: false, // Default: not in bench mode
             test_block_names: HashSet::new(), // Track test block names
+            bench_block_names: HashSet::new(), // Track bench block names
             filename: "<unknown>".to_string(), // Default filename
         };
 
@@ -3641,6 +3644,32 @@ impl TypeChecker {
     }
 
     fn check_bench_block(&mut self, bench_block: &BenchBlock) -> Result<(), DiagnosticError> {
+        // Validate bench block name follows snake_case convention
+        if !is_snake_case(&bench_block.name) {
+            return Err(DiagnosticError::Rich(
+                Diagnostic::type_error(
+                    &self.filename,
+                    bench_block.span,
+                    format!("Bench block name '{}' must be snake_case", bench_block.name)
+                )
+                .with_label("bench block name must be snake_case")
+                .with_help(format!("Try renaming to: {}", to_snake_case(&bench_block.name)))
+            ));
+        }
+
+        // Validate bench block name is unique
+        if !self.bench_block_names.insert(bench_block.name.clone()) {
+            return Err(DiagnosticError::Rich(
+                Diagnostic::type_error(
+                    &self.filename,
+                    bench_block.span,
+                    format!("Duplicate bench block name '{}'", bench_block.name)
+                )
+                .with_label("bench block name must be unique within the module")
+                .with_help("Each bench block must have a unique identifier")
+            ));
+        }
+
         // Check each function in the bench block
         for function in &bench_block.functions {
             // Validate bench function naming convention
