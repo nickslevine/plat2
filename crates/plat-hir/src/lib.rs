@@ -589,10 +589,24 @@ impl TypeChecker {
                     "Main function must have no parameters".to_string()
                 ));
             }
-            // Main can return either Unit or i32 (for exit code)
-            if main_sig.return_type != HirType::Unit && main_sig.return_type != HirType::Int32 {
+            // Main can return Unit, Int32, Option<Int32>, Result<Int32, E>, or Result<(), E>
+            let valid_return_type = match &main_sig.return_type {
+                HirType::Unit => true,
+                HirType::Int32 => true,
+                HirType::Enum(name, type_params) if name == "Option" => {
+                    // Allow Option<Int32> or Option<()>
+                    type_params.len() == 1 && (type_params[0] == HirType::Int32 || type_params[0] == HirType::Unit)
+                }
+                HirType::Enum(name, type_params) if name == "Result" => {
+                    // Allow Result<Int32, E> or Result<(), E> for any error type E
+                    type_params.len() == 2 && (type_params[0] == HirType::Int32 || type_params[0] == HirType::Unit)
+                }
+                _ => false,
+            };
+
+            if !valid_return_type {
                 return Err(DiagnosticError::Type(
-                    "Main function must return either nothing or i32".to_string()
+                    format!("Main function must return Unit, Int32, Option<Int32>, Option<()>, Result<Int32, E>, or Result<(), E>, got {:?}", main_sig.return_type)
                 ));
             }
         }
@@ -1546,9 +1560,12 @@ impl TypeChecker {
                     ));
                 }
 
-                // Object must be List
+                // Object must be List - returns Option<element_type>
                 match object_type {
-                    HirType::List(element_type) => Ok(*element_type),
+                    HirType::List(element_type) => {
+                        // Return Option<T> for safe indexing
+                        Ok(HirType::Enum("Option".to_string(), vec![*element_type]))
+                    }
                     _ => Err(DiagnosticError::Type(
                         format!("Cannot index into type {:?}", object_type)
                     ))
@@ -1925,6 +1942,42 @@ impl TypeChecker {
                             ));
                         }
                         Ok(HirType::Bool)
+                    }
+                    (HirType::String, "parse_int") => {
+                        if !args.is_empty() {
+                            return Err(DiagnosticError::Type(
+                                "parse_int() method takes no arguments".to_string()
+                            ));
+                        }
+                        // Returns Result<Int32, String>
+                        Ok(HirType::Enum("Result".to_string(), vec![HirType::Int32, HirType::String]))
+                    }
+                    (HirType::String, "parse_int64") => {
+                        if !args.is_empty() {
+                            return Err(DiagnosticError::Type(
+                                "parse_int64() method takes no arguments".to_string()
+                            ));
+                        }
+                        // Returns Result<Int64, String>
+                        Ok(HirType::Enum("Result".to_string(), vec![HirType::Int64, HirType::String]))
+                    }
+                    (HirType::String, "parse_float") => {
+                        if !args.is_empty() {
+                            return Err(DiagnosticError::Type(
+                                "parse_float() method takes no arguments".to_string()
+                            ));
+                        }
+                        // Returns Result<Float64, String>
+                        Ok(HirType::Enum("Result".to_string(), vec![HirType::Float64, HirType::String]))
+                    }
+                    (HirType::String, "parse_bool") => {
+                        if !args.is_empty() {
+                            return Err(DiagnosticError::Type(
+                                "parse_bool() method takes no arguments".to_string()
+                            ));
+                        }
+                        // Returns Result<Bool, String>
+                        Ok(HirType::Enum("Result".to_string(), vec![HirType::Bool, HirType::String]))
                     }
                     // Dict methods
                     (HirType::Dict(key_type, value_type), "get") => {

@@ -376,3 +376,193 @@ pub extern "C" fn plat_string_is_alphanumeric(str_ptr: *const c_char) -> bool {
         !str_val.is_empty() && str_val.chars().all(|c| c.is_alphanumeric())
     }
 }
+
+/// Helper to create error message on GC heap
+unsafe fn create_error_message(msg: &str) -> *const c_char {
+    let mut msg_bytes = msg.as_bytes().to_vec();
+    msg_bytes.push(0); // null terminator
+
+    let size = msg_bytes.len();
+    let gc_ptr = plat_gc_alloc(size);
+
+    if gc_ptr.is_null() {
+        return std::ptr::null();
+    }
+
+    std::ptr::copy_nonoverlapping(msg_bytes.as_ptr(), gc_ptr, size);
+    gc_ptr as *const c_char
+}
+
+/// Compute variant discriminant using same hash as codegen
+fn variant_hash(name: &str) -> u32 {
+    let mut hash = 0u32;
+    for byte in name.bytes() {
+        hash = hash.wrapping_mul(31).wrapping_add(byte as u32);
+    }
+    hash
+}
+
+/// Parse string to Int32
+/// Returns Result<Int32, String> as heap-allocated enum
+#[no_mangle]
+pub extern "C" fn plat_string_parse_int(str_ptr: *const c_char) -> i64 {
+    unsafe {
+        if str_ptr.is_null() {
+            let err_msg = create_error_message("Cannot parse null string");
+            return create_result_enum_err_string(err_msg);
+        }
+
+        let str_val = match CStr::from_ptr(str_ptr).to_str() {
+            Ok(s) => s.trim(),
+            Err(_) => {
+                let err_msg = create_error_message("Invalid UTF-8 string");
+                return create_result_enum_err_string(err_msg);
+            }
+        };
+
+        match str_val.parse::<i32>() {
+            Ok(val) => create_result_enum_ok_i32(val),
+            Err(_) => {
+                let err_msg = create_error_message(&format!("Cannot parse '{}' as Int32", str_val));
+                create_result_enum_err_string(err_msg)
+            }
+        }
+    }
+}
+
+/// Parse string to Int64
+#[no_mangle]
+pub extern "C" fn plat_string_parse_int64(str_ptr: *const c_char) -> i64 {
+    unsafe {
+        if str_ptr.is_null() {
+            let err_msg = create_error_message("Cannot parse null string");
+            return create_result_enum_err_string(err_msg);
+        }
+
+        let str_val = match CStr::from_ptr(str_ptr).to_str() {
+            Ok(s) => s.trim(),
+            Err(_) => {
+                let err_msg = create_error_message("Invalid UTF-8 string");
+                return create_result_enum_err_string(err_msg);
+            }
+        };
+
+        match str_val.parse::<i64>() {
+            Ok(val) => create_result_enum_ok_i64(val),
+            Err(_) => {
+                let err_msg = create_error_message(&format!("Cannot parse '{}' as Int64", str_val));
+                create_result_enum_err_string(err_msg)
+            }
+        }
+    }
+}
+
+/// Parse string to Float64
+#[no_mangle]
+pub extern "C" fn plat_string_parse_float(str_ptr: *const c_char) -> i64 {
+    unsafe {
+        if str_ptr.is_null() {
+            let err_msg = create_error_message("Cannot parse null string");
+            return create_result_enum_err_string(err_msg);
+        }
+
+        let str_val = match CStr::from_ptr(str_ptr).to_str() {
+            Ok(s) => s.trim(),
+            Err(_) => {
+                let err_msg = create_error_message("Invalid UTF-8 string");
+                return create_result_enum_err_string(err_msg);
+            }
+        };
+
+        match str_val.parse::<f64>() {
+            Ok(val) => create_result_enum_ok_f64(val),
+            Err(_) => {
+                let err_msg = create_error_message(&format!("Cannot parse '{}' as Float64", str_val));
+                create_result_enum_err_string(err_msg)
+            }
+        }
+    }
+}
+
+/// Parse string to Bool
+#[no_mangle]
+pub extern "C" fn plat_string_parse_bool(str_ptr: *const c_char) -> i64 {
+    unsafe {
+        if str_ptr.is_null() {
+            let err_msg = create_error_message("Cannot parse null string");
+            return create_result_enum_err_string(err_msg);
+        }
+
+        let str_val = match CStr::from_ptr(str_ptr).to_str() {
+            Ok(s) => s.trim().to_lowercase(),
+            Err(_) => {
+                let err_msg = create_error_message("Invalid UTF-8 string");
+                return create_result_enum_err_string(err_msg);
+            }
+        };
+
+        let bool_val = match str_val.as_str() {
+            "true" => true,
+            "false" => false,
+            _ => {
+                let err_msg = create_error_message(&format!("Cannot parse '{}' as Bool (expected 'true' or 'false')", str_val));
+                return create_result_enum_err_string(err_msg);
+            }
+        };
+
+        create_result_enum_ok_bool(bool_val)
+    }
+}
+
+/// Create Result::Ok(i32) enum value
+unsafe fn create_result_enum_ok_i32(value: i32) -> i64 {
+    let ok_disc = variant_hash("Ok");
+    // Heap-allocated: [discriminant:i32][value:i32]
+    let ptr = plat_gc_alloc(8) as *mut i32;
+    *ptr = ok_disc as i32;
+    *ptr.add(1) = value;
+    ptr as i64
+}
+
+/// Create Result::Ok(i64) enum value
+unsafe fn create_result_enum_ok_i64(value: i64) -> i64 {
+    let ok_disc = variant_hash("Ok");
+    // Heap-allocated: [discriminant:i32][padding:i32][value:i64]
+    let ptr = plat_gc_alloc(16) as *mut i32;
+    *ptr = ok_disc as i32;
+    let value_ptr = ptr.add(2) as *mut i64;
+    *value_ptr = value;
+    ptr as i64
+}
+
+/// Create Result::Ok(f64) enum value
+unsafe fn create_result_enum_ok_f64(value: f64) -> i64 {
+    let ok_disc = variant_hash("Ok");
+    // Heap-allocated: [discriminant:i32][padding:i32][value:f64]
+    let ptr = plat_gc_alloc(16) as *mut i32;
+    *ptr = ok_disc as i32;
+    let value_ptr = ptr.add(2) as *mut f64;
+    *value_ptr = value;
+    ptr as i64
+}
+
+/// Create Result::Ok(bool) enum value
+unsafe fn create_result_enum_ok_bool(value: bool) -> i64 {
+    let ok_disc = variant_hash("Ok");
+    // Heap-allocated: [discriminant:i32][value:i32]
+    let ptr = plat_gc_alloc(8) as *mut i32;
+    *ptr = ok_disc as i32;
+    *ptr.add(1) = if value { 1 } else { 0 };
+    ptr as i64
+}
+
+/// Create Result::Err(String) enum value
+unsafe fn create_result_enum_err_string(error_msg: *const c_char) -> i64 {
+    let err_disc = variant_hash("Err");
+    // Heap-allocated: [discriminant:i32][padding:i32][error_ptr:i64]
+    let ptr = plat_gc_alloc(16) as *mut i32;
+    *ptr = err_disc as i32;
+    let msg_ptr = ptr.add(2) as *mut i64;
+    *msg_ptr = error_msg as i64;
+    ptr as i64
+}

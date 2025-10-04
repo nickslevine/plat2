@@ -794,7 +794,7 @@ impl CodeGenerator {
             let ret_type = self.ast_type_to_cranelift(return_type);
             sig.returns.push(AbiParam::new(ret_type));
         } else if function.name == "main" || name == "main" {
-            // Main function always returns i32 (exit code) even if not specified
+            // Main function returns i32 (exit code) if no return type specified
             sig.returns.push(AbiParam::new(I32));
         }
 
@@ -2040,46 +2040,99 @@ impl CodeGenerator {
                 let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
                 let index_val = Self::generate_expression_helper(builder, index, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
 
-                // Declare plat_array_get function
-                let get_sig = {
+                // Use safe get that returns Option<T>
+                let func_sig = {
                     let mut sig = module.make_signature();
                     sig.call_conv = CallConv::SystemV;
                     sig.params.push(AbiParam::new(I64)); // array pointer
-                    sig.params.push(AbiParam::new(I64)); // index (we'll convert i32 to usize)
-                    sig.returns.push(AbiParam::new(I64)); // element value (now i64 for all types)
+                    sig.params.push(AbiParam::new(I32)); // index
+                    sig.returns.push(AbiParam::new(I32)); // found (bool)
+                    sig.returns.push(AbiParam::new(I64)); // value
                     sig
                 };
 
-                let get_id = module.declare_function("plat_array_get", Linkage::Import, &get_sig)
+                let func_id = module.declare_function("plat_array_get_safe", Linkage::Import, &func_sig)
                     .map_err(CodegenError::ModuleError)?;
-                let get_ref = module.declare_func_in_func(get_id, builder.func);
+                let func_ref = module.declare_func_in_func(func_id, builder.func);
 
-                // Convert i32 index to i64 for function call
-                let index_i64 = builder.ins().uextend(I64, index_val);
+                let call = builder.ins().call(func_ref, &[object_val, index_val]);
+                let results = builder.inst_results(call);
 
-                // Call plat_array_get
-                let call = builder.ins().call(get_ref, &[object_val, index_i64]);
-                let result_i64 = builder.inst_results(call)[0];
+                let found = results[0]; // i32: 0 or 1
+                let value = results[1]; // i64
 
-                // Convert the result based on the element type
+                // Compute discriminants for Option variants
+                let none_disc = Self::variant_discriminant("Option", "None") as i64;
+                let some_disc = Self::variant_discriminant("Option", "Some") as i64;
+
+                // Create blocks for conditional
+                let some_block = builder.create_block();
+                let none_block = builder.create_block();
+                let merge_block = builder.create_block();
+
+                // Add parameter to merge block for the result
+                builder.append_block_param(merge_block, I64);
+
+                // Branch based on found
+                builder.ins().brif(found, some_block, &[], none_block, &[]);
+
+                // Some block: create Option::Some(value)
+                builder.switch_to_block(some_block);
+                builder.seal_block(some_block);
+
+                // Check if value needs heap allocation (for pointer types)
                 let element_type = Self::infer_element_type(object, variable_types);
-                let element_cranelift_type = Self::variable_type_to_cranelift_type(&element_type);
+                let needs_heap = matches!(element_type,
+                    VariableType::String | VariableType::Array(_) | VariableType::Class(_) | VariableType::Enum(_)
+                );
 
-                let result = match element_cranelift_type {
-                    I32 => {
-                        // For i32 types (bool, i32), reduce from i64 to i32
-                        builder.ins().ireduce(I32, result_i64)
-                    }
-                    I64 => {
-                        // For i64 types (string, arrays, objects, enums), keep as i64
-                        result_i64
-                    }
-                    _ => {
-                        // Fallback for any other types
-                        result_i64
-                    }
+                let some_value = if needs_heap {
+                    // Allocate: [discriminant:i32][padding:i32][value:i64]
+                    let gc_alloc_sig = {
+                        let mut sig = module.make_signature();
+                        sig.call_conv = CallConv::SystemV;
+                        sig.params.push(AbiParam::new(I64));
+                        sig.returns.push(AbiParam::new(I64));
+                        sig
+                    };
+                    let gc_alloc_id = module.declare_function("plat_gc_alloc", Linkage::Import, &gc_alloc_sig)
+                        .map_err(CodegenError::ModuleError)?;
+                    let gc_alloc_ref = module.declare_func_in_func(gc_alloc_id, builder.func);
+
+                    let size = builder.ins().iconst(I64, 16);
+                    let alloc_call = builder.ins().call(gc_alloc_ref, &[size]);
+                    let ptr = builder.inst_results(alloc_call)[0];
+
+                    let disc_val = builder.ins().iconst(I32, some_disc);
+                    builder.ins().store(MemFlags::new(), disc_val, ptr, 0);
+                    builder.ins().store(MemFlags::new(), value, ptr, 8);
+
+                    ptr
+                } else {
+                    // Pack: discriminant in high 32 bits, value in low 32 bits
+                    let disc_64 = builder.ins().iconst(I64, some_disc);
+                    let disc_shifted = builder.ins().ishl_imm(disc_64, 32);
+                    let value_32 = builder.ins().ireduce(I32, value);
+                    let value_64 = builder.ins().uextend(I64, value_32);
+                    builder.ins().bor(disc_shifted, value_64)
                 };
 
+                builder.ins().jump(merge_block, &[some_value]);
+
+                // None block: create Option::None
+                builder.switch_to_block(none_block);
+                builder.seal_block(none_block);
+
+                let none_disc_64 = builder.ins().iconst(I64, none_disc);
+                let none_value = builder.ins().ishl_imm(none_disc_64, 32);
+
+                builder.ins().jump(merge_block, &[none_value]);
+
+                // Merge block
+                builder.switch_to_block(merge_block);
+                builder.seal_block(merge_block);
+
+                let result = builder.block_params(merge_block)[0];
                 Ok(result)
             }
             Expression::MethodCall { object, method, args, .. } => {
@@ -2372,6 +2425,29 @@ impl CodeGenerator {
                             sig.call_conv = CallConv::SystemV;
                             sig.params.push(AbiParam::new(I64)); // string pointer
                             sig.returns.push(AbiParam::new(I32)); // bool as i32
+                            sig
+                        };
+
+                        let func_name = format!("plat_string_{}", method);
+                        let func_id = module.declare_function(&func_name, Linkage::Import, &func_sig)
+                            .map_err(CodegenError::ModuleError)?;
+                        let func_ref = module.declare_func_in_func(func_id, builder.func);
+
+                        let call = builder.ins().call(func_ref, &[object_val]);
+                        Ok(builder.inst_results(call)[0])
+                    }
+                    "parse_int" | "parse_int64" | "parse_float" | "parse_bool" => {
+                        if !args.is_empty() {
+                            return Err(CodegenError::UnsupportedFeature(format!("{}() method takes no arguments", method)));
+                        }
+
+                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
+
+                        let func_sig = {
+                            let mut sig = module.make_signature();
+                            sig.call_conv = CallConv::SystemV;
+                            sig.params.push(AbiParam::new(I64)); // string pointer
+                            sig.returns.push(AbiParam::new(I64)); // Result enum pointer
                             sig
                         };
 

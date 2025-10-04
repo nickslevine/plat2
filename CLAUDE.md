@@ -134,7 +134,7 @@ plat2/
 - Newtypes (zero-cost distinct types)
 - Full numeric type support (Int8, Int16, Int32, Int64, Float8, Float16, Float32, Float64)
 - Numeric literals with underscores (e.g., 1_000_000, 3.141_592_653)
-- String methods (13 built-in functions)
+- String methods (17 built-in functions including parsing)
 - Set methods (11 built-in operations)
 - Dict methods (11 built-in operations)
 - Naming convention enforcement (compile-time validation)
@@ -142,13 +142,19 @@ plat2/
 - Named arguments (required for all function/method/constructor/print calls)
 - Built-in test framework with automatic test discovery, assertions, and runner
 - Numeric type casting with cast() function (wrapping overflow, truncating float→int)
+- **Result & Option integration:**
+  - Collection indexing returns `Option<T>` for safe access
+  - String parsing methods return `Result<T, String>` (parse_int, parse_int64, parse_float, parse_bool)
+  - `?` operator for error propagation (basic support)
 
 **📋 TODO (Stretch Goals):**
 - [ ] Rich error messages with Ariadne spans
 - [ ] Colored CLI output
 - [ ] Generic constraints (`T: Display`)
-- [ ] `?` operator for Option/Result
+- [ ] Complete `?` operator implementation with proper early returns
 - [ ] `if let` pattern matching
+- [ ] Main function Result/Option return types (codegen support)
+- [ ] unwrap(), unwrap_or(), expect() methods for Result/Option
 
 ---
 
@@ -387,6 +393,71 @@ point operations::bench_magnitude_calculation
 
 3 benchmarks completed
 ```
+
+### Result & Option for Safe Error Handling
+
+**String Parsing:**
+```plat
+fn main() -> Int32 {
+  let input: String = "42";
+  let result: Result<Int32, String> = input.parse_int();
+
+  let value: Int32 = match result {
+    Result::Ok(num: Int32) -> num,
+    Result::Err(msg: String) -> {
+      print(value = msg);
+      return 1;
+    }
+  };
+
+  print(value = "Parsed number: ${value}");
+  return 0;
+}
+```
+
+**Safe Collection Indexing:**
+```plat
+fn main() -> Int32 {
+  let numbers: List[Int32] = [10, 20, 30];
+  let maybe_value: Option<Int32> = numbers[5];  // Returns Option, not panic!
+
+  let result: Int32 = match maybe_value {
+    Option::Some(val: Int32) -> val,
+    Option::None -> {
+      print(value = "Index out of bounds!");
+      return 1;
+    }
+  };
+
+  print(value = "Value: ${result}");
+  return 0;
+}
+```
+
+**Error Propagation with ? Operator (Basic):**
+```plat
+fn parse_and_double(s: String) -> Result<Int32, String> {
+  let num: Int32 = s.parse_int()?;  // Propagates error if parsing fails
+  return Result::Ok(field0 = num * 2);
+}
+
+fn main() -> Int32 {
+  let result: Result<Int32, String> = parse_and_double(s = "21");
+
+  match result {
+    Result::Ok(val: Int32) -> print(value = "Result: ${val}"),
+    Result::Err(err: String) -> print(value = "Error: ${err}")
+  };
+
+  return 0;
+}
+```
+
+**All Parsing Methods:**
+- `parse_int() -> Result<Int32, String>` - Parse to 32-bit integer
+- `parse_int64() -> Result<Int64, String>` - Parse to 64-bit integer
+- `parse_float() -> Result<Float64, String>` - Parse to 64-bit float
+- `parse_bool() -> Result<Bool, String>` - Parse "true" or "false"
 
 ---
 
