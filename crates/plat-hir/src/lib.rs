@@ -4,7 +4,7 @@ mod tests;
 use plat_ast::*;
 use plat_diags::{Diagnostic, DiagnosticError};
 use plat_lexer::Span;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// Validates that a name follows snake_case convention
 fn is_snake_case(name: &str) -> bool {
@@ -147,6 +147,7 @@ pub struct TypeChecker {
     require_main: bool, // Whether to require a main function (false for library modules)
     test_mode: bool, // Whether we're in test mode (compiling tests)
     bench_mode: bool, // Whether we're in bench mode (compiling benchmarks)
+    test_block_names: HashSet<String>, // Track test block names for uniqueness validation
     filename: String, // Source filename for error reporting
 }
 
@@ -239,6 +240,7 @@ impl TypeChecker {
             require_main: true, // Default: require main function
             test_mode: false, // Default: not in test mode
             bench_mode: false, // Default: not in bench mode
+            test_block_names: HashSet::new(), // Track test block names
             filename: "<unknown>".to_string(), // Default filename
         };
 
@@ -269,6 +271,7 @@ impl TypeChecker {
             require_main: false, // Multi-module: don't require main in every module
             test_mode: false, // Default: not in test mode
             bench_mode: false, // Default: not in bench mode
+            test_block_names: HashSet::new(), // Track test block names
             filename: "<unknown>".to_string(), // Default filename
         };
 
@@ -3567,6 +3570,32 @@ impl TypeChecker {
     }
 
     fn check_test_block(&mut self, test_block: &TestBlock) -> Result<(), DiagnosticError> {
+        // Validate test block name follows snake_case convention
+        if !is_snake_case(&test_block.name) {
+            return Err(DiagnosticError::Rich(
+                Diagnostic::type_error(
+                    &self.filename,
+                    test_block.span,
+                    format!("Test block name '{}' must be snake_case", test_block.name)
+                )
+                .with_label("test block name must be snake_case")
+                .with_help(format!("Try renaming to: {}", to_snake_case(&test_block.name)))
+            ));
+        }
+
+        // Validate test block name is unique
+        if !self.test_block_names.insert(test_block.name.clone()) {
+            return Err(DiagnosticError::Rich(
+                Diagnostic::type_error(
+                    &self.filename,
+                    test_block.span,
+                    format!("Duplicate test block name '{}'", test_block.name)
+                )
+                .with_label("test block name must be unique within the module")
+                .with_help("Each test block must have a unique identifier")
+            ));
+        }
+
         // Check if there's a before_each hook
         let has_before_each = test_block.functions.iter().any(|f| f.name == "before_each");
 

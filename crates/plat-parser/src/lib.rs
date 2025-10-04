@@ -207,8 +207,8 @@ impl Parser {
         let start = self.current_span().start;
         self.consume(Token::Test, "Expected 'test'")?;
 
-        // Parse test block name (must be a string literal)
-        let name = if let Token::StringLiteral(s) = &self.peek().token {
+        // Parse test block name (must be an identifier)
+        let name = if let Token::Ident(s) = &self.peek().token {
             let name = s.clone();
             self.advance();
             name
@@ -217,10 +217,10 @@ impl Parser {
                 Diagnostic::syntax_error(
                     &self.filename,
                     self.current_span(),
-                    "Expected string literal for test block name"
+                    "Expected identifier for test block name"
                 )
-                .with_label("expected a string like \"test description\" here")
-                .with_help("Test blocks require a descriptive name: test \"description\" { ... }")
+                .with_label("expected a snake_case identifier here")
+                .with_help("Test blocks require a snake_case identifier: test my_test_block { ... }")
             ));
         };
 

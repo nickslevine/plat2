@@ -67,7 +67,7 @@
 - **Example**: `let z: Float32 = x + cast(value = y, target = Float32)`
 
 ### Testing
-- **Test Blocks**: `test "description" { ... }` groups related tests
+- **Test Blocks**: `test test_block_name { ... }` groups related tests (snake_case identifier required)
 - **Test Functions**: Functions starting with `test_` are automatically discovered and run
 - **Assertions**: `assert(condition = expr)` or `assert(condition = expr, message = "...")`
 - **Helper Functions**: Non-test functions in test blocks provide shared setup/fixtures
@@ -458,7 +458,7 @@ class Point {
   }
 }
 
-test "point operations" {
+test point_operations {
   fn test_addition() {
     let p1: Point = Point.init(x = 1, y = 2);
     let p2: Point = Point.init(x = 2, y = 4);
@@ -492,7 +492,7 @@ class Connection {
   }
 }
 
-test "database operations" {
+test database_operations {
   // Lifecycle hook: runs before each test, returns context
   fn before_each() -> Connection {
     let conn: Connection = Connection.init(is_open = true);
@@ -676,7 +676,8 @@ fn main() -> Int32 {
 1. **TDD First**: Write failing tests, make them pass, refactor
 2. **No Fake Wiring**: Never hard-code outputs to look correct
 3. **Frequent Commits**: Commit after each green step
-4. **Plan Hygiene**: Update TODO.md for work tracking
+4. Update CLAUDE.md to maintain working knowledge of project. 
+5. As you add features and make changes, make sure to always add helpful compiler error messages as we already have for existing functionality.  
 
 ---
 

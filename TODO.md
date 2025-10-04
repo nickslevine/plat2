@@ -4,7 +4,7 @@
   * test filtering - module, block, function
   * conditional compilation
   * don't fail fast - run all tests
-* ✅ beautiful error messages (ariadne)
+  * bench block names. 
 
 
 
