@@ -1,9 +1,12 @@
 ## Tooling
 * testing
-  * test filtering
+  * test block names.
+  * test filtering - module, block, function
   * conditional compilation
   * don't fail fast - run all tests
-* ✅ beautiful error messages (ariadne) - Phase 1 complete: lexer errors with rich diagnostics
+* ✅ beautiful error messages (ariadne)
+
+
 
 ## Networking
 * networking / http requests
@@ -20,8 +23,18 @@
 * json, etc
 * caching
 * cli/tui framework
+* progress bar 
 * serde etc. 
 * regex
+* file system operations 
+* pathlib. 
+* random 
+* time
+* datetime 
+* env vars
+* debugging 
+* sqlite 
+* ffi 
 
 
 
@@ -37,6 +50,11 @@
   * spinner
   * ai docs
 * LSP
+* vs code plugin 
+* docs generation 
+* markdown parsing 
+* tasks / todo support. 
+* linter 
 * syntax highlighting
 * config 
 * any module is automatically a cli
@@ -50,9 +68,11 @@
 * platitudes. 
 * linting / suggestions - dead code, unused imports
 * central package repository
+* dependency management 
 * revisit type inference and required argument names 
 * language code reviews. 
 * iterate on error messages
+* comptime? 
 
 
 ## GC

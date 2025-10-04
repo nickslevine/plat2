@@ -306,6 +306,28 @@ impl Diagnostic {
             .with_label(format!("not found in this scope"))
     }
 
+    /// Create an undefined symbol error with "did you mean" suggestions
+    pub fn undefined_symbol_with_suggestions(
+        filename: impl Into<String>,
+        span: Span,
+        name: impl Into<String>,
+        available_symbols: &[String],
+    ) -> Self {
+        let name = name.into();
+        let suggestions = find_similar_names(&name, available_symbols, 3);
+
+        let mut diag = Self::undefined_symbol(filename, span, &name);
+
+        if !suggestions.is_empty() {
+            diag = diag.with_help(format!(
+                "Did you mean one of these? {}",
+                suggestions.join(", ")
+            ));
+        }
+
+        diag
+    }
+
     /// Create a module error
     pub fn module_error(
         filename: impl Into<String>,
@@ -354,6 +376,24 @@ pub fn report_error(filename: &str, source: &str, message: &str, span: (usize, u
         .finish()
         .print((filename, Source::from(source)))
         .unwrap();
+}
+
+// ============================================================================
+// Helper functions for suggestions
+// ============================================================================
+
+/// Find similar names using Jaro-Winkler distance
+fn find_similar_names(target: &str, candidates: &[String], max: usize) -> Vec<String> {
+    use strsim::jaro_winkler;
+
+    let mut scored: Vec<_> = candidates
+        .iter()
+        .map(|c| (c, jaro_winkler(target, c)))
+        .filter(|(_, score)| *score > 0.7)
+        .collect();
+
+    scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+    scored.into_iter().take(max).map(|(s, _)| s.clone()).collect()
 }
 
 // ============================================================================

@@ -166,10 +166,14 @@ plat2/
   - Compile-time checking for method calls (private by default)
   - Compile-time checking for cross-module symbol access (functions, classes, enums)
   - Clear error messages for visibility violations
+- **Beautiful error messages with Ariadne:**
+  - Rich diagnostics with syntax highlighting and code snippets
+  - Error codes (E001-E004) for common syntax errors
+  - Helpful suggestions and "did you mean" for undefined symbols
+  - Multi-label support showing related locations
+  - Contextual help messages for fixing errors
 
 **📋 TODO (Stretch Goals):**
-- [ ] Rich error messages with Ariadne spans
-- [ ] Colored CLI output
 - [ ] Generic constraints (`T: Display`)
 - [ ] Complete `?` operator implementation with proper early returns
 - [ ] `if let` pattern matching

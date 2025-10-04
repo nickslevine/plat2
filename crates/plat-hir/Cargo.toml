@@ -11,6 +11,7 @@ thiserror.workspace = true
 plat-ast = { path = "../plat-ast" }
 plat-diags = { path = "../plat-diags" }
 plat-modules = { path = "../plat-modules" }
+plat-lexer = { path = "../plat-lexer" }
 
 [dev-dependencies]
 insta.workspace = true

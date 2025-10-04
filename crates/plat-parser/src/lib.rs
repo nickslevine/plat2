@@ -2,25 +2,35 @@
 mod tests;
 
 use plat_ast::*;
-use plat_diags::DiagnosticError;
+use plat_diags::{Diagnostic, DiagnosticError};
 use plat_lexer::{Lexer, Span, StringPart, Token, TokenWithSpan};
 
 pub struct Parser {
     tokens: Vec<TokenWithSpan>,
     current: usize,
+    filename: String,
 }
 
 impl Parser {
     pub fn new(input: &str) -> Result<Self, DiagnosticError> {
         let lexer = Lexer::new(input);
         let tokens = lexer.tokenize()?;
-        Ok(Self { tokens, current: 0 })
+        Ok(Self {
+            tokens,
+            current: 0,
+            filename: "<unknown>".to_string(),
+        })
     }
 
     pub fn with_filename(input: &str, filename: impl Into<String>) -> Result<Self, DiagnosticError> {
-        let lexer = Lexer::with_filename(input, filename);
+        let filename = filename.into();
+        let lexer = Lexer::with_filename(input, filename.clone());
         let tokens = lexer.tokenize()?;
-        Ok(Self { tokens, current: 0 })
+        Ok(Self {
+            tokens,
+            current: 0,
+            filename,
+        })
     }
 
     pub fn parse(mut self) -> Result<Program, DiagnosticError> {
@@ -77,12 +87,28 @@ impl Parser {
                 newtypes.push(self.parse_newtype(is_public)?);
             } else if self.check(&Token::Test) {
                 if is_public {
-                    return Err(DiagnosticError::Syntax("Test blocks cannot be marked as public".to_string()));
+                    return Err(DiagnosticError::Rich(
+                        Diagnostic::syntax_error(
+                            &self.filename,
+                            self.previous_span(),
+                            "Test blocks cannot be marked as public"
+                        )
+                        .with_label("'pub' keyword not allowed here")
+                        .with_help("Remove the 'pub' keyword - test blocks are not exported")
+                    ));
                 }
                 test_blocks.push(self.parse_test_block()?);
             } else if self.check(&Token::Bench) {
                 if is_public {
-                    return Err(DiagnosticError::Syntax("Benchmark blocks cannot be marked as public".to_string()));
+                    return Err(DiagnosticError::Rich(
+                        Diagnostic::syntax_error(
+                            &self.filename,
+                            self.previous_span(),
+                            "Benchmark blocks cannot be marked as public"
+                        )
+                        .with_label("'pub' keyword not allowed here")
+                        .with_help("Remove the 'pub' keyword - benchmark blocks are not exported")
+                    ));
                 }
                 bench_blocks.push(self.parse_bench_block()?);
             } else {
@@ -187,7 +213,15 @@ impl Parser {
             self.advance();
             name
         } else {
-            return Err(DiagnosticError::Syntax("Expected string literal for test block name".to_string()));
+            return Err(DiagnosticError::Rich(
+                Diagnostic::syntax_error(
+                    &self.filename,
+                    self.current_span(),
+                    "Expected string literal for test block name"
+                )
+                .with_label("expected a string like \"test description\" here")
+                .with_help("Test blocks require a descriptive name: test \"description\" { ... }")
+            ));
         };
 
         self.consume(Token::LeftBrace, "Expected '{' after test block name")?;
@@ -218,7 +252,15 @@ impl Parser {
             self.advance();
             name
         } else {
-            return Err(DiagnosticError::Syntax("Expected string literal for bench block name".to_string()));
+            return Err(DiagnosticError::Rich(
+                Diagnostic::syntax_error(
+                    &self.filename,
+                    self.current_span(),
+                    "Expected string literal for bench block name"
+                )
+                .with_label("expected a string like \"benchmark description\" here")
+                .with_help("Benchmark blocks require a descriptive name: bench \"description\" { ... }")
+            ));
         };
 
         self.consume(Token::LeftBrace, "Expected '{' after bench block name")?;
@@ -561,8 +603,14 @@ impl Parser {
         // Expect named argument: value = expression
         let param_name = self.consume_identifier("Expected parameter name 'value'")?;
         if param_name != "value" {
-            return Err(DiagnosticError::Syntax(
-                format!("Expected parameter name 'value', found '{}'", param_name)
+            return Err(DiagnosticError::Rich(
+                Diagnostic::syntax_error(
+                    &self.filename,
+                    self.previous_span(),
+                    format!("Expected parameter name 'value', found '{}'", param_name)
+                )
+                .with_label("incorrect parameter name")
+                .with_help("print() requires a named argument: print(value = ...)")
             ));
         }
         self.consume(Token::Assign, "Expected '=' after parameter name")?;
@@ -603,8 +651,15 @@ impl Parser {
                     });
                 }
                 _ => {
-                    return Err(DiagnosticError::Syntax(
-                        "Invalid assignment target. Only identifiers and member access are allowed.".to_string()
+                    let span = self.expr_span(&expr);
+                    return Err(DiagnosticError::Rich(
+                        Diagnostic::syntax_error(
+                            &self.filename,
+                            span,
+                            "Invalid assignment target"
+                        )
+                        .with_label("cannot assign to this expression")
+                        .with_help("Only identifiers (x = ...) and member access (obj.field = ...) can be assigned to")
                     ));
                 }
             }
@@ -827,8 +882,15 @@ impl Parser {
                         span: Span::new(span.start, end),
                     };
                 } else {
-                    return Err(DiagnosticError::Syntax(
-                        "Can only call functions".to_string()
+                    let span = self.expr_span(&expr);
+                    return Err(DiagnosticError::Rich(
+                        Diagnostic::syntax_error(
+                            &self.filename,
+                            span,
+                            "Cannot call this expression"
+                        )
+                        .with_label("this is not a function")
+                        .with_help("Only functions and methods can be called with ()")
                     ));
                 }
             } else if self.match_token(&Token::LeftBracket) {
@@ -1516,16 +1578,71 @@ impl Parser {
         self.previous().span
     }
 
+    /// Extract span from any expression
+    fn expr_span(&self, expr: &Expression) -> Span {
+        match expr {
+            Expression::Literal(lit) => match lit {
+                Literal::Bool(_, span) => *span,
+                Literal::Integer(_, span) => *span,
+                Literal::Float(_, _, span) => *span,
+                Literal::String(_, span) => *span,
+                Literal::InterpolatedString(_, span) => *span,
+                Literal::Array(_, span) => *span,
+                Literal::Dict(_, span) => *span,
+                Literal::Set(_, span) => *span,
+            },
+            Expression::Identifier { span, .. } => *span,
+            Expression::Binary { span, .. } => *span,
+            Expression::Unary { span, .. } => *span,
+            Expression::Call { span, .. } => *span,
+            Expression::Assignment { span, .. } => *span,
+            Expression::Index { span, .. } => *span,
+            Expression::MethodCall { span, .. } => *span,
+            Expression::Block(block) => block.span,
+            Expression::EnumConstructor { span, .. } => *span,
+            Expression::Match { span, .. } => *span,
+            Expression::Try { span, .. } => *span,
+            Expression::MemberAccess { span, .. } => *span,
+            Expression::If { span, .. } => *span,
+            Expression::Cast { span, .. } => *span,
+            Expression::Self_ { span, .. } => *span,
+            Expression::ConstructorCall { span, .. } => *span,
+            Expression::SuperCall { span, .. } => *span,
+            Expression::Range { span, .. } => *span,
+        }
+    }
+
     fn consume(&mut self, token: Token, message: &str) -> Result<(), DiagnosticError> {
         if self.check(&token) {
             self.advance();
             Ok(())
         } else {
-            Err(DiagnosticError::Syntax(format!(
-                "{} at position {}",
-                message,
-                self.current_span().start
-            )))
+            let span = self.current_span();
+            let current_token = &self.peek().token;
+
+            // Create rich diagnostic with helpful message
+            let help_message = match token {
+                Token::Semicolon => "Add ';' after this statement",
+                Token::RightParen => "Add ')' to close the parenthesis",
+                Token::RightBrace => "Add '}' to close the block",
+                Token::Colon => "Add ':' after the identifier",
+                _ => "Check the syntax",
+            };
+
+            let error_code = match token {
+                Token::Semicolon => "E001",
+                Token::RightParen => "E002",
+                Token::RightBrace => "E003",
+                Token::Colon => "E004",
+                _ => "E000",
+            };
+
+            Err(DiagnosticError::Rich(
+                Diagnostic::syntax_error(&self.filename, span, message)
+                    .with_code(error_code)
+                    .with_label(format!("found {:?} here", current_token))
+                    .with_help(help_message)
+            ))
         }
     }
 

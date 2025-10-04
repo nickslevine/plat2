@@ -9,3 +9,4 @@ license.workspace = true
 [dependencies]
 ariadne.workspace = true
 thiserror.workspace = true
+strsim = "0.11"

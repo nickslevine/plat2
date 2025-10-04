@@ -2,7 +2,8 @@
 mod tests;
 
 use plat_ast::*;
-use plat_diags::DiagnosticError;
+use plat_diags::{Diagnostic, DiagnosticError};
+use plat_lexer::Span;
 use std::collections::HashMap;
 
 /// Validates that a name follows snake_case convention
@@ -35,6 +36,22 @@ fn is_title_case(name: &str) -> bool {
 
     // Can contain letters and digits, no underscores
     name.chars().all(|c| c.is_alphanumeric())
+}
+
+/// Convert a name to snake_case (simple heuristic)
+fn to_snake_case(name: &str) -> String {
+    let mut result = String::new();
+    for (i, ch) in name.chars().enumerate() {
+        if ch.is_uppercase() {
+            if i > 0 {
+                result.push('_');
+            }
+            result.push(ch.to_lowercase().next().unwrap());
+        } else {
+            result.push(ch);
+        }
+    }
+    result
 }
 
 /// Module-aware symbol table for tracking declarations across modules
@@ -130,6 +147,7 @@ pub struct TypeChecker {
     require_main: bool, // Whether to require a main function (false for library modules)
     test_mode: bool, // Whether we're in test mode (compiling tests)
     bench_mode: bool, // Whether we're in bench mode (compiling benchmarks)
+    filename: String, // Source filename for error reporting
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -221,6 +239,7 @@ impl TypeChecker {
             require_main: true, // Default: require main function
             test_mode: false, // Default: not in test mode
             bench_mode: false, // Default: not in bench mode
+            filename: "<unknown>".to_string(), // Default filename
         };
 
         // Register built-in Option<T> type
@@ -250,6 +269,7 @@ impl TypeChecker {
             require_main: false, // Multi-module: don't require main in every module
             test_mode: false, // Default: not in test mode
             bench_mode: false, // Default: not in bench mode
+            filename: "<unknown>".to_string(), // Default filename
         };
 
         // Register built-in Option<T> type
@@ -274,6 +294,12 @@ impl TypeChecker {
     pub fn with_bench_mode(mut self) -> Self {
         self.bench_mode = true;
         self.require_main = false; // Benchmarks don't need main function
+        self
+    }
+
+    /// Set the filename for error reporting
+    pub fn with_filename(mut self, filename: impl Into<String>) -> Self {
+        self.filename = filename.into();
         self
     }
 
@@ -1327,11 +1353,17 @@ impl TypeChecker {
 
     fn check_statement(&mut self, statement: &Statement) -> Result<(), DiagnosticError> {
         match statement {
-            Statement::Let { name, ty, value, .. } => {
+            Statement::Let { name, ty, value, span } => {
                 // Validate variable name follows snake_case
                 if !is_snake_case(name) {
-                    return Err(DiagnosticError::Type(
-                        format!("Variable name '{}' must be snake_case", name)
+                    return Err(DiagnosticError::Rich(
+                        Diagnostic::syntax_error(
+                            &self.filename,
+                            *span,
+                            format!("Variable name '{}' must be snake_case", name)
+                        )
+                        .with_label("variable names must use lowercase and underscores")
+                        .with_help(format!("Try renaming to: {}", to_snake_case(name)))
                     ));
                 }
 
@@ -1342,25 +1374,44 @@ impl TypeChecker {
 
                 // Check if value type is compatible with explicit type (allows upcasting)
                 if !self.is_assignable(&explicit_hir_type, &value_type) {
-                    return Err(DiagnosticError::Type(
-                        format!("Type mismatch: expected {:?}, found {:?}", explicit_hir_type, value_type)
+                    return Err(DiagnosticError::Rich(
+                        Diagnostic::type_mismatch(
+                            &self.filename,
+                            *span,
+                            &format!("{:?}", explicit_hir_type),
+                            &format!("{:?}", value_type)
+                        )
+                        .with_label("type annotation doesn't match value type")
+                        .with_help(format!("Change the type annotation to {:?} or convert the value", value_type))
                     ));
                 }
 
                 // Check for shadowing (not allowed with let)
                 if self.scopes.last().unwrap().contains_key(name) {
-                    return Err(DiagnosticError::Type(
-                        format!("Variable '{}' is already defined in this scope", name)
+                    return Err(DiagnosticError::Rich(
+                        Diagnostic::syntax_error(
+                            &self.filename,
+                            *span,
+                            format!("Variable '{}' is already defined in this scope", name)
+                        )
+                        .with_label("redefinition not allowed")
+                        .with_help("Variables declared with 'let' cannot be redefined in the same scope")
                     ));
                 }
 
                 self.scopes.last_mut().unwrap().insert(name.clone(), explicit_hir_type);
             }
-            Statement::Var { name, ty, value, .. } => {
+            Statement::Var { name, ty, value, span } => {
                 // Validate variable name follows snake_case
                 if !is_snake_case(name) {
-                    return Err(DiagnosticError::Type(
-                        format!("Variable name '{}' must be snake_case", name)
+                    return Err(DiagnosticError::Rich(
+                        Diagnostic::syntax_error(
+                            &self.filename,
+                            *span,
+                            format!("Variable name '{}' must be snake_case", name)
+                        )
+                        .with_label("variable names must use lowercase and underscores")
+                        .with_help(format!("Try renaming to: {}", to_snake_case(name)))
                     ));
                 }
 
@@ -1371,15 +1422,28 @@ impl TypeChecker {
 
                 // Check if value type is compatible with explicit type (allows upcasting)
                 if !self.is_assignable(&explicit_hir_type, &value_type) {
-                    return Err(DiagnosticError::Type(
-                        format!("Type mismatch: expected {:?}, found {:?}", explicit_hir_type, value_type)
+                    return Err(DiagnosticError::Rich(
+                        Diagnostic::type_mismatch(
+                            &self.filename,
+                            *span,
+                            &format!("{:?}", explicit_hir_type),
+                            &format!("{:?}", value_type)
+                        )
+                        .with_label("type annotation doesn't match value type")
+                        .with_help(format!("Change the type annotation to {:?} or convert the value", value_type))
                     ));
                 }
 
                 // Check for shadowing (not allowed with var)
                 if self.scopes.last().unwrap().contains_key(name) {
-                    return Err(DiagnosticError::Type(
-                        format!("Variable '{}' is already defined in this scope", name)
+                    return Err(DiagnosticError::Rich(
+                        Diagnostic::syntax_error(
+                            &self.filename,
+                            *span,
+                            format!("Variable '{}' is already defined in this scope", name)
+                        )
+                        .with_label("redefinition not allowed")
+                        .with_help("Variables declared with 'var' cannot be redefined in the same scope")
                     ));
                 }
 
@@ -1500,8 +1564,17 @@ impl TypeChecker {
     fn check_expression(&mut self, expression: &Expression) -> Result<HirType, DiagnosticError> {
         match expression {
             Expression::Literal(literal) => self.check_literal(literal),
-            Expression::Identifier { name, .. } => {
-                self.lookup_variable(name)
+            Expression::Identifier { name, span } => {
+                self.lookup_variable(name).map_err(|_| {
+                    DiagnosticError::Rich(
+                        Diagnostic::undefined_symbol(
+                            &self.filename,
+                            *span,
+                            name
+                        )
+                        .with_help("Check that the variable is declared and in scope")
+                    )
+                })
             }
             Expression::Binary { left, op, right, .. } => {
                 let left_type = self.check_expression(left)?;

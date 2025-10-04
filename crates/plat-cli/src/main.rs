@@ -110,11 +110,10 @@ fn build_single_file(file: PathBuf) -> Result<()> {
 
     // Type check the program
     println!("  {} Type checking...", "→".cyan());
-    let type_checker = plat_hir::TypeChecker::new();
-    if let Err(e) = type_checker.check_program(&mut program) {
-        println!("Type checking error: {:?}", e);
-        anyhow::bail!("Type checking failed: {:?}", e);
-    }
+    let type_checker = plat_hir::TypeChecker::new()
+        .with_filename(filename.as_ref());
+    type_checker.check_program(&mut program)
+        .map_err(|e| report_diagnostic_error(e, &filename, &source))?;
 
     println!("  {} Generating code...", "→".cyan());
 
