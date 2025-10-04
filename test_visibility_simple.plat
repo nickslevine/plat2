@@ -1,0 +1,31 @@
+// Simple visibility test
+
+pub class Point {
+  // Private field
+  let x: Int32;
+
+  // Public field
+  pub let y: Int32;
+
+  // Public method
+  pub fn get_x() -> Int32 {
+    return self.x;
+  }
+}
+
+pub fn create_point(x_val: Int32, y_val: Int32) -> Point {
+  return Point.init(x = x_val, y = y_val);
+}
+
+fn main() -> Int32 {
+  let p: Point = create_point(x_val = 10, y_val = 20);
+
+  // ✅ OK: y is public
+  print(value = "Y = ${p.y}");
+
+  // ✅ OK: get_x is public
+  let x_value: Int32 = p.get_x();
+  print(value = "X = ${x_value}");
+
+  return 0;
+}

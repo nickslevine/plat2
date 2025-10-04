@@ -33,14 +33,22 @@ impl Parser {
 
         // Parse type aliases
         let mut type_aliases = Vec::new();
-        while self.check(&Token::Type) {
-            type_aliases.push(self.parse_type_alias()?);
+        while self.check(&Token::Pub) || self.check(&Token::Type) {
+            let is_public = self.match_token(&Token::Pub);
+            if !self.check(&Token::Type) {
+                break; // pub followed by something other than type
+            }
+            type_aliases.push(self.parse_type_alias(is_public)?);
         }
 
         // Parse newtypes
         let mut newtypes = Vec::new();
-        while self.check(&Token::Newtype) {
-            newtypes.push(self.parse_newtype()?);
+        while self.check(&Token::Pub) || self.check(&Token::Newtype) {
+            let is_public = self.match_token(&Token::Pub);
+            if !self.check(&Token::Newtype) {
+                break; // pub followed by something other than newtype
+            }
+            newtypes.push(self.parse_newtype(is_public)?);
         }
 
         let mut test_blocks = Vec::new();
@@ -50,20 +58,29 @@ impl Parser {
         let mut classes = Vec::new();
 
         while !self.is_at_end() {
+            // Check for optional 'pub' keyword
+            let is_public = self.match_token(&Token::Pub);
+
             if self.check(&Token::Enum) {
-                enums.push(self.parse_enum()?);
+                enums.push(self.parse_enum(is_public)?);
             } else if self.check(&Token::Class) {
-                classes.push(self.parse_class()?);
+                classes.push(self.parse_class(is_public)?);
             } else if self.check(&Token::Type) {
-                type_aliases.push(self.parse_type_alias()?);
+                type_aliases.push(self.parse_type_alias(is_public)?);
             } else if self.check(&Token::Newtype) {
-                newtypes.push(self.parse_newtype()?);
+                newtypes.push(self.parse_newtype(is_public)?);
             } else if self.check(&Token::Test) {
+                if is_public {
+                    return Err(DiagnosticError::Syntax("Test blocks cannot be marked as public".to_string()));
+                }
                 test_blocks.push(self.parse_test_block()?);
             } else if self.check(&Token::Bench) {
+                if is_public {
+                    return Err(DiagnosticError::Syntax("Benchmark blocks cannot be marked as public".to_string()));
+                }
                 bench_blocks.push(self.parse_bench_block()?);
             } else {
-                functions.push(self.parse_function()?);
+                functions.push(self.parse_function(is_public)?);
             }
         }
 
@@ -112,7 +129,7 @@ impl Parser {
         })
     }
 
-    fn parse_type_alias(&mut self) -> Result<TypeAlias, DiagnosticError> {
+    fn parse_type_alias(&mut self, is_public: bool) -> Result<TypeAlias, DiagnosticError> {
         let start = self.current_span().start;
         self.consume(Token::Type, "Expected 'type'")?;
 
@@ -128,11 +145,12 @@ impl Parser {
         Ok(TypeAlias {
             name,
             ty,
+            is_public,
             span: Span::new(start, end),
         })
     }
 
-    fn parse_newtype(&mut self) -> Result<NewtypeDecl, DiagnosticError> {
+    fn parse_newtype(&mut self, is_public: bool) -> Result<NewtypeDecl, DiagnosticError> {
         let start = self.current_span().start;
         self.consume(Token::Newtype, "Expected 'newtype'")?;
 
@@ -148,6 +166,7 @@ impl Parser {
         Ok(NewtypeDecl {
             name,
             underlying_type,
+            is_public,
             span: Span::new(start, end),
         })
     }
@@ -170,7 +189,7 @@ impl Parser {
         // Parse all functions within the test block
         let mut functions = Vec::new();
         while !self.check(&Token::RightBrace) && !self.is_at_end() {
-            functions.push(self.parse_function()?);
+            functions.push(self.parse_function(false)?); // Test functions are not public
         }
 
         self.consume(Token::RightBrace, "Expected '}' after test block")?;
@@ -201,7 +220,7 @@ impl Parser {
         // Parse all functions within the bench block
         let mut functions = Vec::new();
         while !self.check(&Token::RightBrace) && !self.is_at_end() {
-            functions.push(self.parse_function()?);
+            functions.push(self.parse_function(false)?); // Bench functions are not public
         }
 
         self.consume(Token::RightBrace, "Expected '}' after bench block")?;
@@ -214,7 +233,7 @@ impl Parser {
         })
     }
 
-    fn parse_function(&mut self) -> Result<Function, DiagnosticError> {
+    fn parse_function(&mut self, is_public: bool) -> Result<Function, DiagnosticError> {
         let start = self.current_span().start;
 
         // Parse optional modifiers: virtual, override, mut
@@ -266,6 +285,7 @@ impl Parser {
             is_mutable,
             is_virtual,
             is_override,
+            is_public,
             span: Span::new(start, end),
         })
     }
@@ -1090,7 +1110,7 @@ impl Parser {
         Span::new(start, end)
     }
 
-    fn parse_enum(&mut self) -> Result<EnumDecl, DiagnosticError> {
+    fn parse_enum(&mut self, is_public: bool) -> Result<EnumDecl, DiagnosticError> {
         let start = self.current_span().start;
         self.consume(Token::Enum, "Expected 'enum'")?;
 
@@ -1116,7 +1136,7 @@ impl Parser {
         while !self.check(&Token::RightBrace) && !self.is_at_end() {
             // Check if it's a method (fn or mut fn)
             if self.check(&Token::Fn) || (self.check(&Token::Mut) && self.peek_next() == Some(&Token::Fn)) {
-                methods.push(self.parse_function()?);
+                methods.push(self.parse_function(false)?); // Enum methods are not public by default
             } else {
                 // It's a variant
                 let variant_start = self.current_span().start;
@@ -1155,6 +1175,7 @@ impl Parser {
             type_params,
             variants,
             methods,
+            is_public,
             span: Span::new(start, end),
         })
     }
@@ -1605,7 +1626,7 @@ impl Parser {
         Ok(Expression::Literal(Literal::Set(elements, Span::new(start, end))))
     }
 
-    fn parse_class(&mut self) -> Result<ClassDecl, DiagnosticError> {
+    fn parse_class(&mut self, is_public: bool) -> Result<ClassDecl, DiagnosticError> {
         let start = self.current_span().start;
         self.consume(Token::Class, "Expected 'class'")?;
 
@@ -1636,11 +1657,14 @@ impl Parser {
         let mut methods = Vec::new();
 
         while !self.check(&Token::RightBrace) && !self.is_at_end() {
+            // Check for optional 'pub' keyword for class members
+            let member_is_public = self.match_token(&Token::Pub);
+
             // Check if it's a method (fn, init, virtual fn, override fn, mut fn, etc.)
             if self.check(&Token::Fn) || self.check(&Token::Init)
                 || self.check(&Token::Virtual) || self.check(&Token::Override)
                 || (self.check(&Token::Mut) && self.peek_next() == Some(&Token::Fn)) {
-                methods.push(self.parse_function()?);
+                methods.push(self.parse_function(member_is_public)?);
             } else if self.check(&Token::Let) || self.check(&Token::Var) {
                 // It's a field declaration
                 let field_start = self.current_span().start;
@@ -1659,6 +1683,7 @@ impl Parser {
                     name: field_name,
                     ty: field_type,
                     is_mutable,
+                    is_public: member_is_public,
                     span: Span::new(field_start, field_end),
                 });
             } else {
@@ -1677,6 +1702,7 @@ impl Parser {
             parent_class,
             fields,
             methods,
+            is_public,
             span: Span::new(start, end),
         })
     }

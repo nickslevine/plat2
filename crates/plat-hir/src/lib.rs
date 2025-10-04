@@ -161,6 +161,7 @@ pub struct FunctionSignature {
     pub default_values: Vec<Option<Expression>>, // default values for parameters
     pub return_type: HirType,
     pub is_mutable: bool,
+    pub is_public: bool, // true if function/method is public
 }
 
 #[derive(Debug, Clone)]
@@ -169,6 +170,7 @@ pub struct EnumInfo {
     pub type_params: Vec<String>,
     pub variants: HashMap<String, Vec<HirType>>, // variant name -> field types
     pub methods: HashMap<String, FunctionSignature>,
+    pub is_public: bool, // true if enum is public
 }
 
 #[derive(Debug, Clone)]
@@ -186,12 +188,14 @@ pub struct ClassInfo {
     pub fields: HashMap<String, FieldInfo>, // field name -> field info
     pub methods: HashMap<String, FunctionSignature>,
     pub virtual_methods: HashMap<String, FunctionSignature>, // methods that can be overridden
+    pub is_public: bool, // true if class is public
 }
 
 #[derive(Debug, Clone)]
 pub struct FieldInfo {
     pub ty: HirType,
     pub is_mutable: bool,
+    pub is_public: bool, // true if field is public
 }
 
 impl TypeChecker {
@@ -345,6 +349,7 @@ impl TypeChecker {
                 default_values,
                 return_type,
                 is_mutable: func.is_mutable,
+                is_public: func.is_public,
             };
 
             global_symbols.register(&func.name, Symbol::Function(sig));
@@ -376,6 +381,7 @@ impl TypeChecker {
                         default_values,
                         return_type,
                         is_mutable: func.is_mutable,
+                        is_public: func.is_public,
                     };
 
                     global_symbols.register(&func.name, Symbol::Function(sig));
@@ -409,6 +415,7 @@ impl TypeChecker {
                         default_values,
                         return_type,
                         is_mutable: func.is_mutable,
+                        is_public: func.is_public,
                     };
 
                     global_symbols.register(&func.name, Symbol::Function(sig));
@@ -433,6 +440,7 @@ impl TypeChecker {
                 type_params: enum_decl.type_params.clone(),
                 variants,
                 methods: HashMap::new(), // Methods will be populated later
+                is_public: enum_decl.is_public,
             };
 
             global_symbols.register(&enum_decl.name, Symbol::Enum(enum_info));
@@ -446,6 +454,7 @@ impl TypeChecker {
                 let field_info = FieldInfo {
                     ty: self.ast_type_to_hir_type(&field.ty)?,
                     is_mutable: field.is_mutable,
+                    is_public: field.is_public,
                 };
                 fields.insert(field.name.clone(), field_info);
             }
@@ -457,6 +466,7 @@ impl TypeChecker {
                 fields,
                 methods: HashMap::new(), // Methods will be populated later
                 virtual_methods: HashMap::new(),
+                is_public: class_decl.is_public,
             };
 
             global_symbols.register(&class_decl.name, Symbol::Class(class_info));
@@ -477,6 +487,7 @@ impl TypeChecker {
             type_params: vec!["T".to_string()],
             variants,
             methods: HashMap::new(),
+            is_public: true, // Built-in types are always public
         };
 
         self.enums.insert("Option".to_string(), option_info);
@@ -494,6 +505,7 @@ impl TypeChecker {
             type_params: vec!["T".to_string(), "E".to_string()],
             variants,
             methods: HashMap::new(),
+            is_public: true, // Built-in types are always public
         };
 
         self.enums.insert("Result".to_string(), result_info);
@@ -800,6 +812,7 @@ impl TypeChecker {
                 default_values,
                 return_type,
                 is_mutable: method.is_mutable,
+                is_public: method.is_public,
             };
 
             methods.insert(method.name.clone(), signature);
@@ -810,6 +823,7 @@ impl TypeChecker {
             type_params: enum_decl.type_params.clone(),
             variants,
             methods,
+            is_public: enum_decl.is_public,
         };
 
         if self.enums.insert(enum_decl.name.clone(), enum_info).is_some() {
@@ -846,6 +860,7 @@ impl TypeChecker {
             fields: HashMap::new(),
             methods: HashMap::new(),
             virtual_methods: HashMap::new(),
+            is_public: class_decl.is_public,
         };
 
         if self.classes.insert(class_decl.name.clone(), class_info).is_some() {
@@ -879,6 +894,7 @@ impl TypeChecker {
             let field_info = FieldInfo {
                 ty: field_type,
                 is_mutable: field.is_mutable,
+                is_public: field.is_public,
             };
 
             if fields.insert(field.name.clone(), field_info).is_some() {
@@ -911,6 +927,7 @@ impl TypeChecker {
                 default_values,
                 return_type,
                 is_mutable: method.is_mutable,
+                is_public: method.is_public,
             };
 
             // Store in class methods
@@ -946,6 +963,7 @@ impl TypeChecker {
                 default_values: vec![None; param_types.len()], // no defaults for auto-generated init
                 return_type: class_type,
                 is_mutable: false,
+                is_public: true, // Auto-generated init methods are always public
             };
 
             // Store in class methods
@@ -973,6 +991,7 @@ impl TypeChecker {
             fields,
             methods,
             virtual_methods,
+            is_public: class_decl.is_public,
         };
 
         // Update the existing entry (it should exist from register_class_name)
@@ -1208,6 +1227,7 @@ impl TypeChecker {
             default_values,
             return_type,
             is_mutable: function.is_mutable,
+            is_public: function.is_public,
         };
 
         self.functions.insert(name.to_string(), signature);
@@ -3489,6 +3509,7 @@ impl TypeSubstitutable for FieldInfo {
         FieldInfo {
             ty: self.ty.substitute_types(substitution),
             is_mutable: self.is_mutable,
+            is_public: self.is_public,
         }
     }
 }
@@ -3501,6 +3522,7 @@ impl TypeSubstitutable for FunctionSignature {
             default_values: self.default_values.clone(), // Default values are expressions, not types
             return_type: self.return_type.substitute_types(substitution),
             is_mutable: self.is_mutable,
+            is_public: self.is_public,
         }
     }
 }
@@ -3578,6 +3600,7 @@ impl Monomorphizer {
             fields: specialized_fields,
             methods: specialized_methods,
             virtual_methods: HashMap::new(), // For now, specialized classes don't inherit virtuals
+            is_public: class_info.is_public, // Preserve visibility from original
         };
 
         // Store the specialized class
@@ -3637,6 +3660,7 @@ impl Monomorphizer {
             type_params: vec![], // Specialized enums are not generic
             variants: specialized_variants,
             methods: specialized_methods,
+            is_public: enum_info.is_public, // Preserve visibility from original
         };
 
         // Store the specialized enum
@@ -3690,6 +3714,7 @@ impl Monomorphizer {
             default_values: func_sig.default_values.clone(), // Keep default values from original
             return_type: specialized_return,
             is_mutable: func_sig.is_mutable,
+            is_public: func_sig.is_public,
         };
 
         // Store the specialized function

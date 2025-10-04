@@ -1,0 +1,74 @@
+// Test file for visibility system
+
+// Public class with mixed visibility
+pub class BankAccount {
+  // Private fields
+  let account_number: String;
+  let balance: Int32;
+
+  // Public field
+  pub let owner_name: String;
+
+  // Private helper
+  fn validate_amount(amount: Int32) -> Bool {
+    return amount > 0 and amount <= self.balance;
+  }
+
+  // Public methods
+  pub fn get_balance() -> Int32 {
+    return self.balance;
+  }
+
+  pub fn withdraw(amount: Int32) -> Bool {
+    if (self.validate_amount(amount = amount)) {
+      return true;
+    } else {
+      return false;
+    }
+  }
+}
+
+// Private class (should only be accessible within this module)
+class InternalCache {
+  let data: String;
+
+  pub fn get_data() -> String {
+    return self.data;
+  }
+}
+
+// Public function
+pub fn create_account(name: String, initial_balance: Int32) -> BankAccount {
+  return BankAccount.init(account_number = "12345", balance = initial_balance, owner_name = name);
+}
+
+// Private function
+fn internal_helper() -> Int32 {
+  return 42;
+}
+
+fn main() -> Int32 {
+  let account: BankAccount = create_account(name = "Alice", initial_balance = 1000);
+
+  // ✅ OK: owner_name is public
+  print(value = account.owner_name);
+
+  // ✅ OK: get_balance is public
+  let bal: Int32 = account.get_balance();
+  print(value = "Balance: ${bal}");
+
+  // ✅ OK: withdraw is public
+  let success: Bool = account.withdraw(amount = 50);
+
+  // These would fail at compile time (commented out for testing):
+  // ❌ ERROR: balance is private
+  // print(value = account.balance);
+
+  // ❌ ERROR: validate_amount is private
+  // let valid: Bool = account.validate_amount(amount = 50);
+
+  // ❌ ERROR: account_number is private
+  // let num: String = account.account_number;
+
+  return 0;
+}

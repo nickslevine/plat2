@@ -26,6 +26,13 @@
 - **snake_case**: Variables, functions, parameters, module names, field names
 - **TitleCase**: Types, classes, enums, enum variants, type aliases, newtypes, type parameters
 
+### Visibility System
+- **Private by Default**: All class members and module items are private unless explicitly marked `pub`
+- **Class Members**: Fields and methods are private to the class by default
+- **Module Exports**: Functions, classes, enums, types are private to the module by default
+- **Explicit Public**: Use `pub` keyword to make items accessible from outside
+- **Compile-Time Enforcement**: Visibility violations are caught during type checking
+
 ### Object-Oriented Programming
 - **Classes**: Field declarations with `let`/`var` mutability
 - **Default Constructors**: Classes without explicit `init` get auto-generated constructors
@@ -163,6 +170,111 @@ plat2/
 ---
 
 ## 📝 Quick Reference
+
+### Visibility Examples
+
+**Class with Public and Private Members:**
+```plat
+class BankAccount {
+  // Private fields (default)
+  let account_number: String;
+  let balance: Int32;
+
+  // Public field
+  pub let owner_name: String;
+
+  // Private helper method
+  fn validate_transaction(amount: Int32) -> Bool {
+    return amount <= self.balance;
+  }
+
+  // Public methods
+  pub fn get_balance() -> Int32 {
+    return self.balance;
+  }
+
+  pub fn deposit(amount: Int32) -> Bool {
+    if (self.validate_transaction(amount = amount)) {
+      return true;
+    } else {
+      return false;
+    }
+  }
+}
+
+fn main() -> Int32 {
+  let account: BankAccount = BankAccount.init(
+    account_number = "12345",
+    balance = 1000,
+    owner_name = "Alice"
+  );
+
+  // ✅ OK: owner_name is public
+  print(value = account.owner_name);
+
+  // ✅ OK: get_balance is public
+  let bal: Int32 = account.get_balance();
+
+  // ❌ ERROR: balance is private
+  // print(value = account.balance);
+
+  // ❌ ERROR: validate_transaction is private
+  // let valid: Bool = account.validate_transaction(amount = 50);
+
+  return 0;
+}
+```
+
+**Module with Public API:**
+```plat
+// database.plat
+mod database;
+
+// Private helper function
+fn validate_connection_string(conn: String) -> Bool {
+  return conn.length() > 0;
+}
+
+// Public API
+pub fn connect(conn_string: String) -> Bool {
+  return validate_connection_string(conn = conn_string);
+}
+
+pub class Connection {
+  // Private internal state
+  let socket_fd: Int32;
+
+  // Public status field
+  pub let is_connected: Bool;
+
+  // Public method
+  pub fn close() -> Bool {
+    return true;
+  }
+}
+
+// main.plat
+use database;
+
+fn main() -> Int32 {
+  // ✅ OK: connect is public
+  let connected: Bool = database::connect(conn_string = "localhost");
+
+  // ✅ OK: Connection is public
+  let conn: database::Connection = database::Connection.init(socket_fd = 42, is_connected = true);
+
+  // ✅ OK: is_connected is public
+  print(value = "Connected: ${conn.is_connected}");
+
+  // ❌ ERROR: validate_connection_string is private
+  // let valid: Bool = database::validate_connection_string(conn = "test");
+
+  // ❌ ERROR: socket_fd is private
+  // print(value = conn.socket_fd);
+
+  return 0;
+}
+```
 
 ### Class Definition
 ```plat

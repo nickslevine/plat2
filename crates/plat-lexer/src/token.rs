@@ -32,6 +32,7 @@ pub enum Token {
     Test,
     Bench,
     Cast,
+    Pub,
 
     // Identifiers and literals
     Ident(String),
@@ -124,6 +125,7 @@ impl Token {
             "test" => Some(Token::Test),
             "bench" => Some(Token::Bench),
             "cast" => Some(Token::Cast),
+            "pub" => Some(Token::Pub),
             "and" => Some(Token::And),
             "or" => Some(Token::Or),
             "not" => Some(Token::Not),

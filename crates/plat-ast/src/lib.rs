@@ -29,6 +29,7 @@ pub struct UseDecl {
 pub struct TypeAlias {
     pub name: String,
     pub ty: Type,
+    pub is_public: bool,
     pub span: Span,
 }
 
@@ -36,6 +37,7 @@ pub struct TypeAlias {
 pub struct NewtypeDecl {
     pub name: String,
     pub underlying_type: Type,
+    pub is_public: bool,
     pub span: Span,
 }
 
@@ -63,6 +65,7 @@ pub struct Function {
     pub is_mutable: bool,
     pub is_virtual: bool,    // true if method is virtual (can be overridden)
     pub is_override: bool,   // true if method overrides a parent method
+    pub is_public: bool,     // true if function/method is public (has pub keyword)
     pub span: Span,
 }
 
@@ -286,6 +289,7 @@ pub struct EnumDecl {
     pub type_params: Vec<String>,
     pub variants: Vec<EnumVariant>,
     pub methods: Vec<Function>,
+    pub is_public: bool,
     pub span: Span,
 }
 
@@ -325,6 +329,7 @@ pub struct ClassDecl {
     pub parent_class: Option<String>, // None for no inheritance, Some(name) for inheritance
     pub fields: Vec<FieldDecl>,
     pub methods: Vec<Function>,
+    pub is_public: bool,
     pub span: Span,
 }
 
@@ -333,6 +338,7 @@ pub struct FieldDecl {
     pub name: String,
     pub ty: Type,
     pub is_mutable: bool, // true for var, false for let
+    pub is_public: bool,  // true if field is public (has pub keyword)
     pub span: Span,
 }
 

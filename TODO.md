@@ -1,5 +1,3 @@
-## General
-* default arguments?
 
 ## Visibility
 * objects: member access
