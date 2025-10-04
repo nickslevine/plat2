@@ -157,6 +157,11 @@ plat2/
   - Collection indexing returns `Option<T>` for safe access
   - String parsing methods return `Result<T, String>` (parse_int, parse_int64, parse_float, parse_bool)
   - `?` operator for error propagation (basic support)
+- **Visibility enforcement:**
+  - Compile-time checking for field access (private by default)
+  - Compile-time checking for method calls (private by default)
+  - Compile-time checking for cross-module symbol access (functions, classes, enums)
+  - Clear error messages for visibility violations
 
 **📋 TODO (Stretch Goals):**
 - [ ] Rich error messages with Ariadne spans

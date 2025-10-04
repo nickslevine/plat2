@@ -315,6 +315,58 @@ impl TypeChecker {
         self.module_table.add_import(module_path);
     }
 
+    /// Check if we can access a field from the current context
+    /// Fields are private by default and only accessible from within the same class
+    fn can_access_field(&self, class_name: &str, field_is_public: bool) -> bool {
+        // Public fields are always accessible
+        if field_is_public {
+            return true;
+        }
+
+        // Private fields are only accessible from within the same class
+        match &self.current_class_context {
+            Some(current_class) => current_class == class_name,
+            None => false,
+        }
+    }
+
+    /// Check if we can access a method from the current context
+    /// Methods are private by default and only accessible from within the same class or module
+    fn can_access_method(&self, class_name: &str, method_is_public: bool) -> bool {
+        // Public methods are always accessible
+        if method_is_public {
+            return true;
+        }
+
+        // Private methods are only accessible from within the same class
+        match &self.current_class_context {
+            Some(current_class) => current_class == class_name,
+            None => false,
+        }
+    }
+
+    /// Check if we can access a symbol from the current module context
+    /// Symbols are private by default and only accessible from within the same module
+    fn can_access_symbol(&self, symbol_module: &str, is_public: bool) -> bool {
+        // Public symbols are always accessible
+        if is_public {
+            return true;
+        }
+
+        // Private symbols are only accessible from within the same module
+        self.module_table.current_module == symbol_module
+    }
+
+    /// Extract the module path from a qualified name (e.g., "database::connect" -> "database")
+    fn get_module_from_qualified_name(&self, qualified_name: &str) -> String {
+        if let Some(pos) = qualified_name.rfind("::") {
+            qualified_name[..pos].to_string()
+        } else {
+            // No module qualifier, assume current module
+            self.module_table.current_module.clone()
+        }
+    }
+
     /// Collect all top-level symbols from a program into the module symbol table
     pub fn collect_symbols_from_program(
         &mut self,
@@ -1522,6 +1574,14 @@ impl TypeChecker {
                 } else if let Some(sig) = self.functions.get(function) {
                     sig.clone()
                 } else if let Some(Symbol::Function(sig)) = self.module_table.global_symbols.get(&resolved_name) {
+                    // Check visibility for cross-module function access
+                    let function_module = self.get_module_from_qualified_name(&resolved_name);
+                    if !self.can_access_symbol(&function_module, sig.is_public) {
+                        return Err(DiagnosticError::Type(
+                            format!("Function '{}' is private and cannot be called from module '{}'",
+                                   function, self.module_table.current_module)
+                        ));
+                    }
                     sig.clone()
                 } else {
                     // If not found as a function, check if it's a class constructor with zero arguments
@@ -1601,6 +1661,14 @@ impl TypeChecker {
                                     ))?;
 
                                 if let Some(field_info) = class_info.fields.get(member) {
+                                    // Check visibility
+                                    if !self.can_access_field(class_name, field_info.is_public) {
+                                        return Err(DiagnosticError::Type(
+                                            format!("Field '{}' is private and cannot be accessed from outside class '{}'",
+                                                   member, class_name)
+                                        ));
+                                    }
+
                                     // Allow assignment to immutable fields if we're in an init method and assigning to self
                                     let is_self_assignment = match object.as_ref() {
                                         Expression::Self_ { .. } => true,
@@ -2381,6 +2449,14 @@ impl TypeChecker {
                             ))?.clone();
 
                         if let Some(method_signature) = class_info.methods.get(method_name) {
+                            // Check visibility
+                            if !self.can_access_method(class_name, method_signature.is_public) {
+                                return Err(DiagnosticError::Type(
+                                    format!("Method '{}' is private and cannot be called from outside class '{}'",
+                                           method_name, class_name)
+                                ));
+                            }
+
                             // Count required parameters (those without defaults) - exclude implicit self parameter
                             let required_params = method_signature.default_values.iter().take_while(|d| d.is_none()).count();
 
@@ -2433,6 +2509,18 @@ impl TypeChecker {
                     .ok_or_else(|| DiagnosticError::Type(
                         format!("Unknown enum '{}'", enum_name)
                     ))?.clone();
+
+                // Check visibility for cross-module enum access
+                // Enums with :: in their name are qualified (cross-module)
+                if enum_name.contains("::") {
+                    let enum_module = self.get_module_from_qualified_name(enum_name);
+                    if !self.can_access_symbol(&enum_module, enum_info.is_public) {
+                        return Err(DiagnosticError::Type(
+                            format!("Enum '{}' is private and cannot be accessed from module '{}'",
+                                   enum_name, self.module_table.current_module)
+                        ));
+                    }
+                }
 
                 // Check if variant exists
                 let variant_fields = enum_info.variants.get(variant)
@@ -2634,6 +2722,13 @@ impl TypeChecker {
                             ))?;
 
                         if let Some(field_info) = class_info.fields.get(member) {
+                            // Check visibility
+                            if !self.can_access_field(class_name, field_info.is_public) {
+                                return Err(DiagnosticError::Type(
+                                    format!("Field '{}' is private and cannot be accessed from outside class '{}'",
+                                           member, class_name)
+                                ));
+                            }
                             Ok(field_info.ty.clone())
                         } else {
                             Err(DiagnosticError::Type(
@@ -2652,6 +2747,18 @@ impl TypeChecker {
                     .ok_or_else(|| DiagnosticError::Type(
                         format!("Unknown class '{}'", class_name)
                     ))?.clone();
+
+                // Check visibility for cross-module class access
+                // Classes with :: in their name are qualified (cross-module)
+                if class_name.contains("::") {
+                    let class_module = self.get_module_from_qualified_name(class_name);
+                    if !self.can_access_symbol(&class_module, class_info.is_public) {
+                        return Err(DiagnosticError::Type(
+                            format!("Class '{}' is private and cannot be accessed from module '{}'",
+                                   class_name, self.module_table.current_module)
+                        ));
+                    }
+                }
 
                 // Check if init method exists
                 if !class_info.methods.contains_key("init") {

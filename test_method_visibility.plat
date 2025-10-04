@@ -1,0 +1,23 @@
+// Test that private method access is caught
+class BankAccount {
+  let balance: Int32;
+
+  // Private helper method
+  fn validate_amount(amount: Int32) -> Bool {
+    return amount > 0;
+  }
+
+  // Public method
+  pub fn get_balance() -> Int32 {
+    return self.balance;
+  }
+}
+
+fn main() -> Int32 {
+  let account: BankAccount = BankAccount.init(balance = 1000);
+
+  // This should fail - calling private method
+  let valid: Bool = account.validate_amount(amount = 50);
+
+  return 0;
+}
