@@ -134,20 +134,11 @@ impl Token {
     }
 }
 
+// Re-export Span from plat-diags for consistency
+pub use plat_diags::Span;
+
 #[derive(Debug, Clone)]
 pub struct TokenWithSpan {
     pub token: Token,
     pub span: Span,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Span {
-    pub start: usize,
-    pub end: usize,
-}
-
-impl Span {
-    pub fn new(start: usize, end: usize) -> Self {
-        Self { start, end }
-    }
 }

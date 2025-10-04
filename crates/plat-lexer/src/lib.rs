@@ -4,10 +4,11 @@ mod tests;
 
 pub use token::{FloatType, Span, StringPart, Token, TokenWithSpan};
 
-use plat_diags::DiagnosticError;
+use plat_diags::{Diagnostic, DiagnosticError};
 
 pub struct Lexer {
     input: Vec<char>,
+    filename: String,
     current: usize,
     tokens: Vec<TokenWithSpan>,
 }
@@ -16,6 +17,16 @@ impl Lexer {
     pub fn new(input: &str) -> Self {
         Self {
             input: input.chars().collect(),
+            filename: "<unknown>".to_string(),
+            current: 0,
+            tokens: Vec::new(),
+        }
+    }
+
+    pub fn with_filename(input: &str, filename: impl Into<String>) -> Self {
+        Self {
+            input: input.chars().collect(),
+            filename: filename.into(),
             current: 0,
             tokens: Vec::new(),
         }
@@ -91,8 +102,14 @@ impl Lexer {
                         self.advance();
                         self.add_token(Token::NotEq, start);
                     } else {
-                        return Err(DiagnosticError::Syntax(
-                            format!("Unexpected character '!' at position {}", start)
+                        return Err(DiagnosticError::Rich(
+                            Diagnostic::syntax_error(
+                                &self.filename,
+                                Span::new(start, start + 1),
+                                "Unexpected character '!'"
+                            )
+                            .with_label("unexpected character")
+                            .with_help("Did you mean '!=' for not equal?")
                         ));
                     }
                 }
@@ -117,8 +134,14 @@ impl Lexer {
                 c if c.is_ascii_digit() => self.scan_number(start)?,
                 c if c.is_ascii_alphabetic() || c == '_' => self.scan_identifier(start)?,
                 c => {
-                    return Err(DiagnosticError::Syntax(
-                        format!("Unexpected character '{}' at position {}", c, start)
+                    return Err(DiagnosticError::Rich(
+                        Diagnostic::syntax_error(
+                            &self.filename,
+                            Span::new(start, start + c.len_utf8()),
+                            format!("Unexpected character '{}'", c)
+                        )
+                        .with_label("unexpected character")
+                        .with_help("Remove this character or check your syntax")
                     ));
                 }
             }
@@ -206,8 +229,14 @@ impl Lexer {
                 }
 
                 if depth != 0 {
-                    return Err(DiagnosticError::Syntax(
-                        format!("Unclosed string interpolation starting at position {}", start)
+                    return Err(DiagnosticError::Rich(
+                        Diagnostic::syntax_error(
+                            &self.filename,
+                            Span::new(start, self.current),
+                            "Unclosed string interpolation"
+                        )
+                        .with_label("unterminated interpolation expression")
+                        .with_help("Add a closing '}' to complete the interpolation")
                     ));
                 }
 
@@ -231,8 +260,14 @@ impl Lexer {
         }
 
         if self.is_at_end() {
-            return Err(DiagnosticError::Syntax(
-                format!("Unterminated string starting at position {}", start)
+            return Err(DiagnosticError::Rich(
+                Diagnostic::syntax_error(
+                    &self.filename,
+                    Span::new(start, self.current),
+                    "Unterminated string literal"
+                )
+                .with_label("string started here but never closed")
+                .with_help("Add a closing \" to complete the string")
             ));
         }
 
@@ -305,8 +340,14 @@ impl Lexer {
 
             // Must have at least one digit after 'e'
             if !self.peek().map(|c| c.is_ascii_digit()).unwrap_or(false) {
-                return Err(DiagnosticError::Syntax(
-                    format!("Invalid scientific notation at position {}", start)
+                return Err(DiagnosticError::Rich(
+                    Diagnostic::syntax_error(
+                        &self.filename,
+                        Span::new(start, self.current),
+                        "Invalid scientific notation"
+                    )
+                    .with_label("expected digit after 'e' or 'E'")
+                    .with_help("Scientific notation requires digits after the exponent marker (e.g., 1.5e10)")
                 ));
             }
 
@@ -353,16 +394,28 @@ impl Lexer {
         if is_float_literal {
             // Parse as float
             let float_value = num_str.parse::<f64>()
-                .map_err(|_| DiagnosticError::Syntax(
-                    format!("Invalid float literal at position {}", start)
+                .map_err(|_| DiagnosticError::Rich(
+                    Diagnostic::syntax_error(
+                        &self.filename,
+                        Span::new(start, self.current),
+                        "Invalid float literal"
+                    )
+                    .with_label("cannot parse as floating point number")
+                    .with_help("Check the number format (e.g., 3.14, 1.5e10)")
                 ))?;
 
             let float_type = match suffix.as_deref() {
                 Some("f32") => token::FloatType::F32,
                 Some("f64") | None => token::FloatType::F64, // Default to f64
                 Some(s) => {
-                    return Err(DiagnosticError::Syntax(
-                        format!("Invalid float suffix '{}' at position {}", s, start)
+                    return Err(DiagnosticError::Rich(
+                        Diagnostic::syntax_error(
+                            &self.filename,
+                            Span::new(start, self.current),
+                            format!("Invalid float suffix '{}'", s)
+                        )
+                        .with_label("invalid suffix")
+                        .with_help("Valid suffixes are 'f32' and 'f64'")
                     ));
                 }
             };
@@ -371,15 +424,27 @@ impl Lexer {
         } else {
             // Parse as integer
             let value = num_str.parse::<i64>()
-                .map_err(|_| DiagnosticError::Syntax(
-                    format!("Invalid number literal at position {}", start)
+                .map_err(|_| DiagnosticError::Rich(
+                    Diagnostic::syntax_error(
+                        &self.filename,
+                        Span::new(start, self.current),
+                        "Invalid integer literal"
+                    )
+                    .with_label("cannot parse as integer")
+                    .with_help("Check the number format and ensure it fits in the integer range")
                 ))?;
 
             // Validate suffix if present
             if let Some(suffix) = suffix {
                 if suffix != "i32" && suffix != "i64" {
-                    return Err(DiagnosticError::Syntax(
-                        format!("Invalid number suffix '{}' at position {}", suffix, start)
+                    return Err(DiagnosticError::Rich(
+                        Diagnostic::syntax_error(
+                            &self.filename,
+                            Span::new(start, self.current),
+                            format!("Invalid integer suffix '{}'", suffix)
+                        )
+                        .with_label("invalid suffix")
+                        .with_help("Valid suffixes are 'i32' and 'i64'")
                     ));
                 }
             }
