@@ -1,10 +1,10 @@
 fn main() -> Int32 {
-  let base = 5;
-  let multiplier = 3;
+  let base: Int32 = 5;
+  let multiplier: Int32 = 3;
 
-  print("First: ${base}");
-  print("Second: ${multiplier}");
-  print("Third: ${base + multiplier}");
+  print(value = "First: ${base}");
+  print(value = "Second: ${multiplier}");
+  print(value = "Third: ${base + multiplier}");
 
   return 0;
 }

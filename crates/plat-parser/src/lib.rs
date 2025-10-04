@@ -397,11 +397,8 @@ impl Parser {
         let start = self.previous_span().start;
         let name = self.consume_identifier("Expected variable name")?;
 
-        let ty = if self.match_token(&Token::Colon) {
-            Some(self.parse_type()?)
-        } else {
-            None
-        };
+        self.consume(Token::Colon, "Expected ':' after variable name (type annotation required)")?;
+        let ty = self.parse_type()?;
 
         self.consume(Token::Assign, "Expected '=' in let statement")?;
         let value = self.parse_expression()?;
@@ -420,11 +417,8 @@ impl Parser {
         let start = self.previous_span().start;
         let name = self.consume_identifier("Expected variable name")?;
 
-        let ty = if self.match_token(&Token::Colon) {
-            Some(self.parse_type()?)
-        } else {
-            None
-        };
+        self.consume(Token::Colon, "Expected ':' after variable name (type annotation required)")?;
+        let ty = self.parse_type()?;
 
         self.consume(Token::Assign, "Expected '=' in var statement")?;
         let value = self.parse_expression()?;
@@ -506,7 +500,9 @@ impl Parser {
 
         self.consume(Token::LeftParen, "Expected '(' after 'for'")?;
         let variable = self.consume_identifier("Expected variable name in for loop")?;
-        self.consume(Token::In, "Expected 'in' after for loop variable")?;
+        self.consume(Token::Colon, "Expected ':' after for loop variable (type annotation required)")?;
+        let variable_type = self.parse_type()?;
+        self.consume(Token::In, "Expected 'in' after for loop variable type")?;
         let iterable = self.parse_expression()?;
         self.consume(Token::RightParen, "Expected ')' after for loop expression")?;
 
@@ -515,6 +511,7 @@ impl Parser {
 
         Ok(Statement::For {
             variable,
+            variable_type,
             iterable,
             body,
             span: Span::new(start, end),
@@ -1303,7 +1300,10 @@ impl Parser {
                 if self.match_token(&Token::LeftParen) {
                     if !self.check(&Token::RightParen) {
                         loop {
-                            bindings.push(self.consume_identifier("Expected binding name")?);
+                            let binding_name = self.consume_identifier("Expected binding name")?;
+                            self.consume(Token::Colon, "Expected ':' after binding name (type annotation required)")?;
+                            let binding_type = self.parse_type()?;
+                            bindings.push((binding_name, binding_type));
                             if !self.match_token(&Token::Comma) {
                                 break;
                             }
@@ -1328,7 +1328,10 @@ impl Parser {
 
                 if !self.check(&Token::RightParen) {
                     loop {
-                        bindings.push(self.consume_identifier("Expected binding name")?);
+                        let binding_name = self.consume_identifier("Expected binding name")?;
+                        self.consume(Token::Colon, "Expected ':' after binding name (type annotation required)")?;
+                        let binding_type = self.parse_type()?;
+                        bindings.push((binding_name, binding_type));
                         if !self.match_token(&Token::Comma) {
                             break;
                         }

@@ -1,9 +1,9 @@
 fn main() -> Int32 {
-  let x = 42;
-  let y = 7;
-  let result = x + y;
+  let x: Int32 = 42;
+  let y: Int32 = 7;
+  let result: Int32 = x + y;
 
-  print("The sum of ${x} and ${y} is ${result}");
+  print(value = "The sum of ${x} and ${y} is ${result}");
 
   return 0;
 }

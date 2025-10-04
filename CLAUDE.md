@@ -2,7 +2,7 @@
 
 **A modern compiled language with:**
 - Native code generation (Rust + Cranelift)
-- Strong static typing with type inference
+- Strong static typing with explicit type annotations (no inference)
 - Object-oriented programming (classes, inheritance, polymorphism)
 - Algebraic data types (enums, pattern matching)
 - Generic types and functions
@@ -45,9 +45,9 @@
 - **Example**: `add(x = 5, y = 3)` instead of `add(5, 3)`
 
 ### Control Flow
-- **If-Expressions**: `let max = if (x > y) { x } else { y }`
-- **Range Loops**: `for (i in 0..10)` (exclusive), `for (i in 0..=10)` (inclusive)
-- **For-Each**: `for (item in array)` works with arrays and custom classes
+- **If-Expressions**: `let max: Int32 = if (x > y) { x } else { y }`
+- **Range Loops**: `for (i: Int32 in 0..10)` (exclusive), `for (i: Int32 in 0..=10)` (inclusive)
+- **For-Each**: `for (item: Type in array)` works with arrays and custom classes (type annotation required)
 
 ### Testing
 - **Test Blocks**: `test "description" { ... }` groups related tests
@@ -172,7 +172,7 @@ class Point {
 }
 
 fn main() -> Int32 {
-  let p = Point.init(x = 10, y = 20);  // Constructor call
+  let p: Point = Point.init(x = 10, y = 20);  // Constructor call with type annotation
   print(value = "Point created!");  // Named argument required
   return p.x;
 }
@@ -187,11 +187,11 @@ enum Status {
 }
 
 fn main() -> Int32 {
-  let status = Status::Warning(field0 = 42);
-  let code = match status {
+  let status: Status = Status::Warning(field0 = 42);
+  let code: Int32 = match status {
     Status::Success -> 0,
-    Status::Warning(x) -> x + 100,
-    Status::Error(x) -> x + 200
+    Status::Warning(x: Int32) -> x + 100,
+    Status::Error(x: Int32) -> x + 200
   };
   return code;
 }
@@ -204,8 +204,8 @@ fn identity<T>(value: T) -> T {
 }
 
 fn main() -> Int32 {
-  let x = identity(value = 10);
-  let name = identity(value = "hello");
+  let x: Int32 = identity(value = 10);
+  let name: String = identity(value = "hello");
   return x;
 }
 ```
@@ -271,15 +271,15 @@ class Point {
 
 test "point operations" {
   fn test_addition() {
-    let p1 = Point.init(x = 1, y = 2);
-    let p2 = Point.init(x = 2, y = 4);
-    let p3 = p1.add(other = p2);
+    let p1: Point = Point.init(x = 1, y = 2);
+    let p2: Point = Point.init(x = 2, y = 4);
+    let p3: Point = p1.add(other = p2);
     assert(condition = p3.x == 3, message = "X coordinate should be 3");
     assert(condition = p3.y == 6, message = "Y coordinate should be 6");
   }
 
   fn test_magnitude() {
-    let p = Point.init(x = 3, y = 4);
+    let p: Point = Point.init(x = 3, y = 4);
     assert(condition = p.magnitude() == 25, message = "3² + 4² = 25");
   }
 
@@ -289,13 +289,13 @@ test "point operations" {
   }
 
   fn test_origin_magnitude() {
-    let origin = create_origin();
+    let origin: Point = create_origin();
     assert(condition = origin.magnitude() == 0);
   }
 }
 
 fn main() -> Int32 {
-  let p = Point.init(x = 5, y = 10);
+  let p: Point = Point.init(x = 5, y = 10);
   print(value = "Point created!");
   return 0;
 }
@@ -334,23 +334,23 @@ bench "point operations" {
   }
 
   fn bench_point_creation() {
-    let p = Point.init(x = 10, y = 20);
+    let p: Point = Point.init(x = 10, y = 20);
   }
 
   fn bench_point_addition() {
-    let p1 = Point.init(x = 1, y = 2);
-    let p2 = Point.init(x = 3, y = 4);
-    let p3 = p1.add(other = p2);
+    let p1: Point = Point.init(x = 1, y = 2);
+    let p2: Point = Point.init(x = 3, y = 4);
+    let p3: Point = p1.add(other = p2);
   }
 
   fn bench_magnitude_calculation() {
-    let p = create_test_point();
-    let mag = p.magnitude();
+    let p: Point = create_test_point();
+    let mag: Int32 = p.magnitude();
   }
 }
 
 fn main() -> Int32 {
-  let p = Point.init(x = 5, y = 10);
+  let p: Point = Point.init(x = 5, y = 10);
   return 0;
 }
 ```

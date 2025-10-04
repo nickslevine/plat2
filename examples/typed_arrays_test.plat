@@ -1,37 +1,37 @@
 fn main() {
   // Test different homogeneous array types
 
-  // i32 array
-  let numbers = [1, 2, 3, 4, 5];
-  print("i32 array: ${numbers}");
-  print("First number: ${numbers[0]}");
-  print("Array length: ${numbers.len()}");
+  // Int32 array
+  let numbers: List[Int32] = [1, 2, 3, 4, 5];
+  print(value = "Int32 array: ${numbers}");
+  print(value = "First number: ${numbers[0]}");
+  print(value = "Array length: ${numbers.len()}");
 
-  // bool array
-  let flags = [true, false, true, false];
-  print("bool array: ${flags}");
-  print("First flag: ${flags[0]}");
-  print("Flags length: ${flags.len()}");
+  // Bool array
+  let flags: List[Bool] = [true, false, true, false];
+  print(value = "Bool array: ${flags}");
+  print(value = "First flag: ${flags[0]}");
+  print(value = "Flags length: ${flags.len()}");
 
-  // string array
-  let words = ["hello", "world", "from", "plat"];
-  print("string array: ${words}");
-  print("First word: ${words[0]}");
-  print("Words length: ${words.len()}");
+  // String array
+  let words: List[String] = ["hello", "world", "from", "plat"];
+  print(value = "String array: ${words}");
+  print(value = "First word: ${words[0]}");
+  print(value = "Words length: ${words.len()}");
 
   // Test iterations
-  print("Iterating numbers:");
-  for (num in numbers) {
-    print("Number: ${num}");
+  print(value = "Iterating numbers:");
+  for (num: Int32 in numbers) {
+    print(value = "Number: ${num}");
   }
 
-  print("Iterating flags:");
-  for (flag in flags) {
-    print("Flag: ${flag}");
+  print(value = "Iterating flags:");
+  for (flag: Bool in flags) {
+    print(value = "Flag: ${flag}");
   }
 
-  print("Iterating words:");
-  for (word in words) {
-    print("Word: ${word}");
+  print(value = "Iterating words:");
+  for (word: String in words) {
+    print(value = "Word: ${word}");
   }
 }

@@ -7,9 +7,9 @@ fn multiply(x: Int32, y: Int32) -> Int32 {
 }
 
 fn main() {
-  let a = 6;
-  let b = 6;
-  let sum = add(a, b);
-  let product = multiply(sum, 2);
-  print("The result of product is ${product}");
+  let a: Int32 = 6;
+  let b: Int32 = 6;
+  let sum: Int32 = add(x = a, y = b);
+  let product: Int32 = multiply(x = sum, y = 2);
+  print(value = "The result of product is ${product}");
 }

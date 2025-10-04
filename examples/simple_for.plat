@@ -1,7 +1,7 @@
 fn main() {
-  let numbers = [1, 2, 3];
-  for (num in numbers) {
-    print("Number: ${num}");
+  let numbers: List[Int32] = [1, 2, 3];
+  for (num: Int32 in numbers) {
+    print(value = "Number: ${num}");
   }
-  print("done");
+  print(value = "done");
 }

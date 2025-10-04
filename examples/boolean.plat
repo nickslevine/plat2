@@ -1,21 +1,21 @@
 fn main() -> Int32 {
-  let a = true;
-  let b = false;
+  let a: Bool = true;
+  let b: Bool = false;
 
   // Test logical AND with short-circuit
-  let and_result = a and b;
-  let and_short = false and a;  // Should not evaluate 'a'
+  let and_result: Bool = a and b;
+  let and_short: Bool = false and a;  // Should not evaluate 'a'
 
   // Test logical OR with short-circuit
-  let or_result = a or b;
-  let or_short = true or b;  // Should not evaluate 'b'
+  let or_result: Bool = a or b;
+  let or_short: Bool = true or b;  // Should not evaluate 'b'
 
   // Test logical NOT
-  let not_result = not a;
+  let not_result: Bool = not a;
 
   // Test complex boolean expression
-  let complex = (true and false) or (not false);
-  print("${b}");
+  let complex: Bool = (true and false) or (not false);
+  print(value = "${b}");
 
   return 0;
 }

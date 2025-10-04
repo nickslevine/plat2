@@ -1,29 +1,29 @@
 fn main() {
-  print("=== String Operations Test ===");
+  print(value = "=== String Operations Test ===");
 
   // Simple string literal
-  print("1. Simple string literal:");
-  let message = "Hello, Plat!";
-  print(message);
+  print(value = "1. Simple string literal:");
+  let message: String = "Hello, Plat!";
+  print(value = message);
 
   // String interpolation with variable
-  print("2. String interpolation with variable:");
-  let name = "World";
-  let greeting = "Hello, ${name}!";
-  print(greeting);
+  print(value = "2. String interpolation with variable:");
+  let name: String = "World";
+  let greeting: String = "Hello, ${name}!";
+  print(value = greeting);
 
   // String interpolation with number
-  print("3. String interpolation with number:");
-  let x = 42;
-  let number_msg = "The answer is ${x}";
-  print(number_msg);
+  print(value = "3. String interpolation with number:");
+  let x: Int32 = 42;
+  let number_msg: String = "The answer is ${x}";
+  print(value = number_msg);
 
   // Multiple interpolation
-  print("4. Multiple interpolation:");
-  let first = "Alice";
-  let second = "Bob";
-  let both = "Names: ${first} and ${second}";
-  print(both);
+  print(value = "4. Multiple interpolation:");
+  let first: String = "Alice";
+  let second: String = "Bob";
+  let both: String = "Names: ${first} and ${second}";
+  print(value = both);
 
-  print("=== Test Complete ===");
+  print(value = "=== Test Complete ===");
 }

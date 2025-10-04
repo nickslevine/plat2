@@ -1,12 +1,12 @@
 fn main() {
-  // Test large numbers that require i64
-  let big_numbers = [2147483648, 4294967296, 1000000000000];
-  print("Big numbers array: ${big_numbers}");
-  print("First big number: ${big_numbers[0]}");
-  print("Array length: ${big_numbers.len()}");
+  // Test large numbers that require Int64
+  let big_numbers: List[Int64] = [2147483648, 4294967296, 1000000000000];
+  print(value = "Big numbers array: ${big_numbers}");
+  print(value = "First big number: ${big_numbers[0]}");
+  print(value = "Array length: ${big_numbers.len()}");
 
   // Iterate through them
-  for (num in big_numbers) {
-    print("Big number: ${num}");
+  for (num: Int64 in big_numbers) {
+    print(value = "Big number: ${num}");
   }
 }

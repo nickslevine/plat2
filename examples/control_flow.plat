@@ -1,47 +1,47 @@
 fn main() {
   // Test if/else statements
-  let x = 5;
+  let x: Int32 = 5;
   if (x > 3) {
-    print("x is greater than 3");
+    print(value = "x is greater than 3");
   } else {
-    print("x is not greater than 3");
+    print(value = "x is not greater than 3");
   }
 
   // Test while loop
-  var counter = 0;
+  var counter: Int32 = 0;
   while (counter < 3) {
-    print("Counter is ${counter}");
+    print(value = "Counter is ${counter}");
     counter = counter + 1;
   }
 
   // Test for loop with array
-  let numbers = [1, 2, 3, 4, 5];
-  print("Numbers in array:");
-  for (num in numbers) {
-    print("Number: ${num}");
+  let numbers: List[Int32] = [1, 2, 3, 4, 5];
+  print(value = "Numbers in array:");
+  for (num: Int32 in numbers) {
+    print(value = "Number: ${num}");
   }
 
   // Test nested control flow
-  let arr = [10, 20, 30];
-  for (value in arr) {
+  let arr: List[Int32] = [10, 20, 30];
+  for (value: Int32 in arr) {
     if (value > 15) {
-      print("Found large value: ${value}");
+      print(value = "Found large value: ${value}");
     } else {
-      print("Small value: ${value}");
+      print(value = "Small value: ${value}");
     }
   }
 
   // Test while with break condition
-  var i = 0;
+  var i: Int32 = 0;
   while (i < 10) {
     if (i == 5) {
-      print("Reached 5, continuing...");
+      print(value = "Reached 5, continuing...");
       i = i + 1;
     } else {
-      print("i = ${i}");
+      print(value = "i = ${i}");
       i = i + 1;
     }
   }
 
-  print("Control flow example completed!");
+  print(value = "Control flow example completed!");
 }

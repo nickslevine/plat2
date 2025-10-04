@@ -8,21 +8,21 @@ fn multiply(x: Int32, y: Int32) -> Int32 {
 }
 
 fn calculate(a: Int32, b: Int32, c: Int32) -> Int32 {
-  let sum = add(a, b);
-  let product = multiply(sum, c);
+  let sum: Int32 = add(a = a, b = b);
+  let product: Int32 = multiply(x = sum, y = c);
   return product;
 }
 
 fn main() -> Int32 {
-  print("Testing functions...");
+  print(value = "Testing functions...");
 
-  let result1 = add(5, 3);
-  let result2 = multiply(4, 7);
-  let result3 = calculate(2, 3, 4);  // (2 + 3) * 4 = 20
+  let result1: Int32 = add(a = 5, b = 3);
+  let result2: Int32 = multiply(x = 4, y = 7);
+  let result3: Int32 = calculate(a = 2, b = 3, c = 4);  // (2 + 3) * 4 = 20
 
-  print("Addition works!");
-  print("Multiplication works!");
-  print("Nested function calls work!");
+  print(value = "Addition works!");
+  print(value = "Multiplication works!");
+  print(value = "Nested function calls work!");
 
   return 0;
 }

@@ -1,4 +1,4 @@
 fn main() -> Int32 {
-  print("Hello, Nick!");
+  print(value = "Hello, Nick!");
   return 0;
 }

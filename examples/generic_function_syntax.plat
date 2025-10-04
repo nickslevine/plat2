@@ -12,6 +12,6 @@ fn triple<A, B, C>(a: A, b: B, c: C) -> Int32 {
 }
 
 fn main() -> Int32 {
-  print("Generic function syntax test");
+  print(value = "Generic function syntax test");
   return 0;
 }

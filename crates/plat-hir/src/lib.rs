@@ -1180,21 +1180,15 @@ impl TypeChecker {
 
                 let value_type = self.check_expression(value)?;
 
-                // Determine the static type to store in the symbol table
-                let stored_type = if let Some(explicit_type) = ty {
-                    let explicit_hir_type = self.ast_type_to_hir_type(explicit_type)?;
-                    // Check if value type is compatible with explicit type (allows upcasting)
-                    if !self.is_assignable(&explicit_hir_type, &value_type) {
-                        return Err(DiagnosticError::Type(
-                            format!("Type mismatch: expected {:?}, found {:?}", explicit_hir_type, value_type)
-                        ));
-                    }
-                    // Store the explicit (static) type, not the value's dynamic type
-                    explicit_hir_type
-                } else {
-                    // No explicit type annotation, use inferred type
-                    value_type
-                };
+                // Type annotation is mandatory - convert to HIR type
+                let explicit_hir_type = self.ast_type_to_hir_type(ty)?;
+
+                // Check if value type is compatible with explicit type (allows upcasting)
+                if !self.is_assignable(&explicit_hir_type, &value_type) {
+                    return Err(DiagnosticError::Type(
+                        format!("Type mismatch: expected {:?}, found {:?}", explicit_hir_type, value_type)
+                    ));
+                }
 
                 // Check for shadowing (not allowed with let)
                 if self.scopes.last().unwrap().contains_key(name) {
@@ -1203,7 +1197,7 @@ impl TypeChecker {
                     ));
                 }
 
-                self.scopes.last_mut().unwrap().insert(name.clone(), stored_type);
+                self.scopes.last_mut().unwrap().insert(name.clone(), explicit_hir_type);
             }
             Statement::Var { name, ty, value, .. } => {
                 // Validate variable name follows snake_case
@@ -1215,21 +1209,15 @@ impl TypeChecker {
 
                 let value_type = self.check_expression(value)?;
 
-                // Determine the static type to store in the symbol table
-                let stored_type = if let Some(explicit_type) = ty {
-                    let explicit_hir_type = self.ast_type_to_hir_type(explicit_type)?;
-                    // Check if value type is compatible with explicit type (allows upcasting)
-                    if !self.is_assignable(&explicit_hir_type, &value_type) {
-                        return Err(DiagnosticError::Type(
-                            format!("Type mismatch: expected {:?}, found {:?}", explicit_hir_type, value_type)
-                        ));
-                    }
-                    // Store the explicit (static) type, not the value's dynamic type
-                    explicit_hir_type
-                } else {
-                    // No explicit type annotation, use inferred type
-                    value_type
-                };
+                // Type annotation is mandatory - convert to HIR type
+                let explicit_hir_type = self.ast_type_to_hir_type(ty)?;
+
+                // Check if value type is compatible with explicit type (allows upcasting)
+                if !self.is_assignable(&explicit_hir_type, &value_type) {
+                    return Err(DiagnosticError::Type(
+                        format!("Type mismatch: expected {:?}, found {:?}", explicit_hir_type, value_type)
+                    ));
+                }
 
                 // Check for shadowing (not allowed with var)
                 if self.scopes.last().unwrap().contains_key(name) {
@@ -1238,7 +1226,7 @@ impl TypeChecker {
                     ));
                 }
 
-                self.scopes.last_mut().unwrap().insert(name.clone(), stored_type);
+                self.scopes.last_mut().unwrap().insert(name.clone(), explicit_hir_type);
             }
             Statement::Expression(expr) => {
                 self.check_expression(expr)?;
@@ -1288,7 +1276,17 @@ impl TypeChecker {
                 self.check_block(body)?;
                 self.pop_scope();
             }
-            Statement::For { variable, iterable, body, .. } => {
+            Statement::For { variable, variable_type, iterable, body, .. } => {
+                // Validate loop variable name follows snake_case
+                if !is_snake_case(variable) {
+                    return Err(DiagnosticError::Type(
+                        format!("Loop variable '{}' must be snake_case", variable)
+                    ));
+                }
+
+                // Convert the explicit variable type annotation to HIR type
+                let explicit_var_type = self.ast_type_to_hir_type(variable_type)?;
+
                 // Check if the iterable is a Range expression
                 let element_type = if let Expression::Range { .. } = iterable {
                     // Range expressions yield integers, get the type from the range
@@ -1307,6 +1305,13 @@ impl TypeChecker {
                     }
                 };
 
+                // Verify that the explicit variable type matches the iterable's element type
+                if explicit_var_type != element_type {
+                    return Err(DiagnosticError::Type(
+                        format!("Loop variable type {:?} does not match iterable element type {:?}", explicit_var_type, element_type)
+                    ));
+                }
+
                 // Create new scope for loop body and add loop variable
                 self.push_scope();
 
@@ -1317,7 +1322,7 @@ impl TypeChecker {
                     ));
                 }
 
-                self.scopes.last_mut().unwrap().insert(variable.clone(), element_type);
+                self.scopes.last_mut().unwrap().insert(variable.clone(), explicit_var_type);
                 self.check_block(body)?;
                 self.pop_scope();
             }
@@ -3043,14 +3048,31 @@ impl TypeChecker {
                     ));
                 }
 
-                // Add bindings to current scope
-                for (binding, field_type) in bindings.iter().zip(actual_field_types.iter()) {
-                    if self.scopes.last().unwrap().contains_key(binding) {
+                // Add bindings to current scope and verify explicit types match field types
+                for ((binding_name, binding_type), field_type) in bindings.iter().zip(actual_field_types.iter()) {
+                    // Validate binding name follows snake_case
+                    if !is_snake_case(binding_name) {
                         return Err(DiagnosticError::Type(
-                            format!("Variable '{}' is already bound in this pattern", binding)
+                            format!("Pattern binding '{}' must be snake_case", binding_name)
                         ));
                     }
-                    self.scopes.last_mut().unwrap().insert(binding.clone(), field_type.clone());
+
+                    if self.scopes.last().unwrap().contains_key(binding_name) {
+                        return Err(DiagnosticError::Type(
+                            format!("Variable '{}' is already bound in this pattern", binding_name)
+                        ));
+                    }
+
+                    // Convert explicit binding type to HIR type and verify it matches field type
+                    let explicit_binding_type = self.ast_type_to_hir_type(binding_type)?;
+                    if explicit_binding_type != *field_type {
+                        return Err(DiagnosticError::Type(
+                            format!("Pattern binding '{}' has type {:?}, but variant field has type {:?}",
+                                binding_name, explicit_binding_type, field_type)
+                        ));
+                    }
+
+                    self.scopes.last_mut().unwrap().insert(binding_name.clone(), explicit_binding_type);
                 }
 
                 Ok(())

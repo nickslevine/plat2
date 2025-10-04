@@ -1,6 +1,6 @@
 fn main() {
-  let name = "World";
-  let greeting = "Hello, ${name}!";
-  let x = 42;
-  print(greeting);
+  let name: String = "World";
+  let greeting: String = "Hello, ${name}!";
+  let x: Int32 = 42;
+  print(value = greeting);
 }

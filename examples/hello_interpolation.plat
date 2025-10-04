@@ -1,10 +1,10 @@
 // Example: Hello World with string interpolation
 fn main() -> Int32 {
-  let name = "Plat";
-  let version = 1;
+  let name: String = "Plat";
+  let version: Int32 = 1;
 
   // String interpolation (simplified - shows placeholders for now)
-  print("Hello from ${name} version ${version}!");
+  print(value = "Hello from ${name} version ${version}!");
 
   return 0;
 }

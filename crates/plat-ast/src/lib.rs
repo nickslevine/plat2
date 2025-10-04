@@ -101,13 +101,13 @@ pub struct Block {
 pub enum Statement {
     Let {
         name: String,
-        ty: Option<Type>,
+        ty: Type,
         value: Expression,
         span: Span,
     },
     Var {
         name: String,
-        ty: Option<Type>,
+        ty: Type,
         value: Expression,
         span: Span,
     },
@@ -129,6 +129,7 @@ pub enum Statement {
     },
     For {
         variable: String,
+        variable_type: Type,
         iterable: Expression,
         body: Block,
         span: Span,
@@ -301,7 +302,7 @@ pub enum Pattern {
     EnumVariant {
         enum_name: Option<String>,
         variant: String,
-        bindings: Vec<String>,
+        bindings: Vec<(String, Type)>,
         span: Span,
     },
     Identifier {

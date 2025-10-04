@@ -3,14 +3,14 @@ fn add(a: Int32, b: Int32) -> Int32 {
 }
 
 fn main() -> Int32 {
-  print("Testing basic features...");
+  print(value = "Testing basic features...");
 
   // Test function calls and arithmetic
-  let result = add(5, 3);
+  let result: Int32 = add(a = 5, b = 3);
 
   // Test multiple prints
-  print("Addition works!");
-  print("All tests passed!");
+  print(value = "Addition works!");
+  print(value = "All tests passed!");
 
   return 0;
 }

@@ -2,90 +2,90 @@
 
 fn fibonacci(n: Int32) -> Int32 {
   // Base cases
-  let zero = 0;
-  let one = 1;
+  let zero: Int32 = 0;
+  let one: Int32 = 1;
 
   // Compute iteratively (no if statements yet)
-  var a = 0;
-  var b = 1;
-  var counter = n;
+  var a: Int32 = 0;
+  var b: Int32 = 1;
+  var counter: Int32 = n;
 
   // Simple computation for demo
   return a + b;
 }
 
 fn test_arithmetic() -> Int32 {
-  print("=== Testing Arithmetic ===");
+  print(value = "=== Testing Arithmetic ===");
 
-  let a = 10;
-  let b = 3;
+  let a: Int32 = 10;
+  let b: Int32 = 3;
 
-  let sum = a + b;       // 13
-  let diff = a - b;      // 7
-  let prod = a * b;      // 30
-  let quot = a / b;      // 3
-  let rem = a % b;       // 1
+  let sum: Int32 = a + b;       // 13
+  let diff: Int32 = a - b;      // 7
+  let prod: Int32 = a * b;      // 30
+  let quot: Int32 = a / b;      // 3
+  let rem: Int32 = a % b;       // 1
 
-  print("Arithmetic operations complete");
+  print(value = "Arithmetic operations complete");
   return sum + diff + prod + quot + rem;  // 54
 }
 
 fn test_boolean() -> Bool {
-  print("=== Testing Boolean Logic ===");
+  print(value = "=== Testing Boolean Logic ===");
 
-  let t = true;
-  let f = false;
+  let t: Bool = true;
+  let f: Bool = false;
 
   // Test AND with short-circuit
-  let and1 = t and t;    // true
-  let and2 = t and f;    // false
-  let and3 = f and t;    // false (t not evaluated)
+  let and1: Bool = t and t;    // true
+  let and2: Bool = t and f;    // false
+  let and3: Bool = f and t;    // false (t not evaluated)
 
   // Test OR with short-circuit
-  let or1 = t or f;      // true (f not evaluated)
-  let or2 = f or t;      // true
-  let or3 = f or f;      // false
+  let or1: Bool = t or f;      // true (f not evaluated)
+  let or2: Bool = f or t;      // true
+  let or3: Bool = f or f;      // false
 
   // Test NOT
-  let not1 = not t;      // false
-  let not2 = not f;      // true
+  let not1: Bool = not t;      // false
+  let not2: Bool = not f;      // true
 
-  print("Boolean operations complete");
+  print(value = "Boolean operations complete");
   return (and1 or and2) and (not not1);  // true
 }
 
 fn test_variables() -> Int32 {
-  print("=== Testing Variables ===");
+  print(value = "=== Testing Variables ===");
 
   // Immutable with let
-  let immutable = 100;
+  let immutable: Int32 = 100;
 
   // Mutable with var
-  var mutable = 50;
+  var mutable: Int32 = 50;
   mutable = mutable + 10;
   mutable = mutable * 2;
   mutable = mutable - 20;
 
-  print("Variable operations complete");
+  print(value = "Variable operations complete");
   return immutable + mutable;  // 200
 }
 
 fn main() -> Int32 {
-  print("===================================");
-  print("     Plat Language Showcase");
-  print("===================================");
+  print(value = "===================================");
+  print(value = "     Plat Language Showcase");
+  print(value = "===================================");
 
   // Test different features
-  let arith_result = test_arithmetic();
-  let bool_result = test_boolean();
-  let var_result = test_variables();
+  let arith_result: Int32 = test_arithmetic();
+  let bool_result: Bool = test_boolean();
+  let var_result: Int32 = test_variables();
 
   // Test function composition
-  let fib_result = fibonacci(5);
+  let fib_result: Int32 = fibonacci(n = 5);
 
-  print("===================================");
-  print("     All Tests Complete!");
-  print("===================================");
+  print(value = "===================================");
+  print(value = "     All Tests Complete!");
+  print(value = "===================================");
 
   return 0;
 }

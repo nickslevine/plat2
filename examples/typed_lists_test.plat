@@ -3,35 +3,35 @@ fn main() {
 
   // Bool list with explicit type
   let flags: List[Bool] = [true, false, true, false];
-  print("Bool list: ${flags}");
-  print("First flag: ${flags[0]}");
-  print("Flags length: ${flags.len()}");
+  print(value = "Bool list: ${flags}");
+  print(value = "First flag: ${flags[0]}");
+  print(value = "Flags length: ${flags.len()}");
 
   // String list with explicit type
   let words: List[String] = ["hello", "world", "plat"];
-  print("String list: ${words}");
-  print("First word: ${words[0]}");
-  print("Words length: ${words.len()}");
+  print(value = "String list: ${words}");
+  print(value = "First word: ${words[0]}");
+  print(value = "Words length: ${words.len()}");
 
-  // I32 list with explicit type
-  let numbers: List[I32] = [10, 20, 30];
-  print("I32 list: ${numbers}");
-  print("First number: ${numbers[0]}");
-  print("Numbers length: ${numbers.len()}");
+  // Int32 list with explicit type
+  let numbers: List[Int32] = [10, 20, 30];
+  print(value = "Int32 list: ${numbers}");
+  print(value = "First number: ${numbers[0]}");
+  print(value = "Numbers length: ${numbers.len()}");
 
   // Test iterations
-  print("Iterating flags:");
-  for (flag in flags) {
-    print("Flag: ${flag}");
+  print(value = "Iterating flags:");
+  for (flag: Bool in flags) {
+    print(value = "Flag: ${flag}");
   }
 
-  print("Iterating words:");
-  for (word in words) {
-    print("Word: ${word}");
+  print(value = "Iterating words:");
+  for (word: String in words) {
+    print(value = "Word: ${word}");
   }
 
-  print("Iterating numbers:");
-  for (num in numbers) {
-    print("Number: ${num}");
+  print(value = "Iterating numbers:");
+  for (num: Int32 in numbers) {
+    print(value = "Number: ${num}");
   }
 }

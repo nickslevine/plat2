@@ -3,20 +3,20 @@ fn add(a: Int32, b: Int32) -> Int32 {
 }
 
 fn main() -> Int32 {
-  let x = 10;
-  let y = 20;
-  let result = add(x, y);
+  let x: Int32 = 10;
+  let y: Int32 = 20;
+  let result: Int32 = add(a = x, b = y);
 
   // Test arithmetic operations
-  let sum = x + y;
-  let diff = y - x;
-  let prod = x * 3;
-  let quot = y / 2;
-  let rem = y % 3;
+  let sum: Int32 = x + y;
+  let diff: Int32 = y - x;
+  let prod: Int32 = x * 3;
+  let quot: Int32 = y / 2;
+  let rem: Int32 = y % 3;
 
   // Test comparisons
-  let less = x < y;
-  let equal = x == 10;
+  let less: Bool = x < y;
+  let equal: Bool = x == 10;
 
   // Return success
   return 0;

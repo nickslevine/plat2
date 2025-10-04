@@ -3,14 +3,14 @@ fn square(x: Int32) -> Int32 {
 }
 
 fn main() -> Int32 {
-  let base = 5;
-  let multiplier = 3;
-  let offset = 10;
+  let base: Int32 = 5;
+  let multiplier: Int32 = 3;
+  let offset: Int32 = 10;
 
   // Complex expression interpolation
-  print("Base: ${base}, Squared: ${square(base)}");
-  print("Complex: ${(base + multiplier) * 2 - offset}");
-  print("Nested: Result is ${base * multiplier + square(2)}");
+  print(value = "Base: ${base}, Squared: ${square(x = base)}");
+  print(value = "Complex: ${(base + multiplier) * 2 - offset}");
+  print(value = "Nested: Result is ${base * multiplier + square(x = 2)}");
 
   return 0;
 }

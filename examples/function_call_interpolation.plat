@@ -3,9 +3,9 @@ fn double(x: Int32) -> Int32 {
 }
 
 fn main() -> Int32 {
-  let base = 5;
+  let base: Int32 = 5;
 
-  print("Testing function call in interpolation: ${double(base)}");
+  print(value = "Testing function call in interpolation: ${double(x = base)}");
 
   return 0;
 }

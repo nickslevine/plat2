@@ -397,10 +397,8 @@ impl Formatter {
             Statement::Let { name, ty, value, .. } => {
                 self.write("let ");
                 self.write(name);
-                if let Some(ty) = ty {
-                    self.write(": ");
-                    self.format_type(ty);
-                }
+                self.write(": ");
+                self.format_type(ty);
                 self.write(" = ");
                 self.format_expression(value);
                 self.write_line(";");
@@ -408,10 +406,8 @@ impl Formatter {
             Statement::Var { name, ty, value, .. } => {
                 self.write("var ");
                 self.write(name);
-                if let Some(ty) = ty {
-                    self.write(": ");
-                    self.format_type(ty);
-                }
+                self.write(": ");
+                self.format_type(ty);
                 self.write(" = ");
                 self.format_expression(value);
                 self.write_line(";");
@@ -445,9 +441,11 @@ impl Formatter {
                 self.write(") ");
                 self.format_if_block(body);
             }
-            Statement::For { variable, iterable, body, .. } => {
+            Statement::For { variable, variable_type, iterable, body, .. } => {
                 self.write("for (");
                 self.write(variable);
+                self.write(": ");
+                self.format_type(variable_type);
                 self.write(" in ");
                 self.format_expression(iterable);
                 self.write(") ");
@@ -751,11 +749,13 @@ impl Formatter {
                 self.write(variant);
                 if !bindings.is_empty() {
                     self.write("(");
-                    for (i, binding) in bindings.iter().enumerate() {
+                    for (i, (binding_name, binding_type)) in bindings.iter().enumerate() {
                         if i > 0 {
                             self.write(", ");
                         }
-                        self.write(binding);
+                        self.write(binding_name);
+                        self.write(": ");
+                        self.format_type(binding_type);
                     }
                     self.write(")");
                 }

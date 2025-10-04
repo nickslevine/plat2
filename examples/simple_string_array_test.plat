@@ -1,13 +1,13 @@
 fn main() {
   // Simple test to see what's happening with string arrays
-  let words = ["hello", "world"];
-  print("String array: ${words}");
+  let words: List[String] = ["hello", "world"];
+  print(value = "String array: ${words}");
 
   // Try to get a string from the array
-  let first_word = words[0];
-  print("Direct indexing result: ${first_word}");
+  let first_word: String = words[0];
+  print(value = "Direct indexing result: ${first_word}");
 
   // See what type this is being treated as
   let first_as_string: String = words[0];
-  print("Typed as String: ${first_as_string}");
+  print(value = "Typed as String: ${first_as_string}");
 }

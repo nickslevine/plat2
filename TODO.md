@@ -1,42 +1,55 @@
+## General
+* type casting (especially with numeric types)
+* overflow / underflow handling 
+* default arguments? 
+* regex
+* functional programming, pipelines
+* lambdas 
+* classes - heap vs struct. questions? 
 
+## Control Flow
 * error handling
   * minimize panics. 
   * use result/option where it makes sense. 
-  * ? operator. 
-* beautiful error messages (ariadne)
+  * ? operator.
+* get rid of integer exit codes. 
+
+## Visibility
+* objects: member access
 * modules
   * private vs public. 
-* regex
+
+## Tooling
 * testing
   * setup/teardown 
   * test filtering 
   * conditional compilation
   * don't fail fast - run all tests
-* visibility 
-* parallel loops
-* blas
-* concurrency
-* enforce type annotations everywhere
-* classes - heap vs struct. questions? 
+* beautiful error messages (ariadne)
+* automatic cli
+
+## Networking
 * networking / http requests
   * rate limiting, backoff etc
+
+## Concurrency
+* concurrency
+* parallel loops
+* blas
+
+## stdlib
+* colored printing 
+* logging package
+* json, etc
 * caching
 * cli/tui framework
-* get rid of integer exit codes. 
-* type casting (especially with numeric types)
 * serde etc. 
-* pipeline operator? 
-* functional programming, pipelines
-* lambdas 
-* change constructor calls to init? 
-* default arguments? 
-* overflow / underflow handling 
-* objects: member access
 
-* plat stdlib
-  * logging package
-  * json, etc
+
+
+
 --- 
+* compliation speed
 * plat cli niceties
   * spinner
   * ai docs
@@ -54,5 +67,5 @@
 * platitudes. 
 * linting / suggestions - dead code, unused imports
 * central package repository
-
+* revist type inference
 * language code reviews. 

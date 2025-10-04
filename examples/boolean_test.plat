@@ -1,7 +1,7 @@
 fn main() {
-  let a = 5;
-  let b = 3;
-  let c = a > b;
-  let d = a == 5;
-  let e = not d;
+  let a: Int32 = 5;
+  let b: Int32 = 3;
+  let c: Bool = a > b;
+  let d: Bool = a == 5;
+  let e: Bool = not d;
 }

@@ -3,15 +3,15 @@ fn calculate(a: Int32, b: Int32) -> Int32 {
 }
 
 fn main() -> Int32 {
-  let x = 6;
-  let y = 7;
+  let x: Int32 = 6;
+  let y: Int32 = 7;
 
-  print("===== String Interpolation Showcase =====");
-  print("Variables: x = ${x}, y = ${y}");
-  print("Expression: x + y = ${x + y}");
-  print("Function call: calculate(x, y) = ${calculate(x, y)}");
-  print("Complex: (x * 2) + (y - 3) = ${(x * 2) + (y - 3)}");
-  print("==========================================");
+  print(value = "===== String Interpolation Showcase =====");
+  print(value = "Variables: x = ${x}, y = ${y}");
+  print(value = "Expression: x + y = ${x + y}");
+  print(value = "Function call: calculate(x, y) = ${calculate(a = x, b = y)}");
+  print(value = "Complex: (x * 2) + (y - 3) = ${(x * 2) + (y - 3)}");
+  print(value = "==========================================");
 
   return 0;
 }

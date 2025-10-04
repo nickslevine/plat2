@@ -4,22 +4,22 @@ fn identity<T>(value: T) -> T {
 }
 
 fn create_pair<T, U>(first: T, second: U) -> Int32 {
-  print("Created pair");
+  print(value = "Created pair");
   return 42;
 }
 
 fn main() -> Int32 {
-  // Test with I32 - type inferred from argument
-  let x = identity(10);
-  print("Identity I32: ${x}");
+  // Test with Int32 - type inferred from argument
+  let x: Int32 = identity(value = 10);
+  print(value = "Identity Int32: ${x}");
 
   // Test with String - type inferred from argument
-  let name = identity("hello");
-  print("Identity String: ${name}");
+  let name: String = identity(value = "hello");
+  print(value = "Identity String: ${name}");
 
   // Test with multiple type parameters - inferred from both arguments
-  let result = create_pair(100, "world");
-  print("Pair result: ${result}");
+  let result: Int32 = create_pair(first = 100, second = "world");
+  print(value = "Pair result: ${result}");
 
   return 0;
 }

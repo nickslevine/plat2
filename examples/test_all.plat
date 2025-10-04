@@ -1,28 +1,28 @@
 fn main() -> Int32 {
   // Test string literals
-  print("Testing Plat language features...");
+  print(value = "Testing Plat language features...");
 
   // Test arithmetic
-  let x = 5 + 3;
-  let y = 10 - 2;
+  let x: Int32 = 5 + 3;
+  let y: Int32 = 10 - 2;
 
   // Test comparisons
   if (x == y) {
-    print("Arithmetic works: 5 + 3 == 10 - 2");
+    print(value = "Arithmetic works: 5 + 3 == 10 - 2");
   }
 
   // Test boolean operations with short circuit
-  let a = true;
-  let b = false;
+  let a: Bool = true;
+  let b: Bool = false;
 
   if (a or b) {
-    print("Boolean OR works");
+    print(value = "Boolean OR works");
   }
 
   if (not b) {
-    print("Boolean NOT works");
+    print(value = "Boolean NOT works");
   }
 
-  print("All tests passed!");
+  print(value = "All tests passed!");
   return 0;
 }

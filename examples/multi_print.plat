@@ -1,6 +1,6 @@
 fn main() -> Int32 {
-  print("First print");
-  print("Second print");
-  print("Third print");
+  print(value = "First print");
+  print(value = "Second print");
+  print(value = "Third print");
   return 0;
 }

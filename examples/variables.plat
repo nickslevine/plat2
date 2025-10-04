@@ -1,23 +1,23 @@
 // Example: let vs var (immutability vs mutability)
 fn main() -> Int32 {
   // Immutable binding with let
-  let x = 10;
-  let y = 20;
-  let sum = x + y;
+  let x: Int32 = 10;
+  let y: Int32 = 20;
+  let sum: Int32 = x + y;
 
   // Mutable binding with var
-  var counter = 0;
+  var counter: Int32 = 0;
   counter = counter + 1;
   counter = counter + 1;
   counter = counter + 1;
 
   // More complex mutations
-  var result = 100;
+  var result: Int32 = 100;
   result = result - 50;
   result = result * 2;
   result = result / 10;
 
-  print("Variable mutations work!");
+  print(value = "Variable mutations work!");
 
   return 0;
 }

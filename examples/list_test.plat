@@ -1,9 +1,9 @@
 fn main() -> Int32 {
-  let arr: List[I32] = [1, 2, 3];
-  let len = arr.len();
-  let first = arr[0];
-  print("Array has ${len} elements, first is ${first}");
-  print("About to print array");
-  print("${arr}");
+  let arr: List[Int32] = [1, 2, 3];
+  let len: Int32 = arr.len();
+  let first: Int32 = arr[0];
+  print(value = "Array has ${len} elements, first is ${first}");
+  print(value = "About to print array");
+  print(value = "${arr}");
   return 0;
 }

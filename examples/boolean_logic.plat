@@ -1,38 +1,38 @@
 // Example: Boolean logic and short-circuit evaluation
 fn returns_true() -> Bool {
-  print("returns_true() called");
+  print(value = "returns_true() called");
   return true;
 }
 
 fn returns_false() -> Bool {
-  print("returns_false() called");
+  print(value = "returns_false() called");
   return false;
 }
 
 fn main() -> Int32 {
-  print("Testing boolean logic...");
+  print(value = "Testing boolean logic...");
 
   // Basic boolean operations
-  let t = true;
-  let f = false;
+  let t: Bool = true;
+  let f: Bool = false;
 
-  let and_result = t and f;  // false
-  let or_result = t or f;    // true
-  let not_result = not f;    // true
+  let and_result: Bool = t and f;  // false
+  let or_result: Bool = t or f;    // true
+  let not_result: Bool = not f;    // true
 
   // Short-circuit evaluation tests
-  print("Testing AND short-circuit:");
-  let short1 = false and returns_true();  // returns_true() should NOT be called
+  print(value = "Testing AND short-circuit:");
+  let short1: Bool = false and returns_true();  // returns_true() should NOT be called
 
-  print("Testing OR short-circuit:");
-  let short2 = true or returns_false();   // returns_false() should NOT be called
+  print(value = "Testing OR short-circuit:");
+  let short2: Bool = true or returns_false();   // returns_false() should NOT be called
 
   // Complex boolean expressions
-  let complex1 = (true and true) or false;
-  let complex2 = not (false or false);
-  let complex3 = (true or false) and (not false);
+  let complex1: Bool = (true and true) or false;
+  let complex2: Bool = not (false or false);
+  let complex3: Bool = (true or false) and (not false);
 
-  print("Boolean logic tests complete!");
+  print(value = "Boolean logic tests complete!");
 
   return 0;
 }

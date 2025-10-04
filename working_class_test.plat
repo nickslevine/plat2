@@ -12,8 +12,8 @@ class Point {
 
 fn main() {
   // Constructor calls work!
-  let p1 = Point.init(x = 10, y = 20, name = "origin");
-  let p2 = Point.init(x = 5, y = 15, name = "point2");
+  let p1: Point = Point.init(x = 10, y = 20, name = "origin");
+  let p2: Point = Point.init(x = 5, y = 15, name = "point2");
 
   // Member access works!
   print(value = "Point 1 coordinates: (${p1.x}, ${p1.y})");
