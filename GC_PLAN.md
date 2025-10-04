@@ -1,7 +1,7 @@
 # Garbage Collection Implementation Plan
 ## Integrating Boehm GC into Plat Compiler
 
-**Status**: Phase 1, 2, 4 Complete - Core Implementation & Testing Done
+**Status**: Phase 1, 2, 4, 5 (Partial) Complete - Core Implementation, Testing & Optimization Done
 **Approach**: Conservative Boehm-Demers-Weiser Garbage Collector (bdwgc)
 **Last Updated**: 2025-10-04
 
@@ -749,8 +749,13 @@ fn main() -> Int32 {
 - [x] Verify no regressions - All example programs working
 
 ### Optimization
-- [ ] Implement `plat_gc_alloc_atomic` for strings
-- [ ] Benchmark allocation performance
+- [x] Implement `plat_gc_alloc_atomic` for strings
+- [x] Update codegen to use atomic allocation for string literals
+- [x] Update runtime to use atomic allocation for all string operations (concat, trim, replace, split, etc.)
+- [x] Update conversions to use atomic allocation (i32_to_string, bool_to_string, etc.)
+- [x] Create benchmark tests (tests/gc_bench.plat)
+- [ ] Run benchmarks and measure performance improvement
+- [ ] Optimize primitive arrays to use atomic allocation
 - [ ] Tune GC parameters
 - [ ] Document GC behavior
 

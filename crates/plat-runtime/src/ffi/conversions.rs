@@ -1,6 +1,6 @@
 use std::ffi::CStr;
 use std::os::raw::c_char;
-use super::core::plat_gc_alloc;
+use super::core::{plat_gc_alloc_atomic};
 
 /// Convert an i32 to a C string (null-terminated) on the GC heap
 ///
@@ -14,7 +14,7 @@ pub extern "C" fn plat_i32_to_string(value: i32) -> *const c_char {
 
     // Allocate on GC heap
     let size = bytes.len();
-    let gc_ptr = plat_gc_alloc(size);
+    let gc_ptr = plat_gc_alloc_atomic(size);
 
     if gc_ptr.is_null() {
         return std::ptr::null();
@@ -40,7 +40,7 @@ pub extern "C" fn plat_i64_to_string(value: i64) -> *const c_char {
 
     // Allocate on GC heap
     let size = bytes.len();
-    let gc_ptr = plat_gc_alloc(size);
+    let gc_ptr = plat_gc_alloc_atomic(size);
 
     if gc_ptr.is_null() {
         return std::ptr::null();
@@ -66,7 +66,7 @@ pub extern "C" fn plat_bool_to_string(value: bool) -> *const c_char {
 
     // Allocate on GC heap
     let size = bytes.len();
-    let gc_ptr = plat_gc_alloc(size);
+    let gc_ptr = plat_gc_alloc_atomic(size);
 
     if gc_ptr.is_null() {
         return std::ptr::null();
@@ -92,7 +92,7 @@ pub extern "C" fn plat_f32_to_string(value: f32) -> *const c_char {
 
     // Allocate on GC heap
     let size = bytes.len();
-    let gc_ptr = plat_gc_alloc(size);
+    let gc_ptr = plat_gc_alloc_atomic(size);
 
     if gc_ptr.is_null() {
         return std::ptr::null();
@@ -118,7 +118,7 @@ pub extern "C" fn plat_f64_to_string(value: f64) -> *const c_char {
 
     // Allocate on GC heap
     let size = bytes.len();
-    let gc_ptr = plat_gc_alloc(size);
+    let gc_ptr = plat_gc_alloc_atomic(size);
 
     if gc_ptr.is_null() {
         return std::ptr::null();
@@ -177,12 +177,12 @@ pub extern "C" fn plat_string_interpolate(
         }
     }
 
-    // Allocate result on GC heap
+    // Allocate result on GC heap using atomic allocation (strings are pointer-free)
     let mut result_bytes = result.into_bytes();
     result_bytes.push(0); // null terminator
 
     let size = result_bytes.len();
-    let gc_ptr = plat_gc_alloc(size);
+    let gc_ptr = plat_gc_alloc_atomic(size);
 
     if gc_ptr.is_null() {
         return std::ptr::null();

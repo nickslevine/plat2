@@ -1,6 +1,6 @@
 use std::ffi::CStr;
 use std::os::raw::c_char;
-use super::core::plat_gc_alloc;
+use super::core::{plat_gc_alloc, plat_gc_alloc_atomic};
 use super::array::plat_array_create_string;
 
 /// Get the character length of a string (not byte length)
@@ -41,7 +41,7 @@ pub extern "C" fn plat_string_concat(str1_ptr: *const c_char, str2_ptr: *const c
         result_bytes.push(0); // null terminator
 
         let size = result_bytes.len();
-        let gc_ptr = plat_gc_alloc(size);
+        let gc_ptr = plat_gc_alloc_atomic(size);
 
         if gc_ptr.is_null() {
             return std::ptr::null();
@@ -136,7 +136,7 @@ pub extern "C" fn plat_string_trim(str_ptr: *const c_char) -> *const c_char {
         result_bytes.push(0); // null terminator
 
         let size = result_bytes.len();
-        let gc_ptr = plat_gc_alloc(size);
+        let gc_ptr = plat_gc_alloc_atomic(size);
 
         if gc_ptr.is_null() {
             return std::ptr::null();
@@ -165,7 +165,7 @@ pub extern "C" fn plat_string_trim_left(str_ptr: *const c_char) -> *const c_char
         result_bytes.push(0); // null terminator
 
         let size = result_bytes.len();
-        let gc_ptr = plat_gc_alloc(size);
+        let gc_ptr = plat_gc_alloc_atomic(size);
 
         if gc_ptr.is_null() {
             return std::ptr::null();
@@ -194,7 +194,7 @@ pub extern "C" fn plat_string_trim_right(str_ptr: *const c_char) -> *const c_cha
         result_bytes.push(0); // null terminator
 
         let size = result_bytes.len();
-        let gc_ptr = plat_gc_alloc(size);
+        let gc_ptr = plat_gc_alloc_atomic(size);
 
         if gc_ptr.is_null() {
             return std::ptr::null();
@@ -233,7 +233,7 @@ pub extern "C" fn plat_string_replace(str_ptr: *const c_char, from_ptr: *const c
         result_bytes.push(0); // null terminator
 
         let size = result_bytes.len();
-        let gc_ptr = plat_gc_alloc(size);
+        let gc_ptr = plat_gc_alloc_atomic(size);
 
         if gc_ptr.is_null() {
             return std::ptr::null();
@@ -272,7 +272,7 @@ pub extern "C" fn plat_string_replace_all(str_ptr: *const c_char, from_ptr: *con
         result_bytes.push(0); // null terminator
 
         let size = result_bytes.len();
-        let gc_ptr = plat_gc_alloc(size);
+        let gc_ptr = plat_gc_alloc_atomic(size);
 
         if gc_ptr.is_null() {
             return std::ptr::null();
@@ -311,7 +311,7 @@ pub extern "C" fn plat_string_split(str_ptr: *const c_char, delimiter_ptr: *cons
             part_bytes.push(0); // null terminator
 
             let size = part_bytes.len();
-            let gc_ptr = plat_gc_alloc(size);
+            let gc_ptr = plat_gc_alloc_atomic(size);
 
             if gc_ptr.is_null() {
                 return std::ptr::null_mut();
@@ -383,7 +383,7 @@ unsafe fn create_error_message(msg: &str) -> *const c_char {
     msg_bytes.push(0); // null terminator
 
     let size = msg_bytes.len();
-    let gc_ptr = plat_gc_alloc(size);
+    let gc_ptr = plat_gc_alloc_atomic(size);
 
     if gc_ptr.is_null() {
         return std::ptr::null();

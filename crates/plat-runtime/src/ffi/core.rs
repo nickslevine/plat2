@@ -87,6 +87,35 @@ pub extern "C" fn plat_gc_alloc(size: usize) -> *mut u8 {
     ptr
 }
 
+/// C-compatible GC allocation function for pointer-free data (atomic)
+///
+/// This is an optimized version of plat_gc_alloc for data that contains no pointers.
+/// The GC will not scan this memory for references, making collection faster.
+///
+/// Use for: strings, primitive arrays (Int32[], Bool[], etc.), numeric data
+///
+/// # Safety
+/// This function is unsafe because it returns raw pointers to GC memory
+#[no_mangle]
+pub extern "C" fn plat_gc_alloc_atomic(size: usize) -> *mut u8 {
+    ensure_gc_initialized();
+
+    // Allocate using Boehm GC atomic mode (no pointer scanning)
+    let ptr = gc_alloc(size, true);
+
+    if ptr.is_null() {
+        eprintln!("[GC] FATAL: Out of memory (requested {} bytes)", size);
+        std::process::abort();
+    }
+
+    // Zero the memory (Boehm GC doesn't guarantee zeroing)
+    unsafe {
+        std::ptr::write_bytes(ptr, 0, size);
+    }
+
+    ptr
+}
+
 /// C-compatible GC collection function that can be called from generated code
 #[no_mangle]
 pub extern "C" fn plat_gc_collect() {

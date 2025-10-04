@@ -1,0 +1,53 @@
+// GC Allocation Performance Benchmarks
+// Tests both regular (pointer-scanning) and atomic (pointer-free) allocations
+
+class Node {
+  let value: Int32;
+  let next: Option<Node>;
+}
+
+bench "gc allocation performance" {
+  // Benchmark regular class allocation (contains pointers, uses plat_gc_alloc)
+  fn bench_class_allocation() {
+    let node: Node = Node.init(value = 42, next = Option::None);
+  }
+
+  // Benchmark string allocation (pointer-free, uses plat_gc_alloc_atomic)
+  fn bench_string_allocation() {
+    let s: String = "Hello, world! This is a test string for GC benchmarking.";
+  }
+
+  // Benchmark string concatenation (pointer-free, uses plat_gc_alloc_atomic)
+  fn bench_string_concat() {
+    let s1: String = "Hello";
+    let s2: String = "World";
+    let result: String = s1.concat(s = s2);
+  }
+
+  // Benchmark string interpolation (pointer-free, uses plat_gc_alloc_atomic)
+  fn bench_string_interpolation() {
+    let num: Int32 = 42;
+    let s: String = "The answer is ${num}";
+  }
+
+  // Benchmark multiple small allocations
+  fn bench_many_small_strings() {
+    let s1: String = "a";
+    let s2: String = "b";
+    let s3: String = "c";
+    let s4: String = "d";
+    let s5: String = "e";
+  }
+
+  // Benchmark allocation pressure
+  fn bench_allocation_pressure() {
+    for (i: Int32 in 0..100) {
+      let node: Node = Node.init(value = i, next = Option::None);
+    }
+  }
+}
+
+fn main() -> Int32 {
+  print(value = "GC allocation benchmarks completed");
+  return 0;
+}

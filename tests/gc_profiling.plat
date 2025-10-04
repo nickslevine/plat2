@@ -1,0 +1,37 @@
+// Memory profiling test for GC
+// This test allocates many objects to test GC collection
+
+class BigObject {
+  let data1: Int32;
+  let data2: Int32;
+  let data3: Int32;
+  let data4: Int32;
+  let name: String;
+}
+
+fn allocate_wave(wave_num: Int32) {
+  for (i: Int32 in 0..5000) {
+    let obj: BigObject = BigObject.init(
+      data1 = i,
+      data2 = i * 2,
+      data3 = i * 3,
+      data4 = i * 4,
+      name = "Object ${i} in wave ${wave_num}"
+    );
+  }
+}
+
+fn main() -> Int32 {
+  print(value = "Starting GC profiling test...");
+  print(value = "Each wave allocates 5000 objects");
+  print(value = "Monitor memory with: ps aux | grep gc_profiling");
+
+  for (wave: Int32 in 0..20) {
+    allocate_wave(wave_num = wave);
+    print(value = "Completed wave ${wave}");
+  }
+
+  print(value = "Test complete. 100,000 total allocations.");
+  print(value = "If memory is stable, GC is collecting properly!");
+  return 0;
+}

@@ -4121,10 +4121,10 @@ impl CodeGenerator {
                 }
             }
             Literal::String(s, _) => {
-                // Allocate string on GC heap
+                // Allocate string on GC heap using atomic allocation (strings are pointer-free)
 
-                // First, declare the plat_gc_alloc function if not already declared
-                let gc_alloc_name = "plat_gc_alloc";
+                // Declare plat_gc_alloc_atomic function - optimized for pointer-free data
+                let gc_alloc_name = "plat_gc_alloc_atomic";
                 let gc_alloc_sig = {
                     let mut sig = module.make_signature();
                     sig.call_conv = CallConv::SystemV;
@@ -4141,7 +4141,7 @@ impl CodeGenerator {
                 let string_size = s.len() + 1;
                 let size_val = builder.ins().iconst(I64, string_size as i64);
 
-                // Call plat_gc_alloc to allocate memory
+                // Call plat_gc_alloc_atomic to allocate memory (no pointer scanning needed)
                 let call = builder.ins().call(gc_alloc_ref, &[size_val]);
                 let string_ptr = builder.inst_results(call)[0];
 
