@@ -1,11 +1,9 @@
 ## Tooling
 * testing
-  * setup/teardown 
-  * test filtering 
+  * test filtering
   * conditional compilation
   * don't fail fast - run all tests
-* beautiful error messages (ariadne)
-* automatic cli
+* ✅ beautiful error messages (ariadne) - Phase 1 complete: lexer errors with rich diagnostics
 
 ## Networking
 * networking / http requests
@@ -29,6 +27,7 @@
 
 
 ---
+* automatic cli
 * overflow / underflow handling
 * struct (stack allocated?)?
 * ✅ review gc (Phases 3 & 5: Conservative scanning works, optimization possible)
@@ -51,10 +50,12 @@
 * platitudes. 
 * linting / suggestions - dead code, unused imports
 * central package repository
-* revist type inference
+* revisit type inference and required argument names 
 * language code reviews. 
+* iterate on error messages
 
-##
+
+## GC
 
   1. Primitive Arrays - Lists of Int32, Bool
   can also use atomic allocation (5-10% more
