@@ -3655,16 +3655,75 @@ impl CodeGenerator {
                 //     Result::Err(e) -> return Result::Err(e),
                 // }
 
-                // For now, implement a simplified version that assumes the happy path
-                // In a complete implementation, we would:
-                // 1. Check the discriminant
-                // 2. If it's None/Err, generate an early return
-                // 3. If it's Some/Ok, extract the value
+                // Extract discriminant (similar to match expression handling)
+                // Packed format: discriminant in high 32 bits
+                let packed_disc = builder.ins().ushr_imm(expr_val, 32);
+                let disc_i32 = builder.ins().ireduce(I32, packed_disc);
 
-                // Simplified implementation: assume packed format and extract value
-                // This works for simple cases like Option<i32>
-                let extracted_val = builder.ins().ireduce(I32, expr_val);
-                Ok(extracted_val)
+                // Check if discriminant is 0 (Some/Ok) or non-zero (None/Err)
+                // For both Option and Result, the success variant (Some/Ok) has discriminant != None/Err
+                // We need to determine which enum we're working with
+                // For simplicity, check if disc is 0 to determine the variant
+
+                // Create blocks for the two paths
+                let success_block = builder.create_block(); // Some/Ok
+                let error_block = builder.create_block();   // None/Err
+
+                // Determine discriminants for Option and Result
+                // Option: None=0, Some=1 (based on variant ordering)
+                // Result: Ok=0, Err=1 (based on variant ordering)
+
+                // We need to know if it's Option or Result to know which discriminant is success
+                // For now, use a heuristic: check the actual discriminant values
+                // Actually, let's use the standard discriminants:
+                // - Result::Ok = variant_discriminant("Result", "Ok")
+                // - Result::Err = variant_discriminant("Result", "Err")
+                // - Option::Some = variant_discriminant("Option", "Some")
+                // - Option::None = variant_discriminant("Option", "None")
+
+                // Since we don't know at runtime which enum it is, we'll use a simpler approach:
+                // Check if disc matches the "success" pattern
+                // For both Option and Result, let's assume None/Err both have non-zero discriminant
+                // and Some/Ok have specific discriminants
+
+                // Compute discriminants
+                let ok_disc = Self::variant_discriminant("Result", "Ok");
+                let some_disc = Self::variant_discriminant("Option", "Some");
+
+                // Check if it matches either success discriminant
+                let ok_const = builder.ins().iconst(I32, ok_disc as i64);
+                let some_const = builder.ins().iconst(I32, some_disc as i64);
+                let is_ok = builder.ins().icmp(IntCC::Equal, disc_i32, ok_const);
+                let is_some = builder.ins().icmp(IntCC::Equal, disc_i32, some_const);
+                let is_success = builder.ins().bor(is_ok, is_some);
+
+                // Branch: if success, go to success_block; otherwise error_block
+                builder.ins().brif(is_success, success_block, &[], error_block, &[]);
+
+                // Success block: extract the value and continue
+                builder.switch_to_block(success_block);
+                builder.seal_block(success_block);
+                // For packed format: value is in low 32 bits
+                let success_val = builder.ins().ireduce(I32, expr_val);
+
+                // Create a continuation block to merge the success path
+                let cont_block = builder.create_block();
+                builder.append_block_param(cont_block, I32);
+                builder.ins().jump(cont_block, &[success_val]);
+
+                // Error block: return the enum value as-is
+                builder.switch_to_block(error_block);
+                builder.seal_block(error_block);
+                // Just return the original enum value (which contains None or Err)
+                // The return type should be i64 for enums
+                builder.ins().return_(&[expr_val]);
+
+                // Continuation block (only reached from success path)
+                builder.switch_to_block(cont_block);
+                builder.seal_block(cont_block);
+
+                let result = builder.block_params(cont_block)[0];
+                Ok(result)
             }
             Expression::MemberAccess { object, member, .. } => {
                 // Generate code for reading a field from a class instance

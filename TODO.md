@@ -6,13 +6,7 @@
 * functional programming, pipelines
 * lambdas 
 * classes - heap vs struct. questions? 
-
-## Control Flow
-* error handling
-  * minimize panics. 
-  * use result/option where it makes sense. 
-  * ? operator.
-* get rid of integer exit codes. 
+* ? operator
 
 ## Visibility
 * objects: member access
@@ -69,3 +63,4 @@
 * central package repository
 * revist type inference
 * language code reviews. 
+
