@@ -1,12 +1,7 @@
 ## General
-* type casting (especially with numeric types)
-* overflow / underflow handling 
-* default arguments? 
-* regex
-* functional programming, pipelines
-* lambdas 
-* classes - heap vs struct. questions? 
-* ? operator
+* overflow / underflow handling
+* default arguments?
+* ✅ implement gc (Boehm GC integrated - Phase 1, 2, 4 complete)
 
 ## Visibility
 * objects: member access
@@ -38,11 +33,15 @@
 * caching
 * cli/tui framework
 * serde etc. 
+* regex
 
 
 
 
---- 
+---
+* struct (stack allocated?)?
+* ✅ review gc (Phases 3 & 5: Conservative scanning works, optimization possible)
+* functional programming, pipelines, lambda
 * compliation speed
 * plat cli niceties
   * spinner
