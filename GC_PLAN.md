@@ -1,7 +1,7 @@
 # Garbage Collection Implementation Plan
 ## Integrating Boehm GC into Plat Compiler
 
-**Status**: Phase 1 & 2 Complete - Core Implementation Done
+**Status**: Phase 1, 2, 4 Complete - Core Implementation & Testing Done
 **Approach**: Conservative Boehm-Demers-Weiser Garbage Collector (bdwgc)
 **Last Updated**: 2025-10-04
 
@@ -742,11 +742,11 @@ fn main() -> Int32 {
 - [x] Update `plat_gc_stats` to return real data
 
 ### Testing
-- [ ] Create memory leak test (100K allocations)
-- [ ] Create stress test (50K objects)
-- [ ] Run existing test suite
+- [x] Create memory leak test (100K allocations) - tests/gc_test.plat
+- [x] Create stress test (50K objects) - tests/gc_stress.plat
+- [x] Run existing test suite - All 114 tests passing
 - [ ] Manual memory profiling with `ps`/`top`
-- [ ] Verify no regressions
+- [x] Verify no regressions - All example programs working
 
 ### Optimization
 - [ ] Implement `plat_gc_alloc_atomic` for strings

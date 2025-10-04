@@ -1,0 +1,22 @@
+class Node {
+  let value: Int32;
+  let name: String;
+}
+
+fn create_leak() {
+  // Without GC, this leaks 1000 Node instances
+  for (i: Int32 in 0..1000) {
+    let node: Node = Node.init(value = i, name = "node");
+  }
+}
+
+fn main() -> Int32 {
+  // Run 100 times - should allocate ~100K nodes
+  for (iteration: Int32 in 0..100) {
+    create_leak();
+  }
+
+  print(value = "Allocated ~100,000 nodes");
+  print(value = "If memory is stable, GC is working!");
+  return 0;
+}

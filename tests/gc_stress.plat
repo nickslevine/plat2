@@ -1,0 +1,26 @@
+class BigObject {
+  let data: List[Int32];
+  let name: String;
+  let id: Int64;
+}
+
+fn stress_test() {
+  for (i: Int32 in 0..50000) {
+    let obj: BigObject = BigObject.init(
+      data = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+      name = "Object",
+      id = cast(value = i, target = Int64)
+    );
+
+    if (i % 10000 == 0) {
+      print(value = "Allocated objects...");
+    }
+  }
+}
+
+fn main() -> Int32 {
+  print(value = "Starting stress test...");
+  stress_test();
+  print(value = "Stress test complete!");
+  return 0;
+}
