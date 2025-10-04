@@ -81,9 +81,9 @@ fn add(a: Int32, b: Int32) -> Int32 {
 }
 
 fn main() -> Int32 {
-    let x = 5;
-    let y = 3;
-    let result = add(a = x, b = y);
+    let x: Int32 = 5;
+    let y: Int32 = 3;
+    let result: Int32 = add(a = x, b = y);
     print(value = "Math works!");
     return 0;
 }
@@ -207,7 +207,7 @@ fn should_not_call() -> Bool {
 
 fn main() -> Int32 {
     print(value = "Testing short-circuit...");
-    let result = false and should_not_call();
+    let result: Bool = false and should_not_call();
     print(value = "Short-circuit works!");
     return 0;
 }
@@ -237,7 +237,7 @@ fn test_variable_mutation() {
 
     let source = r#"
 fn main() -> Int32 {
-    var x = 10;
+    var x: Int32 = 10;
     x = x + 5;
     x = x * 2;
     print(value = "Mutation works!");

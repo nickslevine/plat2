@@ -105,7 +105,7 @@ mod tests {
     fn test_parse_for_loop() {
         let input = r#"
             fn main() {
-                for (item in items) {
+                for (item: String in items) {
                     print(value = item);
                 }
             }
@@ -136,7 +136,7 @@ mod tests {
     fn test_parse_for_loop_with_array_literal() {
         let input = r#"
             fn main() {
-                for (num in [1, 2, 3]) {
+                for (num: Int32 in [1, 2, 3]) {
                     print(value = "Number: ${num}");
                 }
             }
@@ -168,7 +168,7 @@ mod tests {
         let input = r#"
             fn main() {
                 if (x > 0) {
-                    for (i in items) {
+                    for (i: Int32 in items) {
                         if (i > 5) {
                             print(value = "Large: ${i}");
                         } else {
@@ -206,10 +206,10 @@ mod tests {
     fn test_parse_expressions() {
         let input = r#"
             fn main() {
-                let a = 1 + 2 * 3;
-                let b = (1 + 2) * 3;
-                let c = true and false or not true;
-                let d = x == 5 and y != 10;
+                let a: Int32 = 1 + 2 * 3;
+                let b: Int32 = (1 + 2) * 3;
+                let c: Bool = true and false or not true;
+                let d: Bool = x == 5 and y != 10;
             }
         "#;
 
@@ -225,8 +225,8 @@ mod tests {
         let input = r#"
             fn main() {
                 print(value = "Hello");
-                let result = add(x = 10, y = 20);
-                let complex = multiply(a = add(x = 1, y = 2), b = subtract(a = 5, b = 3));
+                let result: Int32 = add(x = 10, y = 20);
+                let complex: Int32 = multiply(a = add(x = 1, y = 2), b = subtract(a = 5, b = 3));
             }
         "#;
 
@@ -259,7 +259,7 @@ mod tests {
     fn test_parse_string_interpolation() {
         let input = r#"
             fn main() {
-                let name = "World";
+                let name: String = "World";
                 print(value = "Hello, ${name}!");
                 print(value = "The sum of 2 + 2 is ${2 + 2}");
             }
@@ -276,21 +276,21 @@ mod tests {
     fn test_parse_all_operators() {
         let input = r#"
             fn main() {
-                let a = 10 + 5;
-                let b = 10 - 5;
-                let c = 10 * 5;
-                let d = 10 / 5;
-                let e = 10 % 3;
-                let f = 10 == 10;
-                let g = 10 != 5;
-                let h = 10 > 5;
-                let i = 10 >= 10;
-                let j = 10 < 15;
-                let k = 10 <= 10;
-                let l = true and false;
-                let m = true or false;
-                let n = not true;
-                let o = -5;
+                let a: Int32 = 10 + 5;
+                let b: Int32 = 10 - 5;
+                let c: Int32 = 10 * 5;
+                let d: Int32 = 10 / 5;
+                let e: Int32 = 10 % 3;
+                let f: Bool = 10 == 10;
+                let g: Bool = 10 != 5;
+                let h: Bool = 10 > 5;
+                let i: Bool = 10 >= 10;
+                let j: Bool = 10 < 15;
+                let k: Bool = 10 <= 10;
+                let l: Bool = true and false;
+                let m: Bool = true or false;
+                let n: Bool = not true;
+                let o: Int32 = -5;
             }
         "#;
 
@@ -305,7 +305,7 @@ mod tests {
     fn test_parse_assignment() {
         let input = r#"
             fn main() {
-                var x = 10;
+                var x: Int32 = 10;
                 x = 20;
                 x = x + 1;
             }
@@ -338,7 +338,7 @@ mod tests {
             }
 
             fn main() {
-                let result = add(x = 5, y = 3);
+                let result: Int32 = add(x = 5, y = 3);
                 print(value = "Result: ${result}");
             }
         "#;
@@ -355,12 +355,12 @@ mod tests {
     fn test_parse_literals() {
         let input = r#"
             fn main() {
-                let a = True;
-                let b = False;
-                let c = 42;
-                let d = 100i64;
-                let e = "hello";
-                let f = "hello ${name}";
+                let a: Bool = True;
+                let b: Bool = False;
+                let c: Int32 = 42;
+                let d: Int64 = 100i64;
+                let e: String = "hello";
+                let f: String = "hello ${name}";
             }
         "#;
 
@@ -375,7 +375,7 @@ mod tests {
     fn test_parse_error_missing_semicolon() {
         let input = r#"
             fn main() {
-                let x = 10
+                let x: Int32 = 10
             }
         "#;
 
@@ -486,9 +486,9 @@ mod tests {
     fn test_parse_enum_constructor() {
         let input = r#"
             fn main() {
-                let msg1 = Message::Quit;
-                let msg2 = Message::Move(field_0 = 10, field_1 = 20);
-                let msg3 = Message::Write(value = "Hello");
+                let msg1: Message = Message::Quit;
+                let msg2: Message = Message::Move(field_0 = 10, field_1 = 20);
+                let msg3: Message = Message::Write(value = "Hello");
             }
         "#;
 
@@ -537,7 +537,7 @@ mod tests {
     fn test_parse_mutable_function() {
         let input = r#"
             mut fn update(value: Int32) {
-                let x = value;
+                let x: Int32 = value;
             }
         "#;
 
@@ -553,8 +553,8 @@ mod tests {
     fn test_range_expression() {
         let input = r#"
             fn my_func() {
-                let x = 0..5;
-                let y = 10..=20;
+                let x: Range = 0..5;
+                let y: Range = 10..=20;
             }
         "#;
 
@@ -569,8 +569,8 @@ mod tests {
     fn test_for_range_loop() {
         let input = r#"
             fn main() -> Int32 {
-                for (i in 0..5) {
-                    let x = i;
+                for (i: Int32 in 0..5) {
+                    let x: Int32 = i;
                 }
                 return 0;
             }

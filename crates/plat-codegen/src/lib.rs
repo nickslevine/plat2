@@ -791,8 +791,14 @@ impl CodeGenerator {
 
         // Add return type
         if let Some(return_type) = &function.return_type {
-            let ret_type = self.ast_type_to_cranelift(return_type);
-            sig.returns.push(AbiParam::new(ret_type));
+            // Special handling for main returning Result/Option
+            if (function.name == "main" || name == "main") && Self::is_result_or_option_with_int_return(return_type) {
+                // Main with Result<Int*, E> or Option<Int*> returns i32 exit code
+                sig.returns.push(AbiParam::new(I32));
+            } else {
+                let ret_type = self.ast_type_to_cranelift(return_type);
+                sig.returns.push(AbiParam::new(ret_type));
+            }
         } else if function.name == "main" || name == "main" {
             // Main function returns i32 (exit code) if no return type specified
             sig.returns.push(AbiParam::new(I32));
@@ -905,7 +911,9 @@ impl CodeGenerator {
                 &mut self.module,
                 &mut self.string_counter,
                 &self.class_metadata,
-                &type_aliases_copy
+                &type_aliases_copy,
+                name,
+                &function.return_type
             )?;
         }
 
@@ -950,7 +958,9 @@ impl CodeGenerator {
         module: &mut ObjectModule,
         string_counter: &mut usize,
         class_metadata: &HashMap<String, ClassMetadata>,
-        type_aliases: &HashMap<String, AstType>
+        type_aliases: &HashMap<String, AstType>,
+        function_name: &str,
+        function_return_type: &Option<AstType>
     ) -> Result<bool, CodegenError> {
         match statement {
             Statement::Let { name, ty, value, .. } => {
@@ -986,7 +996,57 @@ impl CodeGenerator {
             Statement::Return { value, .. } => {
                 if let Some(expr) = value {
                     let val = Self::generate_expression_helper(builder, expr, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
-                    builder.ins().return_(&[val]);
+
+                    // Special handling for main returning Result/Option
+                    if function_name == "main" && function_return_type.as_ref().map_or(false, |ty| Self::is_result_or_option_with_int_return(ty)) {
+                        // Extract exit code from Result/Option
+                        // Enum layout: discriminant in high 32 bits, value in low 32 bits (for i32)
+                        let return_type = function_return_type.as_ref().unwrap();
+                        let type_name = if let AstType::Named(name, _) = return_type {
+                            name.as_str()
+                        } else {
+                            return Err(CodegenError::UnsupportedFeature("Invalid return type".to_string()));
+                        };
+
+                        // Extract discriminant from high 32 bits
+                        let disc_64 = builder.ins().ushr_imm(val, 32);
+                        let disc = builder.ins().ireduce(I32, disc_64);
+
+                        // Compute expected discriminants
+                        let success_disc = if type_name == "Result" {
+                            Self::variant_discriminant("Result", "Ok") as i64
+                        } else {
+                            Self::variant_discriminant("Option", "Some") as i64
+                        };
+                        let error_disc = if type_name == "Result" {
+                            Self::variant_discriminant("Result", "Err") as i64
+                        } else {
+                            Self::variant_discriminant("Option", "None") as i64
+                        };
+
+                        // Create blocks
+                        let success_block = builder.create_block();
+                        let error_block = builder.create_block();
+
+                        // Check if discriminant matches success variant
+                        let expected_success = builder.ins().iconst(I32, success_disc);
+                        let is_success = builder.ins().icmp(IntCC::Equal, disc, expected_success);
+                        builder.ins().brif(is_success, success_block, &[], error_block, &[]);
+
+                        // Success block: extract value from low 32 bits
+                        builder.switch_to_block(success_block);
+                        builder.seal_block(success_block);
+                        let exit_code = builder.ins().ireduce(I32, val);
+                        builder.ins().return_(&[exit_code]);
+
+                        // Error block: return error code (1)
+                        builder.switch_to_block(error_block);
+                        builder.seal_block(error_block);
+                        let error_code = builder.ins().iconst(I32, 1);
+                        builder.ins().return_(&[error_code]);
+                    } else {
+                        builder.ins().return_(&[val]);
+                    }
                 } else {
                     builder.ins().return_(&[]);
                 }
@@ -1046,7 +1106,8 @@ impl CodeGenerator {
                 for stmt in &then_branch.statements {
                     then_has_return |= Self::generate_statement_helper(
                         builder, stmt, variables, variable_types, variable_counter,
-                        functions, module, string_counter, class_metadata, type_aliases
+                        functions, module, string_counter, class_metadata, type_aliases,
+                        function_name, function_return_type
                     )?;
                 }
                 if !then_has_return {
@@ -1061,7 +1122,8 @@ impl CodeGenerator {
                     for stmt in &else_block_ast.statements {
                         else_has_return |= Self::generate_statement_helper(
                             builder, stmt, variables, variable_types, variable_counter,
-                            functions, module, string_counter, class_metadata, type_aliases
+                            functions, module, string_counter, class_metadata, type_aliases,
+                            function_name, function_return_type
                         )?;
                     }
                 }
@@ -1097,7 +1159,8 @@ impl CodeGenerator {
                 for stmt in &body.statements {
                     body_has_return |= Self::generate_statement_helper(
                         builder, stmt, variables, variable_types, variable_counter,
-                        functions, module, string_counter, class_metadata, type_aliases
+                        functions, module, string_counter, class_metadata, type_aliases,
+                        function_name, function_return_type
                     )?;
                 }
                 if !body_has_return {
@@ -1120,7 +1183,8 @@ impl CodeGenerator {
                     // Range-based for loop
                     return Self::generate_range_for_loop(
                         builder, variable, start, end, *inclusive, body,
-                        variables, variable_types, variable_counter, functions, module, string_counter, class_metadata, type_aliases
+                        variables, variable_types, variable_counter, functions, module, string_counter, class_metadata, type_aliases,
+                        function_name, function_return_type
                     );
                 }
 
@@ -1224,7 +1288,8 @@ impl CodeGenerator {
                 for stmt in &body.statements {
                     body_has_return |= Self::generate_statement_helper(
                         builder, stmt, variables, variable_types, variable_counter,
-                        functions, module, string_counter, class_metadata, type_aliases
+                        functions, module, string_counter, class_metadata, type_aliases,
+                        function_name, function_return_type
                     )?;
                 }
 
@@ -1275,7 +1340,9 @@ impl CodeGenerator {
         module: &mut ObjectModule,
         string_counter: &mut usize,
         class_metadata: &HashMap<String, ClassMetadata>,
-        type_aliases: &HashMap<String, AstType>
+        type_aliases: &HashMap<String, AstType>,
+        function_name: &str,
+        function_return_type: &Option<AstType>
     ) -> Result<bool, CodegenError> {
         // Evaluate start and end expressions
         let start_val = Self::generate_expression_helper(builder, start, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata)?;
@@ -1332,7 +1399,8 @@ impl CodeGenerator {
         for stmt in &body.statements {
             body_has_return |= Self::generate_statement_helper(
                 builder, stmt, variables, variable_types, variable_counter,
-                functions, module, string_counter, class_metadata, type_aliases
+                functions, module, string_counter, class_metadata, type_aliases,
+                function_name, function_return_type
             )?;
         }
 
@@ -4731,6 +4799,21 @@ impl CodeGenerator {
         }
         // Ensure we use only the high 32 bits for discriminant
         hash
+    }
+
+    /// Check if a type is Result<Int*, E> or Option<Int*>
+    fn is_result_or_option_with_int_return(ty: &AstType) -> bool {
+        match ty {
+            AstType::Named(name, type_params) if name == "Result" && type_params.len() >= 1 => {
+                // Check if first type parameter is an integer type
+                matches!(&type_params[0], AstType::Int8 | AstType::Int16 | AstType::Int32 | AstType::Int64)
+            }
+            AstType::Named(name, type_params) if name == "Option" && type_params.len() == 1 => {
+                // Check if type parameter is an integer type
+                matches!(&type_params[0], AstType::Int8 | AstType::Int16 | AstType::Int32 | AstType::Int64)
+            }
+            _ => false
+        }
     }
 
     fn is_dict_type(expr: &Expression, variable_types: &HashMap<String, VariableType>) -> bool {

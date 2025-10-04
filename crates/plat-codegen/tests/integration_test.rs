@@ -38,9 +38,9 @@ fn add(a: Int32, b: Int32) -> Int32 {
 }
 
 fn main() -> Int32 {
-    let x = 10;
-    let y = 20;
-    let result = add(a = x, b = y);
+    let x: Int32 = 10;
+    let y: Int32 = 20;
+    let result: Int32 = add(a = x, b = y);
     return result;
 }
 "#;
@@ -64,10 +64,10 @@ fn main() -> Int32 {
 fn test_boolean_short_circuit_compilation() {
     let source = r#"
 fn main() -> Int32 {
-    let a = true;
-    let b = false;
-    let result = a and b;
-    let short = false and a;
+    let a: Bool = true;
+    let b: Bool = false;
+    let result: Bool = a and b;
+    let short: Bool = false and a;
     return 0;
 }
 "#;
@@ -91,7 +91,7 @@ fn main() -> Int32 {
 fn test_string_interpolation_compilation() {
     let source = r#"
 fn main() -> Int32 {
-    let name = "World";
+    let name: String = "World";
     print(value = "Hello, ${name}!");
     return 0;
 }

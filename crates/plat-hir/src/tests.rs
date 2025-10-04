@@ -55,9 +55,9 @@ mod tests {
     fn test_let_variable_inference() {
         let input = r#"
             fn main() {
-                let x = 42;
-                let y = true;
-                let z = "hello";
+                let x: Int32 = 42;
+                let y: Bool = true;
+                let z: String = "hello";
             }
         "#;
 
@@ -94,8 +94,8 @@ mod tests {
     fn test_variable_shadowing_not_allowed() {
         let input = r#"
             fn main() {
-                let x = 5;
-                let x = 10;
+                let x: Int32 = 5;
+                let x: Int32 = 10;
             }
         "#;
 
@@ -121,7 +121,7 @@ mod tests {
     fn test_var_assignment() {
         let input = r#"
             fn main() {
-                var x = 5;
+                var x: Int32 = 5;
                 x = 10;
             }
         "#;
@@ -133,7 +133,7 @@ mod tests {
     fn test_var_assignment_type_mismatch() {
         let input = r#"
             fn main() {
-                var x = 5;
+                var x: Int32 = 5;
                 x = "hello";
             }
         "#;
@@ -147,11 +147,11 @@ mod tests {
     fn test_arithmetic_operations() {
         let input = r#"
             fn main() {
-                let a = 5 + 3;
-                let b = 10 - 2;
-                let c = 4 * 7;
-                let d = 20 / 5;
-                let e = 17 % 3;
+                let a: Int32 = 5 + 3;
+                let b: Int32 = 10 - 2;
+                let c: Int32 = 4 * 7;
+                let d: Int32 = 20 / 5;
+                let e: Int32 = 17 % 3;
             }
         "#;
 
@@ -162,7 +162,7 @@ mod tests {
     fn test_arithmetic_type_mismatch() {
         let input = r#"
             fn main() {
-                let x = 5 + true;
+                let x: Int32 = 5 + true;
             }
         "#;
 
@@ -175,9 +175,9 @@ mod tests {
     fn test_boolean_operations() {
         let input = r#"
             fn main() {
-                let a = true and false;
-                let b = true or false;
-                let c = not true;
+                let a: Bool = true and false;
+                let b: Bool = true or false;
+                let c: Bool = not true;
             }
         "#;
 
@@ -188,7 +188,7 @@ mod tests {
     fn test_boolean_type_mismatch() {
         let input = r#"
             fn main() {
-                let x = 5 and true;
+                let x: Bool = 5 and true;
             }
         "#;
 
@@ -201,12 +201,12 @@ mod tests {
     fn test_comparison_operations() {
         let input = r#"
             fn main() {
-                let a = 5 < 10;
-                let b = 5 <= 5;
-                let c = 10 > 5;
-                let d = 10 >= 10;
-                let e = 5 == 5;
-                let f = 5 != 3;
+                let a: Bool = 5 < 10;
+                let b: Bool = 5 <= 5;
+                let c: Bool = 10 > 5;
+                let d: Bool = 10 >= 10;
+                let e: Bool = 5 == 5;
+                let f: Bool = 5 != 3;
             }
         "#;
 
@@ -217,7 +217,7 @@ mod tests {
     fn test_comparison_type_mismatch() {
         let input = r#"
             fn main() {
-                let x = 5 < "hello";
+                let x: Bool = 5 < "hello";
             }
         "#;
 
@@ -230,7 +230,7 @@ mod tests {
     fn test_string_concatenation() {
         let input = r#"
             fn main() {
-                let greeting = "Hello, " + "world!";
+                let greeting: String = "Hello, " + "world!";
             }
         "#;
 
@@ -271,7 +271,7 @@ mod tests {
     fn test_while_loop() {
         let input = r#"
             fn main() {
-                var x = 0;
+                var x: Int32 = 0;
                 while (x < 10) {
                     x = x + 1;
                 }
@@ -304,7 +304,7 @@ mod tests {
             }
 
             fn main() {
-                let result = add(x = 5, y = 3);
+                let result: Int32 = add(x = 5, y = 3);
             }
         "#;
 
@@ -323,7 +323,7 @@ mod tests {
             }
 
             fn main() {
-                let result = add(x = 5);
+                let result: Int32 = add(x = 5);
             }
         "#;
 
@@ -340,7 +340,7 @@ mod tests {
             }
 
             fn main() {
-                let result = add(x = 5, y = "hello");
+                let result: Int32 = add(x = 5, y = "hello");
             }
         "#;
 
@@ -358,7 +358,7 @@ mod tests {
             }
 
             fn main() {
-                let x = get_number();
+                let x: Int32 = get_number();
             }
         "#;
 
@@ -416,10 +416,10 @@ mod tests {
     fn test_scoping() {
         let input = r#"
             fn main() {
-                let x = 5;
+                let x: Int32 = 5;
                 if (true) {
-                    let y = 10;
-                    let z = x + y; // x is visible from outer scope
+                    let y: Int32 = 10;
+                    let z: Int32 = x + y; // x is visible from outer scope
                 }
                 // y is not visible here
             }
@@ -432,12 +432,12 @@ mod tests {
     fn test_parameter_scoping() {
         let input = r#"
             fn my_func(x: Int32, y: Int32) -> Int32 {
-                let z = x + y;
+                let z: Int32 = x + y;
                 return z;
             }
 
             fn main() {
-                let result = my_func(x = 5, y = 10);
+                let result: Int32 = my_func(x = 5, y = 10);
             }
         "#;
 
@@ -464,8 +464,8 @@ mod tests {
     fn test_string_interpolation() {
         let input = r#"
             fn main() {
-                let name = "World";
-                let greeting = "Hello, ${name}!";
+                let name: String = "World";
+                let greeting: String = "Hello, ${name}!";
                 print(value = greeting);
             }
         "#;
@@ -490,8 +490,8 @@ mod tests {
     fn test_unary_negation() {
         let input = r#"
             fn main() {
-                let x = -5;
-                let y = -(-10);
+                let x: Int32 = -5;
+                let y: Int32 = -(-10);
             }
         "#;
 
@@ -502,7 +502,7 @@ mod tests {
     fn test_unary_negation_wrong_type() {
         let input = r#"
             fn main() {
-                let x = -true;
+                let x: Bool = -true;
             }
         "#;
 
@@ -515,7 +515,7 @@ mod tests {
     fn test_not_operator_wrong_type() {
         let input = r#"
             fn main() {
-                let x = not 5;
+                let x: Bool = not 5;
             }
         "#;
 
@@ -528,8 +528,8 @@ mod tests {
     fn test_for_loop_type_checking() {
         let input = r#"
             fn main() {
-                let numbers = [1, 2, 3, 4, 5];
-                for (num in numbers) {
+                let numbers: List[Int32] = [1, 2, 3, 4, 5];
+                for (num: Int32 in numbers) {
                     print(value = num);
                 }
             }
@@ -542,8 +542,8 @@ mod tests {
     fn test_for_loop_non_array_iterable() {
         let input = r#"
             fn main() {
-                let x = 42;
-                for (item in x) {
+                let x: Int32 = 42;
+                for (item: Int32 in x) {
                     print(value = item);
                 }
             }
@@ -558,9 +558,9 @@ mod tests {
     fn test_for_loop_variable_scoping() {
         let input = r#"
             fn main() {
-                let numbers = [1, 2, 3];
-                for (num in numbers) {
-                    let doubled = num * 2;
+                let numbers: List[Int32] = [1, 2, 3];
+                for (num: Int32 in numbers) {
+                    let doubled: Int32 = num * 2;
                     print(value = doubled);
                 }
                 // num should not be visible here
@@ -574,9 +574,9 @@ mod tests {
     fn test_for_loop_variable_shadowing() {
         let input = r#"
             fn main() {
-                let num = 42;
-                let numbers = [1, 2, 3];
-                for (num in numbers) {
+                let num: Int32 = 42;
+                let numbers: List[Int32] = [1, 2, 3];
+                for (num: Int32 in numbers) {
                     print(value = num); // This shadows the outer 'num'
                 }
                 print(value = num); // This refers to the original 'num'
@@ -592,10 +592,10 @@ mod tests {
     fn test_nested_control_flow_scoping() {
         let input = r#"
             fn main() {
-                let arr = [1, 2, 3];
-                for (x in arr) {
+                let arr: List[Int32] = [1, 2, 3];
+                for (x: Int32 in arr) {
                     if (x > 1) {
-                        let y = x * 2;
+                        var y: Int32 = x * 2;
                         while (y > 0) {
                             y = y - 1;
                             if (y == 1) {
@@ -614,9 +614,9 @@ mod tests {
     fn test_loop_variable_access_in_body() {
         let input = r#"
             fn main() {
-                let items = [10, 20, 30];
-                for (item in items) {
-                    let result = item + 5;
+                let items: List[Int32] = [10, 20, 30];
+                for (item: Int32 in items) {
+                    let result: Int32 = item + 5;
                     print(value = result);
                 }
             }
@@ -629,9 +629,9 @@ mod tests {
     fn test_for_loop_with_complex_expressions() {
         let input = r#"
             fn main() {
-                let arrays = [[1, 2], [3, 4]];
-                for (subarray in arrays) {
-                    let length = subarray.len();
+                let arrays: List[List[Int32]] = [[1, 2], [3, 4]];
+                for (subarray: List[Int32] in arrays) {
+                    let length: Int32 = subarray.len();
                     print(value = length);
                 }
             }
@@ -666,9 +666,9 @@ mod tests {
             }
 
             fn main() {
-                let msg1 = Message::Quit;
-                let msg2 = Message::Move(field0 = 10, field1 = 20);
-                let msg3 = Message::Write(field0 = "Hello");
+                let msg1: Message = Message::Quit;
+                let msg2: Message = Message::Move(field0 = 10, field1 = 20);
+                let msg3: Message = Message::Write(field0 = "Hello");
             }
         "#;
 
@@ -685,7 +685,7 @@ mod tests {
             }
 
             fn main() {
-                let msg = Message::Move(field0 = 10);
+                let msg: Message = Message::Move(field0 = 10);
             }
         "#;
 
@@ -704,7 +704,7 @@ mod tests {
             }
 
             fn main() {
-                let msg = Message::Move(field0 = "hello", field1 = 20);
+                let msg: Message = Message::Move(field0 = "hello", field1 = 20);
             }
         "#;
 
@@ -722,7 +722,7 @@ mod tests {
             }
 
             fn main() {
-                let msg = Message::Unknown;
+                let msg: Message = Message::Unknown;
             }
         "#;
 
@@ -741,11 +741,11 @@ mod tests {
             }
 
             fn main() {
-                let msg = Message::Move(field0 = 10, field1 = 20);
-                let result = match msg {
+                let msg: Message = Message::Move(field0 = 10, field1 = 20);
+                let result: Int32 = match msg {
                     Message::Quit -> 0,
-                    Message::Move(x, y) -> x + y,
-                    Message::Write(s) -> 100
+                    Message::Move(x: Int32, y: Int32) -> x + y,
+                    Message::Write(s: String) -> 100
                 };
             }
         "#;
@@ -763,10 +763,10 @@ mod tests {
             }
 
             fn main() {
-                let msg = Message::Move(field0 = 10, field1 = 20);
-                let result = match msg {
+                let msg: Message = Message::Move(field0 = 10, field1 = 20);
+                let result: Int32 = match msg {
                     Message::Quit -> 0,
-                    Message::Move(x, y) -> x + y
+                    Message::Move(x: Int32, y: Int32) -> x + y
                 };
             }
         "#;
@@ -787,10 +787,10 @@ mod tests {
             }
 
             fn main() {
-                let msg = Message::Move(field0 = 10, field1 = 20);
-                let result = match msg {
+                let msg: Message = Message::Move(field0 = 10, field1 = 20);
+                let result: Int32 = match msg {
                     Message::Quit -> 0,
-                    Message::Move(x, y) -> "hello"
+                    Message::Move(x: Int32, y: Int32) -> "hello"
                 };
             }
         "#;
@@ -809,10 +809,10 @@ mod tests {
             }
 
             fn main() {
-                let msg = Message::Write(field0 = "hello");
-                let result = match msg {
-                    Message::Move(x, y) -> x + y,
-                    Message::Write(text) -> text
+                let msg: Message = Message::Write(field0 = "hello");
+                let result: String = match msg {
+                    Message::Move(x: Int32, y: Int32) -> x + y,
+                    Message::Write(text: String) -> text
                 };
             }
         "#;
@@ -1031,8 +1031,8 @@ mod tests {
             }
 
             fn main() -> Int32 {
-                let dog = Dog.init(name = "Buddy");
-                let container = AnimalContainer.init(animal = dog);
+                let dog: Dog = Dog.init(name = "Buddy");
+                let container: AnimalContainer = AnimalContainer.init(animal = dog);
                 print(value = "Dog stored in Animal field");
                 return 0;
             }

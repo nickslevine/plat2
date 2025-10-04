@@ -17,9 +17,9 @@ mod tests {
 
     #[test]
     fn test_format_function_with_params() {
-        let input = r#"fn add(x:i32,y:i32)->i32{return x+y;}"#;
+        let input = r#"fn add(x:Int32,y:Int32)->Int32{return x+y;}"#;
 
-        let expected = r#"fn add(x: i32, y: i32) -> i32 {
+        let expected = r#"fn add(x: Int32, y: Int32) -> Int32 {
   return x + y;
 }
 "#;
@@ -30,12 +30,12 @@ mod tests {
 
     #[test]
     fn test_format_let_and_var() {
-        let input = r#"fn main(){let x=10;let y:i32=20;var z=30;}"#;
+        let input = r#"fn main(){let x:Int32=10;let y:Int32=20;var z:Int32=30;}"#;
 
         let expected = r#"fn main() {
-  let x = 10;
-  let y: i32 = 20;
-  var z = 30;
+  let x: Int32 = 10;
+  let y: Int32 = 20;
+  var z: Int32 = 30;
 }
 "#;
 
@@ -75,11 +75,11 @@ mod tests {
 
     #[test]
     fn test_format_nested_expressions() {
-        let input = r#"fn main(){let result=(1+2)*3;let complex=add(a=multiply(x=1,y=2),b=subtract(a=5,b=3));}"#;
+        let input = r#"fn main(){let result:Int32=(1+2)*3;let complex:Int32=add(a=multiply(x=1,y=2),b=subtract(a=5,b=3));}"#;
 
         let expected = r#"fn main() {
-  let result = 1 + 2 * 3;
-  let complex = add(a = multiply(x = 1, y = 2), b = subtract(a = 5, b = 3));
+  let result: Int32 = 1 + 2 * 3;
+  let complex: Int32 = add(a = multiply(x = 1, y = 2), b = subtract(a = 5, b = 3));
 }
 "#;
 
@@ -89,11 +89,11 @@ mod tests {
 
     #[test]
     fn test_format_boolean_operators() {
-        let input = r#"fn main(){let a=true and false;let b=not true or false;}"#;
+        let input = r#"fn main(){let a:Bool=true and false;let b:Bool=not true or false;}"#;
 
         let expected = r#"fn main() {
-  let a = true and false;
-  let b = not true or false;
+  let a: Bool = true and false;
+  let b: Bool = not true or false;
 }
 "#;
 
@@ -103,10 +103,10 @@ mod tests {
 
     #[test]
     fn test_format_string_literals() {
-        let input = r#"fn main(){let s="hello\nworld";print(value = "tab\there");}"#;
+        let input = r#"fn main(){let s:String="hello\nworld";print(value = "tab\there");}"#;
 
         let expected = r#"fn main() {
-  let s = "hello\nworld";
+  let s: String = "hello\nworld";
   print(value = "tab\there");
 }
 "#;
@@ -117,10 +117,10 @@ mod tests {
 
     #[test]
     fn test_format_string_interpolation() {
-        let input = r#"fn main(){let name="World";print(value = "Hello, ${name}!");print(value = "Sum: ${2+2}");}"#;
+        let input = r#"fn main(){let name:String="World";print(value = "Hello, ${name}!");print(value = "Sum: ${2+2}");}"#;
 
         let expected = r#"fn main() {
-  let name = "World";
+  let name: String = "World";
   print(value = "Hello, ${name}!");
   print(value = "Sum: ${2 + 2}");
 }
@@ -132,14 +132,14 @@ mod tests {
 
     #[test]
     fn test_format_multiple_functions() {
-        let input = r#"fn add(x:i32,y:i32)->i32{return x+y;}fn main(){let result=add(x=5,y=3);}"#;
+        let input = r#"fn add(x:Int32,y:Int32)->Int32{return x+y;}fn main(){let result:Int32=add(x=5,y=3);}"#;
 
-        let expected = r#"fn add(x: i32, y: i32) -> i32 {
+        let expected = r#"fn add(x: Int32, y: Int32) -> Int32 {
   return x + y;
 }
 
 fn main() {
-  let result = add(x = 5, y = 3);
+  let result: Int32 = add(x = 5, y = 3);
 }
 "#;
 
@@ -149,11 +149,11 @@ fn main() {
 
     #[test]
     fn test_format_complex_nested_code() {
-        let input = r#"fn main(){if(x>0){let y=x*2;while(y>0){print(value = "${y}");y=y-1;}}else{print(value = "negative");}}"#;
+        let input = r#"fn main(){if(x>0){let y:Int32=x*2;while(y>0){print(value = "${y}");y=y-1;}}else{print(value = "negative");}}"#;
 
         let expected = r#"fn main() {
   if (x > 0) {
-    let y = x * 2;
+    let y: Int32 = x * 2;
     while (y > 0) {
       print(value = "${y}");
       y = y - 1;
@@ -169,7 +169,7 @@ fn main() {
     #[test]
     fn test_formatter_idempotence() {
         let input = r#"fn main() {
-  let x = 10;
+  let x: Int32 = 10;
   if (x > 5) {
     print(value = "Greater than 5");
   } else {
@@ -189,20 +189,20 @@ fn main() {
 
     #[test]
     fn test_format_all_operators() {
-        let input = r#"fn main(){let a=1+2;let b=3-4;let c=5*6;let d=7/8;let e=9%10;let f=a==b;let g=a!=b;let h=a<b;let i=a<=b;let j=a>b;let k=a>=b;}"#;
+        let input = r#"fn main(){let a:Int32=1+2;let b:Int32=3-4;let c:Int32=5*6;let d:Int32=7/8;let e:Int32=9%10;let f:Bool=a==b;let g:Bool=a!=b;let h:Bool=a<b;let i:Bool=a<=b;let j:Bool=a>b;let k:Bool=a>=b;}"#;
 
         let expected = r#"fn main() {
-  let a = 1 + 2;
-  let b = 3 - 4;
-  let c = 5 * 6;
-  let d = 7 / 8;
-  let e = 9 % 10;
-  let f = a == b;
-  let g = a != b;
-  let h = a < b;
-  let i = a <= b;
-  let j = a > b;
-  let k = a >= b;
+  let a: Int32 = 1 + 2;
+  let b: Int32 = 3 - 4;
+  let c: Int32 = 5 * 6;
+  let d: Int32 = 7 / 8;
+  let e: Int32 = 9 % 10;
+  let f: Bool = a == b;
+  let g: Bool = a != b;
+  let h: Bool = a < b;
+  let i: Bool = a <= b;
+  let j: Bool = a > b;
+  let k: Bool = a >= b;
 }
 "#;
 
@@ -212,12 +212,12 @@ fn main() {
 
     #[test]
     fn test_format_unary_operators() {
-        let input = r#"fn main(){let a=not true;let b=-5;let c=not(x and y);}"#;
+        let input = r#"fn main(){let a:Bool=not true;let b:Int32=-5;let c:Bool=not(x and y);}"#;
 
         let expected = r#"fn main() {
-  let a = not true;
-  let b = -5;
-  let c = not x and y;
+  let a: Bool = not true;
+  let b: Int32 = -5;
+  let c: Bool = not x and y;
 }
 "#;
 
@@ -227,10 +227,10 @@ fn main() {
 
     #[test]
     fn test_format_assignment_expressions() {
-        let input = r#"fn main(){var x=10;x=20;x=x+1;}"#;
+        let input = r#"fn main(){var x:Int32=10;x=20;x=x+1;}"#;
 
         let expected = r#"fn main() {
-  var x = 10;
+  var x: Int32 = 10;
   x = 20;
   x = x + 1;
 }
