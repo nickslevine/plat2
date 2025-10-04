@@ -70,6 +70,7 @@ pub struct Function {
 pub struct Parameter {
     pub name: String,
     pub ty: Type,
+    pub default_value: Option<Expression>,
     pub span: Span,
 }
 

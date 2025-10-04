@@ -85,13 +85,13 @@ fn build_single_file(file: PathBuf) -> Result<()> {
 
     let parser = plat_parser::Parser::new(&source)
         .with_context(|| "Failed to create parser")?;
-    let program = parser.parse()
+    let mut program = parser.parse()
         .with_context(|| "Failed to parse program")?;
 
     // Type check the program
     println!("  {} Type checking...", "→".cyan());
     let type_checker = plat_hir::TypeChecker::new();
-    if let Err(e) = type_checker.check_program(&program) {
+    if let Err(e) = type_checker.check_program(&mut program) {
         println!("Type checking error: {:?}", e);
         anyhow::bail!("Type checking failed: {:?}", e);
     }
@@ -233,7 +233,7 @@ fn build_multi_module(ordered_files: &[PathBuf]) -> Result<()> {
 
     // Phase 3: Type check all modules with access to global symbols
     println!("  {} Type checking all modules...", "→".cyan());
-    for (file_path, program) in &modules {
+    for (file_path, program) in &mut modules {
         let module_path = program.module_decl
             .as_ref()
             .map(|m| m.path.join("::"))
@@ -464,7 +464,7 @@ fn test_single_file(file: PathBuf) -> Result<()> {
 
     // Compile and run the test program
     let output_path = get_output_path(&file);
-    compile_test_program(&program, &output_path)?;
+    compile_test_program(&mut program, &output_path)?;
 
     // Execute the tests
     let test_result = Command::new(&output_path)
@@ -563,7 +563,7 @@ fn generate_test_main(test_functions: &[(String, String)]) -> String {
 
     // Generate test runner main function
     output.push_str("fn main() -> Int32 {\n");
-    output.push_str("  var passed = 0;\n");
+    output.push_str("  var passed: Int32 = 0;\n");
     output.push_str("\n");
 
     for (test_block_name, test_func_name) in test_functions {
@@ -581,7 +581,7 @@ fn generate_test_main(test_functions: &[(String, String)]) -> String {
 }
 
 /// Compile a test program with test mode enabled
-fn compile_test_program(program: &plat_ast::Program, output_path: &Path) -> Result<()> {
+fn compile_test_program(program: &mut plat_ast::Program, output_path: &Path) -> Result<()> {
     // Type check with test mode enabled
     let type_checker = plat_hir::TypeChecker::new().with_test_mode();
     if let Err(e) = type_checker.check_program(program) {
@@ -703,7 +703,7 @@ fn parse_module_info(file_path: &Path) -> Result<(String, Vec<String>)> {
 
     let parser = plat_parser::Parser::new(&source)
         .with_context(|| "Failed to create parser")?;
-    let program = parser.parse()
+    let mut program = parser.parse()
         .with_context(|| "Failed to parse program")?;
 
     let module_path = program.module_decl
@@ -816,7 +816,7 @@ fn bench_single_file(file: PathBuf) -> Result<()> {
 
     // Compile and run the bench program
     let output_path = get_output_path(&file);
-    compile_bench_program(&program, &output_path)?;
+    compile_bench_program(&mut program, &output_path)?;
 
     // Execute the benchmarks
     let bench_result = Command::new(&output_path)
@@ -943,7 +943,7 @@ fn generate_bench_main(bench_functions: &[(String, String)]) -> String {
 }
 
 /// Compile a bench program with bench mode enabled
-fn compile_bench_program(program: &plat_ast::Program, output_path: &Path) -> Result<()> {
+fn compile_bench_program(program: &mut plat_ast::Program, output_path: &Path) -> Result<()> {
     // Type check with bench mode enabled
     let type_checker = plat_hir::TypeChecker::new().with_bench_mode();
     if let Err(e) = type_checker.check_program(program) {

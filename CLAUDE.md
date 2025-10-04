@@ -43,6 +43,9 @@
 - **Format**: `function_name(param1 = value1, param2 = value2)`
 - **Benefits**: Prevents argument order mistakes, improves code clarity and self-documentation
 - **Example**: `add(x = 5, y = 3)` instead of `add(5, 3)`
+- **Default Arguments**: Parameters can have default values: `fn add(x: Int32, y: Int32 = 10) -> Int32`
+- **Omitting Defaults**: Call with fewer arguments: `add(x = 5)` uses default for `y`
+- **Works With**: Functions, methods, and constructors all support default arguments
 
 ### Control Flow
 - **If-Expressions**: `let max: Int32 = if (x > y) { x } else { y }`
@@ -140,6 +143,7 @@ plat2/
 - Naming convention enforcement (compile-time validation)
 - Default constructors (auto-generated init methods)
 - Named arguments (required for all function/method/constructor/print calls)
+- Default arguments for functions, methods, and constructors
 - Built-in test framework with automatic test discovery, assertions, and runner
 - Numeric type casting with cast() function (wrapping overflow, truncating float→int)
 - **Result & Option integration:**
@@ -220,6 +224,53 @@ fn main() -> Int32 {
   let x: Int32 = identity(value = 10);
   let name: String = identity(value = "hello");
   return x;
+}
+```
+
+### Default Arguments
+```plat
+// Function with defaults
+fn add(x: Int32, y: Int32 = 5, z: Int32 = 10) -> Int32 {
+  return x + y + z;
+}
+
+// Class with default constructor and method
+class Point {
+  let x: Int32;
+  let y: Int32;
+
+  init(x: Int32 = 0, y: Int32 = 0) -> Point {
+    self.x = x;
+    self.y = y;
+    return self;
+  }
+
+  fn distance(other_x: Int32 = 0, other_y: Int32 = 0) -> Int32 {
+    let dx: Int32 = self.x - other_x;
+    let dy: Int32 = self.y - other_y;
+    return (dx * dx) + (dy * dy);
+  }
+}
+
+fn main() -> Int32 {
+  // Call with all arguments
+  let sum1: Int32 = add(x = 1, y = 2, z = 3);  // 6
+
+  // Call with some defaults
+  let sum2: Int32 = add(x = 1, y = 2);  // 1 + 2 + 10 = 13
+
+  // Call with all defaults
+  let sum3: Int32 = add(x = 1);  // 1 + 5 + 10 = 16
+
+  // Constructor with defaults
+  let p1: Point = Point.init(x = 3, y = 4);
+  let p2: Point = Point.init(x = 3);  // y defaults to 0
+  let p3: Point = Point.init();  // Both default to 0
+
+  // Method with defaults
+  let dist: Int32 = p1.distance();  // Distance from origin
+
+  return 0;
 }
 ```
 

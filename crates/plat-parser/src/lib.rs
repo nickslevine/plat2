@@ -279,11 +279,20 @@ impl Parser {
                 let name = self.consume_identifier("Expected parameter name")?;
                 self.consume(Token::Colon, "Expected ':' after parameter name")?;
                 let ty = self.parse_type()?;
+
+                // Parse optional default value
+                let default_value = if self.match_token(&Token::Assign) {
+                    Some(self.parse_expression()?)
+                } else {
+                    None
+                };
+
                 let end = self.previous_span().end;
 
                 params.push(Parameter {
                     name,
                     ty,
+                    default_value,
                     span: Span::new(start, end),
                 });
 

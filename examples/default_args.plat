@@ -1,0 +1,59 @@
+// Test default arguments for functions, methods, and constructors
+
+fn greet(name: String, greeting: String = "Hello") -> String {
+  return greeting + ", " + name + "!";
+}
+
+fn add(x: Int32, y: Int32 = 10, z: Int32 = 5) -> Int32 {
+  return x + y + z;
+}
+
+class Person {
+  let name: String;
+  let age: Int32;
+  let city: String;
+
+  init(name: String, age: Int32 = 18, city: String = "Unknown") -> Person {
+    self.name = name;
+    self.age = age;
+    self.city = city;
+    return self;
+  }
+
+  fn introduce(prefix: String = "Hi") -> String {
+    return prefix + ", I'm " + self.name;
+  }
+}
+
+fn main() -> Int32 {
+  // Test function with all arguments
+  let msg1: String = greet(name = "Alice", greeting = "Hey");
+  print(value = msg1);
+
+  // Test function with default argument
+  let msg2: String = greet(name = "Bob");
+  print(value = msg2);
+
+  // Test function with multiple defaults
+  let sum1: Int32 = add(x = 1, y = 2, z = 3);
+  print(value = "Sum with all args: ${sum1}");
+
+  let sum2: Int32 = add(x = 1, y = 2);
+  print(value = "Sum with one default: ${sum2}");
+
+  let sum3: Int32 = add(x = 1);
+  print(value = "Sum with two defaults: ${sum3}");
+
+  // Test constructor with all arguments
+  let p1: Person = Person.init(name = "Charlie", age = 25, city = "NYC");
+  print(value = p1.introduce(prefix = "Hello"));
+
+  // Test constructor with default arguments
+  let p2: Person = Person.init(name = "Dave", age = 30);
+  print(value = p2.introduce());
+
+  let p3: Person = Person.init(name = "Eve");
+  print(value = p3.introduce(prefix = "Greetings"));
+
+  return 0;
+}

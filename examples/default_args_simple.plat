@@ -1,0 +1,50 @@
+// Test default arguments for functions and constructors
+
+fn greet(name: String, greeting: String = "Hello") -> String {
+  return greeting + ", " + name + "!";
+}
+
+fn add(x: Int32, y: Int32 = 10, z: Int32 = 5) -> Int32 {
+  return x + y + z;
+}
+
+class Point {
+  let x: Int32;
+  let y: Int32;
+
+  init(x: Int32 = 0, y: Int32 = 0) -> Point {
+    self.x = x;
+    self.y = y;
+    return self;
+  }
+}
+
+fn main() -> Int32 {
+  // Test function with all arguments
+  let msg1: String = greet(name = "Alice", greeting = "Hey");
+  print(value = msg1);
+
+  // Test function with default argument
+  let msg2: String = greet(name = "Bob");
+  print(value = msg2);
+
+  // Test function with multiple defaults
+  let sum1: Int32 = add(x = 1, y = 2, z = 3);
+  print(value = "Sum: ${sum1}");
+
+  let sum2: Int32 = add(x = 1);
+  print(value = "Sum with defaults: ${sum2}");
+
+  // Test constructor with all arguments
+  let p1: Point = Point.init(x = 5, y = 10);
+  print(value = "Point created");
+
+  // Test constructor with default arguments
+  let p2: Point = Point.init(x = 3);
+  print(value = "Point with one default");
+
+  let p3: Point = Point.init();
+  print(value = "Point with all defaults");
+
+  return 0;
+}

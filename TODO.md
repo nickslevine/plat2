@@ -1,7 +1,5 @@
 ## General
-* overflow / underflow handling
 * default arguments?
-* ✅ implement gc (Boehm GC integrated - Phase 1, 2, 4 complete)
 
 ## Visibility
 * objects: member access
@@ -39,6 +37,7 @@
 
 
 ---
+* overflow / underflow handling
 * struct (stack allocated?)?
 * ✅ review gc (Phases 3 & 5: Conservative scanning works, optimization possible)
 * functional programming, pipelines, lambda
@@ -63,3 +62,12 @@
 * revist type inference
 * language code reviews. 
 
+##
+
+  1. Primitive Arrays - Lists of Int32, Bool
+  can also use atomic allocation (5-10% more
+  gains)
+  2. Incremental GC - Enable by default for
+  smoother pause times
+  3. Benchmark Suite - Once plat bench command
+  is working, run full performance tests

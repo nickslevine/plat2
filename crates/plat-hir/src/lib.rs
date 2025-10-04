@@ -158,6 +158,7 @@ pub enum HirType {
 pub struct FunctionSignature {
     pub type_params: Vec<String>, // Generic type parameters
     pub params: Vec<(String, HirType)>, // (param_name, param_type)
+    pub default_values: Vec<Option<Expression>>, // default values for parameters
     pub return_type: HirType,
     pub is_mutable: bool,
 }
@@ -334,9 +335,14 @@ impl TypeChecker {
                 HirType::Unit
             };
 
+            let default_values: Vec<Option<Expression>> = func.params.iter()
+                .map(|p| p.default_value.clone())
+                .collect();
+
             let sig = FunctionSignature {
                 type_params: func.type_params.clone(),
                 params,
+                default_values,
                 return_type,
                 is_mutable: func.is_mutable,
             };
@@ -360,9 +366,14 @@ impl TypeChecker {
                         HirType::Unit
                     };
 
+                    let default_values: Vec<Option<Expression>> = func.params.iter()
+                        .map(|p| p.default_value.clone())
+                        .collect();
+
                     let sig = FunctionSignature {
                         type_params: func.type_params.clone(),
                         params,
+                        default_values,
                         return_type,
                         is_mutable: func.is_mutable,
                     };
@@ -388,9 +399,14 @@ impl TypeChecker {
                         HirType::Unit
                     };
 
+                    let default_values: Vec<Option<Expression>> = func.params.iter()
+                        .map(|p| p.default_value.clone())
+                        .collect();
+
                     let sig = FunctionSignature {
                         type_params: func.type_params.clone(),
                         params,
+                        default_values,
                         return_type,
                         is_mutable: func.is_mutable,
                     };
@@ -483,7 +499,7 @@ impl TypeChecker {
         self.enums.insert("Result".to_string(), result_info);
     }
 
-    pub fn check_program(mut self, program: &Program) -> Result<(), DiagnosticError> {
+    pub fn check_program(mut self, program: &mut Program) -> Result<(), DiagnosticError> {
         // Process module declaration (if present)
         if let Some(module_decl) = &program.module_decl {
             // Validate module path components follow snake_case
@@ -610,6 +626,9 @@ impl TypeChecker {
                 ));
             }
         }
+
+        // Fill in default arguments for all calls before type checking
+        self.fill_default_arguments(program);
 
         // Third pass: type check all functions
         for function in &program.functions {
@@ -771,9 +790,14 @@ impl TypeChecker {
                 None => HirType::Unit,
             };
 
+            let default_values: Vec<Option<Expression>> = method.params.iter()
+                .map(|p| p.default_value.clone())
+                .collect();
+
             let signature = FunctionSignature {
                 type_params: method.type_params.clone(), // Store generic type parameters
                 params: param_types?,
+                default_values,
                 return_type,
                 is_mutable: method.is_mutable,
             };
@@ -877,9 +901,14 @@ impl TypeChecker {
                 None => HirType::Unit,
             };
 
+            let default_values: Vec<Option<Expression>> = method.params.iter()
+                .map(|p| p.default_value.clone())
+                .collect();
+
             let signature = FunctionSignature {
                 type_params: method.type_params.clone(), // Store generic type parameters
                 params: param_types,
+                default_values,
                 return_type,
                 is_mutable: method.is_mutable,
             };
@@ -913,7 +942,8 @@ impl TypeChecker {
 
             let default_init_signature = FunctionSignature {
                 type_params: vec![], // init methods don't have their own type parameters
-                params: param_types,
+                params: param_types.clone(),
+                default_values: vec![None; param_types.len()], // no defaults for auto-generated init
                 return_type: class_type,
                 is_mutable: false,
             };
@@ -1127,10 +1157,42 @@ impl TypeChecker {
         let old_type_params = self.type_parameters.clone();
         self.type_parameters.extend(function.type_params.iter().cloned());
 
+        // Validate parameter ordering: parameters with defaults must come after parameters without defaults
+        let mut seen_default = false;
+        for param in &function.params {
+            if param.default_value.is_some() {
+                seen_default = true;
+            } else if seen_default {
+                return Err(DiagnosticError::Type(
+                    format!("Parameter '{}' without default value cannot follow parameters with default values", param.name)
+                ));
+            }
+        }
+
         let param_types: Result<Vec<(String, HirType)>, DiagnosticError> = function.params
             .iter()
             .map(|param| Ok((param.name.clone(), self.ast_type_to_hir_type(&param.ty)?)))
             .collect();
+
+        let param_types = param_types?;
+
+        // Type-check default values
+        let mut default_values = Vec::new();
+        for (param, (_, param_type)) in function.params.iter().zip(param_types.iter()) {
+            if let Some(default_expr) = &param.default_value {
+                // Check that the default value type matches the parameter type
+                let default_type = self.check_expression(default_expr)?;
+                if !self.is_assignable(param_type, &default_type) {
+                    return Err(DiagnosticError::Type(
+                        format!("Default value for parameter '{}' has type {:?}, expected {:?}",
+                            param.name, default_type, param_type)
+                    ));
+                }
+                default_values.push(Some(default_expr.clone()));
+            } else {
+                default_values.push(None);
+            }
+        }
 
         let return_type = match &function.return_type {
             Some(ty) => self.ast_type_to_hir_type(ty)?,
@@ -1142,7 +1204,8 @@ impl TypeChecker {
 
         let signature = FunctionSignature {
             type_params: function.type_params.clone(), // Store generic type parameters
-            params: param_types?,
+            params: param_types,
+            default_values,
             return_type,
             is_mutable: function.is_mutable,
         };
@@ -1459,9 +1522,18 @@ impl TypeChecker {
                     return Err(DiagnosticError::Type(format!("Unknown function '{}'", function)));
                 };
 
-                if args.len() != signature.params.len() {
+                // Count required parameters (those without defaults)
+                let required_params = signature.default_values.iter().take_while(|d| d.is_none()).count();
+
+                // Check argument count is valid
+                if args.len() < required_params {
                     return Err(DiagnosticError::Type(
-                        format!("Function '{}' expects {} arguments, got {}", function, signature.params.len(), args.len())
+                        format!("Function '{}' expects at least {} arguments, got {}", function, required_params, args.len())
+                    ));
+                }
+                if args.len() > signature.params.len() {
+                    return Err(DiagnosticError::Type(
+                        format!("Function '{}' expects at most {} arguments, got {}", function, signature.params.len(), args.len())
                     ));
                 }
 
@@ -2289,10 +2361,19 @@ impl TypeChecker {
                             ))?.clone();
 
                         if let Some(method_signature) = class_info.methods.get(method_name) {
-                            // Check argument count (exclude implicit self parameter)
-                            if args.len() != method_signature.params.len() {
+                            // Count required parameters (those without defaults) - exclude implicit self parameter
+                            let required_params = method_signature.default_values.iter().take_while(|d| d.is_none()).count();
+
+                            // Check argument count is valid
+                            if args.len() < required_params {
                                 return Err(DiagnosticError::Type(
-                                    format!("Method '{}::{}' expects {} arguments, got {}",
+                                    format!("Method '{}::{}' expects at least {} arguments, got {}",
+                                           class_name, method_name, required_params, args.len())
+                                ));
+                            }
+                            if args.len() > method_signature.params.len() {
+                                return Err(DiagnosticError::Type(
+                                    format!("Method '{}::{}' expects at most {} arguments, got {}",
                                            class_name, method_name, method_signature.params.len(), args.len())
                                 ));
                             }
@@ -2561,24 +2642,35 @@ impl TypeChecker {
 
                 let init_signature = &class_info.methods["init"];
 
-                // Check argument count (exclude self parameter)
-                if args.len() != init_signature.params.len() {
+                // Count required parameters (those without defaults)
+                let required_params = init_signature.default_values.iter().take_while(|d| d.is_none()).count();
+
+                // Check argument count is valid
+                if args.len() < required_params {
                     return Err(DiagnosticError::Type(
-                        format!("Constructor for '{}' expects {} arguments, got {}",
+                        format!("Constructor for '{}' expects at least {} arguments, got {}",
+                               class_name, required_params, args.len())
+                    ));
+                }
+                if args.len() > init_signature.params.len() {
+                    return Err(DiagnosticError::Type(
+                        format!("Constructor for '{}' expects at most {} arguments, got {}",
                                class_name, init_signature.params.len(), args.len())
                     ));
                 }
 
-                // Check that all required fields are provided in named arguments
+                // Check that all required fields (without defaults) are provided in named arguments
                 let mut provided_fields = std::collections::HashSet::new();
                 for arg in args {
                     provided_fields.insert(&arg.name);
                 }
 
-                for field_name in class_info.fields.keys() {
-                    if !provided_fields.contains(field_name) {
+                // Check each parameter to see if it's required (has no default)
+                for ((param_name, _param_type), default_val) in init_signature.params.iter().zip(init_signature.default_values.iter()) {
+                    // If no default value and not provided, error
+                    if default_val.is_none() && !provided_fields.contains(param_name) {
                         return Err(DiagnosticError::Type(
-                            format!("Constructor for '{}' missing required field '{}'", class_name, field_name)
+                            format!("Constructor for '{}' missing required field '{}'", class_name, param_name)
                         ));
                     }
                 }
@@ -3406,6 +3498,7 @@ impl TypeSubstitutable for FunctionSignature {
         FunctionSignature {
             type_params: self.type_params.clone(), // Type params don't need substitution
             params: self.params.iter().map(|(name, ty)| (name.clone(), ty.substitute_types(substitution))).collect(),
+            default_values: self.default_values.clone(), // Default values are expressions, not types
             return_type: self.return_type.substitute_types(substitution),
             is_mutable: self.is_mutable,
         }
@@ -3594,6 +3687,7 @@ impl Monomorphizer {
         let specialized_func = FunctionSignature {
             type_params: vec![], // Specialized functions are not generic
             params: specialized_params,
+            default_values: func_sig.default_values.clone(), // Keep default values from original
             return_type: specialized_return,
             is_mutable: func_sig.is_mutable,
         };
@@ -3630,5 +3724,310 @@ impl TypeChecker {
     /// Get a reference to the monomorphizer for debugging
     pub fn get_monomorphizer(&self) -> &Monomorphizer {
         &self.monomorphizer
+    }
+
+    /// Fill in default arguments for all function, method, and constructor calls in the program
+    pub fn fill_default_arguments(&mut self, program: &mut Program) {
+        // Transform all functions
+        for function in &mut program.functions {
+            self.fill_defaults_in_function(function);
+        }
+
+        // Transform test blocks
+        for test_block in &mut program.test_blocks {
+            for function in &mut test_block.functions {
+                self.fill_defaults_in_function(function);
+            }
+        }
+
+        // Transform bench blocks
+        for bench_block in &mut program.bench_blocks {
+            for function in &mut bench_block.functions {
+                self.fill_defaults_in_function(function);
+            }
+        }
+
+        // Transform class methods
+        for class in &mut program.classes {
+            for method in &mut class.methods {
+                self.fill_defaults_in_function(method);
+            }
+        }
+
+        // Transform enum methods
+        for enum_decl in &mut program.enums {
+            for method in &mut enum_decl.methods {
+                self.fill_defaults_in_function(method);
+            }
+        }
+    }
+
+    fn fill_defaults_in_function(&mut self, function: &mut Function) {
+        // Build a map of variable types from the function body
+        let mut var_types: HashMap<String, String> = HashMap::new();
+        self.collect_variable_types(&function.body, &mut var_types);
+
+        self.fill_defaults_in_block(&mut function.body, &var_types);
+    }
+
+    fn collect_variable_types(&self, block: &Block, var_types: &mut HashMap<String, String>) {
+        for statement in &block.statements {
+            match statement {
+                Statement::Let { name, ty, .. } | Statement::Var { name, ty, .. } => {
+                    if let Type::Named(class_name, _) = ty {
+                        var_types.insert(name.clone(), class_name.clone());
+                    }
+                }
+                Statement::For { variable, variable_type, body, .. } => {
+                    if let Type::Named(class_name, _) = variable_type {
+                        var_types.insert(variable.clone(), class_name.clone());
+                    }
+                    self.collect_variable_types(body, var_types);
+                }
+                Statement::If { then_branch, else_branch, .. } => {
+                    self.collect_variable_types(then_branch, var_types);
+                    if let Some(else_block) = else_branch {
+                        self.collect_variable_types(else_block, var_types);
+                    }
+                }
+                Statement::While { body, .. } => {
+                    self.collect_variable_types(body, var_types);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn fill_defaults_in_block(&mut self, block: &mut Block, var_types: &HashMap<String, String>) {
+        for statement in &mut block.statements {
+            self.fill_defaults_in_statement(statement, var_types);
+        }
+    }
+
+    fn fill_defaults_in_statement(&mut self, statement: &mut Statement, var_types: &HashMap<String, String>) {
+        match statement {
+            Statement::Let { value, .. } | Statement::Var { value, .. } => {
+                self.fill_defaults_in_expression(value, var_types);
+            }
+            Statement::Expression(expr) => {
+                self.fill_defaults_in_expression(expr, var_types);
+            }
+            Statement::Return { value: Some(expr), .. } => {
+                self.fill_defaults_in_expression(expr, var_types);
+            }
+            Statement::If { condition, then_branch, else_branch, .. } => {
+                self.fill_defaults_in_expression(condition, var_types);
+                self.fill_defaults_in_block(then_branch, var_types);
+                if let Some(else_block) = else_branch {
+                    self.fill_defaults_in_block(else_block, var_types);
+                }
+            }
+            Statement::While { condition, body, .. } => {
+                self.fill_defaults_in_expression(condition, var_types);
+                self.fill_defaults_in_block(body, var_types);
+            }
+            Statement::For { iterable, body, .. } => {
+                self.fill_defaults_in_expression(iterable, var_types);
+                self.fill_defaults_in_block(body, var_types);
+            }
+            Statement::Print { value, .. } => {
+                self.fill_defaults_in_expression(value, var_types);
+            }
+            _ => {}
+        }
+    }
+
+    fn fill_defaults_in_expression(&mut self, expr: &mut Expression, var_types: &HashMap<String, String>) {
+        match expr {
+            Expression::Call { function, args, span } => {
+                // First, recursively process all argument expressions
+                for arg in args.iter_mut() {
+                    self.fill_defaults_in_expression(&mut arg.value, var_types);
+                }
+
+                // Look up function signature
+                let resolved_name = self.module_table.resolve(function).unwrap_or_else(|| function.clone());
+                if let Some(sig) = self.functions.get(&resolved_name).or_else(|| self.functions.get(function)) {
+                    // Build a map of provided arguments
+                    let mut provided: HashMap<String, usize> = HashMap::new();
+                    for (i, arg) in args.iter().enumerate() {
+                        provided.insert(arg.name.clone(), i);
+                    }
+
+                    // Fill in missing arguments with defaults
+                    for (i, ((param_name, _param_type), default_val)) in sig.params.iter().zip(sig.default_values.iter()).enumerate() {
+                        if !provided.contains_key(param_name) {
+                            if let Some(default_expr) = default_val {
+                                args.push(NamedArg {
+                                    name: param_name.clone(),
+                                    value: default_expr.clone(),
+                                    span: *span,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+            Expression::MethodCall { object, method, args, span } => {
+                // Process object and arguments
+                self.fill_defaults_in_expression(object, var_types);
+                for arg in args.iter_mut() {
+                    self.fill_defaults_in_expression(&mut arg.value, var_types);
+                }
+
+                // Fill in defaults for method calls
+                // Try to determine object type by looking at the object expression
+                let class_name_opt = match object.as_ref() {
+                    Expression::Identifier { name, .. } => {
+                        // Look up variable type from var_types map
+                        var_types.get(name).cloned()
+                    }
+                    Expression::ConstructorCall { class_name, .. } => {
+                        Some(class_name.clone())
+                    }
+                    Expression::MethodCall { .. } => {
+                        // For chained method calls, we'd need to infer the return type
+                        // Skip for now - will be validated during type checking
+                        None
+                    }
+                    _ => None,
+                };
+
+                if let Some(class_name) = class_name_opt {
+                    if let Some(class_info) = self.classes.get(&class_name) {
+                        if let Some(method_sig) = class_info.methods.get(method) {
+                            // Build a map of provided arguments
+                            let mut provided: HashMap<String, usize> = HashMap::new();
+                            for (i, arg) in args.iter().enumerate() {
+                                provided.insert(arg.name.clone(), i);
+                            }
+
+                            // Fill in missing arguments with defaults
+                            for ((param_name, _param_type), default_val) in method_sig.params.iter().zip(method_sig.default_values.iter()) {
+                                if !provided.contains_key(param_name) {
+                                    if let Some(default_expr) = default_val {
+                                        args.push(NamedArg {
+                                            name: param_name.clone(),
+                                            value: default_expr.clone(),
+                                            span: *span,
+                                        });
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            Expression::ConstructorCall { class_name, args, span } => {
+                // Process arguments
+                for arg in args.iter_mut() {
+                    self.fill_defaults_in_expression(&mut arg.value, var_types);
+                }
+
+                // Look up class and its init method
+                if let Some(class_info) = self.classes.get(class_name) {
+                    if let Some(init_sig) = class_info.methods.get("init") {
+                        // Build a map of provided arguments
+                        let mut provided: HashMap<String, usize> = HashMap::new();
+                        for (i, arg) in args.iter().enumerate() {
+                            provided.insert(arg.name.clone(), i);
+                        }
+
+                        // Fill in missing arguments with defaults
+                        for ((_param_name, _param_type), default_val) in init_sig.params.iter().zip(init_sig.default_values.iter()) {
+                            if let Some(default_expr) = default_val {
+                                let param_name = _param_name;
+                                if !provided.contains_key(param_name) {
+                                    args.push(NamedArg {
+                                        name: param_name.clone(),
+                                        value: default_expr.clone(),
+                                        span: *span,
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            // Recursively process other expression types
+            Expression::Binary { left, right, .. } => {
+                self.fill_defaults_in_expression(left, var_types);
+                self.fill_defaults_in_expression(right, var_types);
+            }
+            Expression::Unary { operand, .. } => {
+                self.fill_defaults_in_expression(operand, var_types);
+            }
+            Expression::Assignment { target, value, .. } => {
+                self.fill_defaults_in_expression(target, var_types);
+                self.fill_defaults_in_expression(value, var_types);
+            }
+            Expression::Index { object, index, .. } => {
+                self.fill_defaults_in_expression(object, var_types);
+                self.fill_defaults_in_expression(index, var_types);
+            }
+            Expression::Block(block) => {
+                self.fill_defaults_in_block(block, var_types);
+            }
+            Expression::Match { value, arms, .. } => {
+                self.fill_defaults_in_expression(value, var_types);
+                for arm in arms {
+                    self.fill_defaults_in_expression(&mut arm.body, var_types);
+                }
+            }
+            Expression::Try { expression, .. } => {
+                self.fill_defaults_in_expression(expression, var_types);
+            }
+            Expression::MemberAccess { object, .. } => {
+                self.fill_defaults_in_expression(object, var_types);
+            }
+            Expression::Range { start, end, .. } => {
+                self.fill_defaults_in_expression(start, var_types);
+                self.fill_defaults_in_expression(end, var_types);
+            }
+            Expression::If { condition, then_branch, else_branch, .. } => {
+                self.fill_defaults_in_expression(condition, var_types);
+                self.fill_defaults_in_expression(then_branch, var_types);
+                if let Some(else_expr) = else_branch {
+                    self.fill_defaults_in_expression(else_expr, var_types);
+                }
+            }
+            Expression::Cast { value, .. } => {
+                self.fill_defaults_in_expression(value, var_types);
+            }
+            Expression::Literal(Literal::InterpolatedString(parts, _)) => {
+                for part in parts {
+                    if let InterpolationPart::Expression(expr) = part {
+                        self.fill_defaults_in_expression(expr, var_types);
+                    }
+                }
+            }
+            Expression::Literal(Literal::Array(elements, _)) => {
+                for elem in elements {
+                    self.fill_defaults_in_expression(elem, var_types);
+                }
+            }
+            Expression::Literal(Literal::Dict(pairs, _)) => {
+                for (key, value) in pairs {
+                    self.fill_defaults_in_expression(key, var_types);
+                    self.fill_defaults_in_expression(value, var_types);
+                }
+            }
+            Expression::Literal(Literal::Set(elements, _)) => {
+                for elem in elements {
+                    self.fill_defaults_in_expression(elem, var_types);
+                }
+            }
+            Expression::EnumConstructor { args, .. } => {
+                for arg in args {
+                    self.fill_defaults_in_expression(&mut arg.value, var_types);
+                }
+            }
+            Expression::SuperCall { args, .. } => {
+                for arg in args {
+                    self.fill_defaults_in_expression(&mut arg.value, var_types);
+                }
+            }
+            _ => {}
+        }
     }
 }
