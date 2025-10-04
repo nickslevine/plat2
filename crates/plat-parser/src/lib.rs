@@ -608,6 +608,7 @@ impl Parser {
                     Expression::SuperCall { span, .. } => span.start,
                     Expression::Range { span, .. } => span.start,
                     Expression::If { span, .. } => span.start,
+                    Expression::Cast { span, .. } => span.start,
                 },
                 self.previous_span().end,
             );
@@ -880,6 +881,10 @@ impl Parser {
             return self.parse_if_expression();
         }
 
+        if self.match_token(&Token::Cast) {
+            return self.parse_cast_expression();
+        }
+
         if self.match_token(&Token::True) {
             let span = self.previous_span();
             return Ok(Expression::Literal(Literal::Bool(true, span)));
@@ -1071,6 +1076,7 @@ impl Parser {
             Expression::SuperCall { span, .. } => span.start,
             Expression::Range { span, .. } => span.start,
             Expression::If { span, .. } => span.start,
+            Expression::Cast { span, .. } => span.start,
         };
         Span::new(start, end)
     }
@@ -1208,6 +1214,43 @@ impl Parser {
             condition,
             then_branch,
             else_branch,
+            span: Span::new(start, end),
+        })
+    }
+
+    fn parse_cast_expression(&mut self) -> Result<Expression, DiagnosticError> {
+        let start = self.previous_span().start;
+
+        self.consume(Token::LeftParen, "Expected '(' after 'cast'")?;
+
+        // Parse first argument: value = <expr>
+        let value_param = self.consume_identifier("Expected 'value' parameter")?;
+        if value_param != "value" {
+            return Err(DiagnosticError::Syntax(
+                format!("Expected 'value' as first parameter, found '{}'", value_param)
+            ));
+        }
+        self.consume(Token::Assign, "Expected '=' after 'value'")?;
+        let value = Box::new(self.parse_expression()?);
+
+        self.consume(Token::Comma, "Expected ',' after value expression")?;
+
+        // Parse second argument: target = <type>
+        let target_param = self.consume_identifier("Expected 'target' parameter")?;
+        if target_param != "target" {
+            return Err(DiagnosticError::Syntax(
+                format!("Expected 'target' as second parameter, found '{}'", target_param)
+            ));
+        }
+        self.consume(Token::Assign, "Expected '=' after 'target'")?;
+        let target_type = self.parse_type()?;
+
+        self.consume(Token::RightParen, "Expected ')' after cast arguments")?;
+        let end = self.previous_span().end;
+
+        Ok(Expression::Cast {
+            value,
+            target_type,
             span: Span::new(start, end),
         })
     }

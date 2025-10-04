@@ -225,6 +225,11 @@ pub enum Expression {
         else_branch: Option<Box<Expression>>,
         span: Span,
     },
+    Cast {
+        value: Box<Expression>,
+        target_type: Type,
+        span: Span,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]

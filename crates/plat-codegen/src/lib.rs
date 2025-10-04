@@ -3671,6 +3671,83 @@ impl CodeGenerator {
                 let result = builder.block_params(cont_block)[0];
                 Ok(result)
             }
+            Expression::Cast { value, target_type, .. } => {
+                // Generate the value to cast
+                let value_val = Self::generate_expression_helper(
+                    builder, value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata
+                )?;
+
+                // Determine source type
+                let source_type = Self::infer_expression_type(value, variable_types);
+
+                // Perform the cast based on source and target types
+                let result = match (&source_type, target_type) {
+                    // Float to int conversions (truncate towards zero)
+                    (VariableType::Float8 | VariableType::Float16 | VariableType::Float32, AstType::Int8) => {
+                        builder.ins().fcvt_to_sint(I8, value_val)
+                    }
+                    (VariableType::Float8 | VariableType::Float16 | VariableType::Float32, AstType::Int16) => {
+                        builder.ins().fcvt_to_sint(I16, value_val)
+                    }
+                    (VariableType::Float8 | VariableType::Float16 | VariableType::Float32, AstType::Int32) => {
+                        builder.ins().fcvt_to_sint(I32, value_val)
+                    }
+                    (VariableType::Float8 | VariableType::Float16 | VariableType::Float32, AstType::Int64) => {
+                        builder.ins().fcvt_to_sint(I64, value_val)
+                    }
+                    (VariableType::Float64, AstType::Int8) => {
+                        builder.ins().fcvt_to_sint(I8, value_val)
+                    }
+                    (VariableType::Float64, AstType::Int16) => {
+                        builder.ins().fcvt_to_sint(I16, value_val)
+                    }
+                    (VariableType::Float64, AstType::Int32) => {
+                        builder.ins().fcvt_to_sint(I32, value_val)
+                    }
+                    (VariableType::Float64, AstType::Int64) => {
+                        builder.ins().fcvt_to_sint(I64, value_val)
+                    }
+
+                    // Int to float conversions
+                    (VariableType::Int8 | VariableType::Int16 | VariableType::Int32 | VariableType::Int64, AstType::Float8 | AstType::Float16 | AstType::Float32) => {
+                        builder.ins().fcvt_from_sint(F32, value_val)
+                    }
+                    (VariableType::Int8 | VariableType::Int16 | VariableType::Int32 | VariableType::Int64, AstType::Float64) => {
+                        builder.ins().fcvt_from_sint(F64, value_val)
+                    }
+
+                    // Int to int conversions (with wrapping for overflow)
+                    (VariableType::Int8, AstType::Int8) => value_val,
+                    (VariableType::Int8, AstType::Int16) => builder.ins().sextend(I16, value_val),
+                    (VariableType::Int8, AstType::Int32) => builder.ins().sextend(I32, value_val),
+                    (VariableType::Int8, AstType::Int64) => builder.ins().sextend(I64, value_val),
+                    (VariableType::Int16, AstType::Int8) => builder.ins().ireduce(I8, value_val),
+                    (VariableType::Int16, AstType::Int16) => value_val,
+                    (VariableType::Int16, AstType::Int32) => builder.ins().sextend(I32, value_val),
+                    (VariableType::Int16, AstType::Int64) => builder.ins().sextend(I64, value_val),
+                    (VariableType::Int32, AstType::Int8) => builder.ins().ireduce(I8, value_val),
+                    (VariableType::Int32, AstType::Int16) => builder.ins().ireduce(I16, value_val),
+                    (VariableType::Int32, AstType::Int32) => value_val,
+                    (VariableType::Int32, AstType::Int64) => builder.ins().sextend(I64, value_val),
+                    (VariableType::Int64, AstType::Int8) => builder.ins().ireduce(I8, value_val),
+                    (VariableType::Int64, AstType::Int16) => builder.ins().ireduce(I16, value_val),
+                    (VariableType::Int64, AstType::Int32) => builder.ins().ireduce(I32, value_val),
+                    (VariableType::Int64, AstType::Int64) => value_val,
+
+                    // Float to float conversions
+                    (VariableType::Float8 | VariableType::Float16 | VariableType::Float32, AstType::Float64) => {
+                        builder.ins().fpromote(F64, value_val)
+                    }
+                    (VariableType::Float64, AstType::Float8 | AstType::Float16 | AstType::Float32) => {
+                        builder.ins().fdemote(F32, value_val)
+                    }
+
+                    // Same type (no-op, but we still return the value)
+                    _ => value_val
+                };
+
+                Ok(result)
+            }
             _ => {
                 // TODO: Implement any remaining expressions
                 Err(CodegenError::UnsupportedFeature("Complex expressions not yet implemented".to_string()))

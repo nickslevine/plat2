@@ -1056,6 +1056,14 @@ impl TypeChecker {
         }
     }
 
+    fn is_numeric_type(&self, ty: &HirType) -> bool {
+        matches!(
+            ty,
+            HirType::Int8 | HirType::Int16 | HirType::Int32 | HirType::Int64 |
+            HirType::Float8 | HirType::Float16 | HirType::Float32 | HirType::Float64
+        )
+    }
+
     fn collect_function_signature(&mut self, function: &Function) -> Result<(), DiagnosticError> {
         self.collect_function_signature_with_name(&function.name, function)
     }
@@ -2700,6 +2708,28 @@ impl TypeChecker {
                     // If there's no else branch, the expression returns Unit
                     Ok(HirType::Unit)
                 }
+            }
+            Expression::Cast { value, target_type, .. } => {
+                // Check the value expression
+                let value_type = self.check_expression(value)?;
+
+                // Convert AST type to HIR type
+                let target_hir_type = self.ast_type_to_hir_type(target_type)?;
+
+                // Validate that both source and target are numeric types
+                if !self.is_numeric_type(&value_type) {
+                    return Err(DiagnosticError::Type(
+                        format!("Cannot cast non-numeric type {:?} to {:?}", value_type, target_hir_type)
+                    ));
+                }
+
+                if !self.is_numeric_type(&target_hir_type) {
+                    return Err(DiagnosticError::Type(
+                        format!("Cannot cast to non-numeric type {:?}", target_hir_type)
+                    ));
+                }
+
+                Ok(target_hir_type)
             }
         }
     }

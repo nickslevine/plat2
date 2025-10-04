@@ -607,6 +607,13 @@ impl Formatter {
                     self.format_expression(else_expr);
                 }
             }
+            Expression::Cast { value, target_type, .. } => {
+                self.write("cast(value = ");
+                self.format_expression(value);
+                self.write(", target = ");
+                self.format_type(target_type);
+                self.write(")");
+            }
         }
     }
 

@@ -1,0 +1,18 @@
+fn main() -> Int32 {
+  let x: Float32 = 20.5f32;
+  let y: Int32 = 2;
+  let z: Float32 = x + cast(value = y, target = Float32);
+  print(value = "Result: ${z}");
+
+  // Test float to int (truncation)
+  let a: Float32 = 3.7f32;
+  let b: Int32 = cast(value = a, target = Int32);
+  print(value = "Float to int: ${b}");
+
+  // Test int to int upsizing
+  let c: Int32 = 300;
+  let d: Int64 = cast(value = c, target = Int64);
+  print(value = "300 as Int64: ${d}");
+
+  return 0;
+}
