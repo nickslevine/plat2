@@ -49,6 +49,13 @@
 - **Range Loops**: `for (i: Int32 in 0..10)` (exclusive), `for (i: Int32 in 0..=10)` (inclusive)
 - **For-Each**: `for (item: Type in array)` works with arrays and custom classes (type annotation required)
 
+### Type Casting
+- **Numeric Casting**: `cast(value = expr, target = Type)` converts between numeric types
+- **Float to Int**: Truncates towards zero (e.g., `cast(value = 3.7, target = Int32)` → `3`)
+- **Int to Float**: Converts with appropriate precision for target type
+- **Int to Int**: Wrapping behavior on overflow (two's complement)
+- **Example**: `let z: Float32 = x + cast(value = y, target = Float32)`
+
 ### Testing
 - **Test Blocks**: `test "description" { ... }` groups related tests
 - **Test Functions**: Functions starting with `test_` are automatically discovered and run
@@ -134,12 +141,12 @@ plat2/
 - Default constructors (auto-generated init methods)
 - Named arguments (required for all function/method/constructor/print calls)
 - Built-in test framework with automatic test discovery, assertions, and runner
+- Numeric type casting with cast() function (wrapping overflow, truncating float→int)
 
 **📋 TODO (Stretch Goals):**
 - [ ] Rich error messages with Ariadne spans
 - [ ] Colored CLI output
 - [ ] Generic constraints (`T: Display`)
-- [ ] Type casting operators (`as i32`)
 - [ ] `?` operator for Option/Result
 - [ ] `if let` pattern matching
 
