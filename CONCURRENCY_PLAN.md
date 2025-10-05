@@ -44,54 +44,54 @@
 
 ### 1.1 Core Runtime Infrastructure
 
-- [ ] **Create `plat-runtime/src/runtime/mod.rs`**
+- [x] **Create `plat-runtime/src/runtime/mod.rs`**
   - Runtime singleton with thread pool
   - Work-stealing scheduler (use crossbeam-deque)
   - Worker thread lifecycle management
   - Global runtime initialization
 
-- [ ] **Create `plat-runtime/src/runtime/task.rs`**
+- [x] **Create `plat-runtime/src/runtime/task.rs`**
   - Task struct (holds closure + metadata)
   - Task state machine (Ready, Running, Completed, Cancelled)
   - Task ID generation
   - Task local storage (thread-local for green threads)
 
-- [ ] **Create `plat-runtime/src/runtime/scheduler.rs`**
+- [x] **Create `plat-runtime/src/runtime/scheduler.rs`**
   - Work-stealing deques (one per worker)
   - Task spawning (push to local queue)
   - Task stealing (pop from other queues when idle)
   - Park/unpark for idle workers
 
-**Commit:** `feat: Add green thread runtime with work-stealing scheduler`
+**Commit:** `feat: Add green thread runtime with work-stealing scheduler` ✅
 
 ### 1.2 Basic Task Execution
 
-- [ ] **Add `spawn_task()` C API in `plat-runtime/src/lib.rs`**
+- [x] **Add `spawn_task()` C API in `plat-runtime/src/lib.rs`**
   - Accept function pointer + args
   - Wrap in Task
   - Push to scheduler
   - Return task ID
 
-- [ ] **Add simple test in `plat-runtime/tests/`**
+- [x] **Add simple test in `plat-runtime/tests/`**
   - Spawn 100 tasks
   - Each increments atomic counter
   - Verify all completed
 
-**Commit:** `feat: Add task spawning API with basic execution`
+**Commit:** `feat: Add task spawning API with basic execution` ✅
 
 ### 1.3 Integration with Existing Runtime
 
-- [ ] **Update `plat-runtime/src/lib.rs`**
+- [x] **Update `plat-runtime/src/lib.rs`**
   - Initialize runtime on first use
   - Shutdown on program exit
   - Thread-safe global state
 
-- [ ] **Add runtime lifecycle management**
+- [x] **Add runtime lifecycle management**
   - `runtime_init()` called from main
   - `runtime_shutdown()` on exit
   - Graceful worker shutdown
 
-**Commit:** `feat: Integrate green thread runtime with Plat lifecycle`
+**Commit:** `feat: Integrate green thread runtime with Plat lifecycle` ✅
 
 ---
 

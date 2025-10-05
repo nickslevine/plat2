@@ -1563,6 +1563,13 @@ impl TypeChecker {
                     )),
                 }
             }
+            Statement::Concurrent { body, .. } => {
+                // For now, just check the block contents
+                // Full implementation will come in Phase 2.2 (HIR support)
+                self.push_scope();
+                self.check_block(body)?;
+                self.pop_scope();
+            }
         }
         Ok(())
     }
@@ -3269,6 +3276,22 @@ impl TypeChecker {
                 }
 
                 Ok(target_hir_type)
+            }
+            Expression::Spawn { body, span } => {
+                // For now, spawn expressions are not fully implemented
+                // Full implementation will come in Phase 2.2 (HIR support) and beyond
+                // We'll check the body expression but return an error for now
+                self.check_expression(body)?;
+
+                return Err(DiagnosticError::Rich(
+                    Diagnostic::syntax_error(
+                        &self.filename,
+                        *span,
+                        "spawn expressions are not yet implemented"
+                    )
+                    .with_label("concurrent features are planned for a future release")
+                    .with_help("This feature is under development - stay tuned!")
+                ));
             }
         }
     }

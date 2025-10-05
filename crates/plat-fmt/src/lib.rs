@@ -456,6 +456,10 @@ impl Formatter {
                 self.format_expression(value);
                 self.write_line(");");
             }
+            Statement::Concurrent { body, .. } => {
+                self.write("concurrent ");
+                self.format_if_block(body);
+            }
         }
     }
 
@@ -613,6 +617,10 @@ impl Formatter {
                 self.write(", target = ");
                 self.format_type(target_type);
                 self.write(")");
+            }
+            Expression::Spawn { body, .. } => {
+                self.write("spawn ");
+                self.format_expression(body);
             }
         }
     }

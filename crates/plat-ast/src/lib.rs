@@ -142,6 +142,10 @@ pub enum Statement {
         value: Expression,
         span: Span,
     },
+    Concurrent {
+        body: Block,
+        span: Span,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -232,6 +236,10 @@ pub enum Expression {
     Cast {
         value: Box<Expression>,
         target_type: Type,
+        span: Span,
+    },
+    Spawn {
+        body: Box<Expression>,
         span: Span,
     },
 }

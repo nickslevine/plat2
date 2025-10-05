@@ -33,6 +33,8 @@ pub enum Token {
     Bench,
     Cast,
     Pub,
+    Concurrent,
+    Spawn,
 
     // Identifiers and literals
     Ident(String),
@@ -126,6 +128,8 @@ impl Token {
             "bench" => Some(Token::Bench),
             "cast" => Some(Token::Cast),
             "pub" => Some(Token::Pub),
+            "concurrent" => Some(Token::Concurrent),
+            "spawn" => Some(Token::Spawn),
             "and" => Some(Token::And),
             "or" => Some(Token::Or),
             "not" => Some(Token::Not),

@@ -463,6 +463,8 @@ impl Parser {
             self.parse_for_statement()
         } else if self.match_token(&Token::Print) {
             self.parse_print_statement()
+        } else if self.match_token(&Token::Concurrent) {
+            self.parse_concurrent_statement()
         } else {
             let expr = self.parse_expression()?;
             self.consume(Token::Semicolon, "Expected ';' after expression")?;
@@ -626,6 +628,17 @@ impl Parser {
         })
     }
 
+    fn parse_concurrent_statement(&mut self) -> Result<Statement, DiagnosticError> {
+        let start = self.previous_span().start;
+        let body = self.parse_block()?;
+        let end = body.span.end;
+
+        Ok(Statement::Concurrent {
+            body,
+            span: Span::new(start, end),
+        })
+    }
+
     fn parse_expression(&mut self) -> Result<Expression, DiagnosticError> {
         self.parse_assignment()
     }
@@ -699,6 +712,7 @@ impl Parser {
                     Expression::Range { span, .. } => span.start,
                     Expression::If { span, .. } => span.start,
                     Expression::Cast { span, .. } => span.start,
+                    Expression::Spawn { span, .. } => span.start,
                 },
                 self.previous_span().end,
             );
@@ -982,6 +996,10 @@ impl Parser {
             return self.parse_cast_expression();
         }
 
+        if self.match_token(&Token::Spawn) {
+            return self.parse_spawn_expression();
+        }
+
         if self.match_token(&Token::True) {
             let span = self.previous_span();
             return Ok(Expression::Literal(Literal::Bool(true, span)));
@@ -1174,6 +1192,7 @@ impl Parser {
             Expression::Range { span, .. } => span.start,
             Expression::If { span, .. } => span.start,
             Expression::Cast { span, .. } => span.start,
+            Expression::Spawn { span, .. } => span.start,
         };
         Span::new(start, end)
     }
@@ -1349,6 +1368,17 @@ impl Parser {
         Ok(Expression::Cast {
             value,
             target_type,
+            span: Span::new(start, end),
+        })
+    }
+
+    fn parse_spawn_expression(&mut self) -> Result<Expression, DiagnosticError> {
+        let start = self.previous_span().start;
+        let block = self.parse_block()?;
+        let end = block.span.end;
+
+        Ok(Expression::Spawn {
+            body: Box::new(Expression::Block(block)),
             span: Span::new(start, end),
         })
     }
@@ -1609,6 +1639,7 @@ impl Parser {
             Expression::ConstructorCall { span, .. } => *span,
             Expression::SuperCall { span, .. } => *span,
             Expression::Range { span, .. } => *span,
+            Expression::Spawn { span, .. } => *span,
         }
     }
 

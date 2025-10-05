@@ -1325,6 +1325,31 @@ impl CodeGenerator {
 
                 Ok(false) // for loops don't guarantee return
             }
+            Statement::Concurrent { body, .. } => {
+                // For now, just execute the block sequentially
+                // Full concurrent runtime support will come in Phase 2.3 (Codegen)
+                for stmt in &body.statements {
+                    let returned = Self::generate_statement_helper(
+                        builder,
+                        stmt,
+                        variables,
+                        variable_types,
+                        variable_counter,
+                        functions,
+                        module,
+                        string_counter,
+                        class_metadata,
+                        type_aliases,
+                        function_name,
+                        function_return_type,
+                        test_mode
+                    )?;
+                    if returned {
+                        return Ok(true);
+                    }
+                }
+                Ok(false)
+            }
         }
     }
 
