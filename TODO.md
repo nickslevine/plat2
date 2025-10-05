@@ -1,8 +1,5 @@
 ## Next
 
-* file system access
-* string concat bug
-
 
 ## stdlib
 * set up stdlib. 
@@ -57,6 +54,8 @@ Linting
 * LSP
 * vs code plugin 
 * docs generation 
+* docs convetions / parsing. 
+  * include context-efficient ai doc format. 
 * markdown parsing 
 * tasks / todo support. 
 * linter 
@@ -93,6 +92,9 @@ Linting
 * todo/ not yet implemented declaration
 * allow TDD - not yet implemented compilation?
 * helpful compiler messages for structured concurrency. 
+* binary sizes. 
+* Error types. 
+* fuzz testing, parameterized testing. 
 
 
 
