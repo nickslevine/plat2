@@ -2073,6 +2073,166 @@ impl CodeGenerator {
                     return Ok(result);
                 }
 
+                // Handle built-in tcp_listen function
+                if function == "tcp_listen" {
+                    // tcp_listen(host: String, port: Int32) -> Result<Int32, String>
+                    let host_arg = args.iter().find(|arg| arg.name == "host")
+                        .ok_or_else(|| CodegenError::UnsupportedFeature("tcp_listen missing 'host' parameter".to_string()))?;
+                    let port_arg = args.iter().find(|arg| arg.name == "port")
+                        .ok_or_else(|| CodegenError::UnsupportedFeature("tcp_listen missing 'port' parameter".to_string()))?;
+
+                    let host_val = Self::generate_expression_helper(builder, &host_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                    let port_val = Self::generate_expression_helper(builder, &port_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+
+                    let func_sig = {
+                        let mut sig = module.make_signature();
+                        sig.call_conv = CallConv::SystemV;
+                        sig.params.push(AbiParam::new(I64)); // host (string pointer)
+                        sig.params.push(AbiParam::new(I32)); // port
+                        sig.returns.push(AbiParam::new(I64)); // Result enum pointer
+                        sig
+                    };
+
+                    let func_id = module.declare_function("plat_tcp_listen", Linkage::Import, &func_sig)
+                        .map_err(CodegenError::ModuleError)?;
+                    let func_ref = module.declare_func_in_func(func_id, builder.func);
+
+                    let call = builder.ins().call(func_ref, &[host_val, port_val]);
+                    return Ok(builder.inst_results(call)[0]);
+                }
+
+                // Handle built-in tcp_accept function
+                if function == "tcp_accept" {
+                    // tcp_accept(listener: Int32) -> Result<Int32, String>
+                    let listener_arg = args.iter().find(|arg| arg.name == "listener")
+                        .ok_or_else(|| CodegenError::UnsupportedFeature("tcp_accept missing 'listener' parameter".to_string()))?;
+
+                    let listener_val = Self::generate_expression_helper(builder, &listener_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+
+                    let func_sig = {
+                        let mut sig = module.make_signature();
+                        sig.call_conv = CallConv::SystemV;
+                        sig.params.push(AbiParam::new(I32)); // listener fd
+                        sig.returns.push(AbiParam::new(I64)); // Result enum pointer
+                        sig
+                    };
+
+                    let func_id = module.declare_function("plat_tcp_accept", Linkage::Import, &func_sig)
+                        .map_err(CodegenError::ModuleError)?;
+                    let func_ref = module.declare_func_in_func(func_id, builder.func);
+
+                    let call = builder.ins().call(func_ref, &[listener_val]);
+                    return Ok(builder.inst_results(call)[0]);
+                }
+
+                // Handle built-in tcp_connect function
+                if function == "tcp_connect" {
+                    // tcp_connect(host: String, port: Int32) -> Result<Int32, String>
+                    let host_arg = args.iter().find(|arg| arg.name == "host")
+                        .ok_or_else(|| CodegenError::UnsupportedFeature("tcp_connect missing 'host' parameter".to_string()))?;
+                    let port_arg = args.iter().find(|arg| arg.name == "port")
+                        .ok_or_else(|| CodegenError::UnsupportedFeature("tcp_connect missing 'port' parameter".to_string()))?;
+
+                    let host_val = Self::generate_expression_helper(builder, &host_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                    let port_val = Self::generate_expression_helper(builder, &port_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+
+                    let func_sig = {
+                        let mut sig = module.make_signature();
+                        sig.call_conv = CallConv::SystemV;
+                        sig.params.push(AbiParam::new(I64)); // host (string pointer)
+                        sig.params.push(AbiParam::new(I32)); // port
+                        sig.returns.push(AbiParam::new(I64)); // Result enum pointer
+                        sig
+                    };
+
+                    let func_id = module.declare_function("plat_tcp_connect", Linkage::Import, &func_sig)
+                        .map_err(CodegenError::ModuleError)?;
+                    let func_ref = module.declare_func_in_func(func_id, builder.func);
+
+                    let call = builder.ins().call(func_ref, &[host_val, port_val]);
+                    return Ok(builder.inst_results(call)[0]);
+                }
+
+                // Handle built-in tcp_read function
+                if function == "tcp_read" {
+                    // tcp_read(socket: Int32, max_bytes: Int32) -> Result<String, String>
+                    let socket_arg = args.iter().find(|arg| arg.name == "socket")
+                        .ok_or_else(|| CodegenError::UnsupportedFeature("tcp_read missing 'socket' parameter".to_string()))?;
+                    let max_bytes_arg = args.iter().find(|arg| arg.name == "max_bytes")
+                        .ok_or_else(|| CodegenError::UnsupportedFeature("tcp_read missing 'max_bytes' parameter".to_string()))?;
+
+                    let socket_val = Self::generate_expression_helper(builder, &socket_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                    let max_bytes_val = Self::generate_expression_helper(builder, &max_bytes_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+
+                    let func_sig = {
+                        let mut sig = module.make_signature();
+                        sig.call_conv = CallConv::SystemV;
+                        sig.params.push(AbiParam::new(I32)); // socket fd
+                        sig.params.push(AbiParam::new(I32)); // max_bytes
+                        sig.returns.push(AbiParam::new(I64)); // Result enum pointer
+                        sig
+                    };
+
+                    let func_id = module.declare_function("plat_tcp_read", Linkage::Import, &func_sig)
+                        .map_err(CodegenError::ModuleError)?;
+                    let func_ref = module.declare_func_in_func(func_id, builder.func);
+
+                    let call = builder.ins().call(func_ref, &[socket_val, max_bytes_val]);
+                    return Ok(builder.inst_results(call)[0]);
+                }
+
+                // Handle built-in tcp_write function
+                if function == "tcp_write" {
+                    // tcp_write(socket: Int32, data: String) -> Result<Int32, String>
+                    let socket_arg = args.iter().find(|arg| arg.name == "socket")
+                        .ok_or_else(|| CodegenError::UnsupportedFeature("tcp_write missing 'socket' parameter".to_string()))?;
+                    let data_arg = args.iter().find(|arg| arg.name == "data")
+                        .ok_or_else(|| CodegenError::UnsupportedFeature("tcp_write missing 'data' parameter".to_string()))?;
+
+                    let socket_val = Self::generate_expression_helper(builder, &socket_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                    let data_val = Self::generate_expression_helper(builder, &data_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+
+                    let func_sig = {
+                        let mut sig = module.make_signature();
+                        sig.call_conv = CallConv::SystemV;
+                        sig.params.push(AbiParam::new(I32)); // socket fd
+                        sig.params.push(AbiParam::new(I64)); // data (string pointer)
+                        sig.returns.push(AbiParam::new(I64)); // Result enum pointer
+                        sig
+                    };
+
+                    let func_id = module.declare_function("plat_tcp_write", Linkage::Import, &func_sig)
+                        .map_err(CodegenError::ModuleError)?;
+                    let func_ref = module.declare_func_in_func(func_id, builder.func);
+
+                    let call = builder.ins().call(func_ref, &[socket_val, data_val]);
+                    return Ok(builder.inst_results(call)[0]);
+                }
+
+                // Handle built-in tcp_close function
+                if function == "tcp_close" {
+                    // tcp_close(socket: Int32) -> Result<Bool, String>
+                    let socket_arg = args.iter().find(|arg| arg.name == "socket")
+                        .ok_or_else(|| CodegenError::UnsupportedFeature("tcp_close missing 'socket' parameter".to_string()))?;
+
+                    let socket_val = Self::generate_expression_helper(builder, &socket_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+
+                    let func_sig = {
+                        let mut sig = module.make_signature();
+                        sig.call_conv = CallConv::SystemV;
+                        sig.params.push(AbiParam::new(I32)); // socket fd
+                        sig.returns.push(AbiParam::new(I64)); // Result enum pointer
+                        sig
+                    };
+
+                    let func_id = module.declare_function("plat_tcp_close", Linkage::Import, &func_sig)
+                        .map_err(CodegenError::ModuleError)?;
+                    let func_ref = module.declare_func_in_func(func_id, builder.func);
+
+                    let call = builder.ins().call(func_ref, &[socket_val]);
+                    return Ok(builder.inst_results(call)[0]);
+                }
+
                 // Check if this is actually a class constructor with no arguments (e.g., Empty())
                 // This happens when a class has no fields and uses a default init
                 if args.is_empty() && class_metadata.contains_key(function) {

@@ -1663,6 +1663,174 @@ impl TypeChecker {
                     return Ok(HirType::Bool);
                 }
 
+                // Handle built-in tcp_listen function
+                if function == "tcp_listen" {
+                    // tcp_listen(host: String, port: Int32) -> Result<Int32, String>
+                    if args.len() != 2 {
+                        return Err(DiagnosticError::Type(
+                            "tcp_listen requires exactly 2 arguments: 'host' and 'port'".to_string()
+                        ));
+                    }
+
+                    let host_arg = args.iter().find(|arg| arg.name == "host")
+                        .ok_or_else(|| DiagnosticError::Type("tcp_listen requires a 'host' parameter".to_string()))?;
+                    let port_arg = args.iter().find(|arg| arg.name == "port")
+                        .ok_or_else(|| DiagnosticError::Type("tcp_listen requires a 'port' parameter".to_string()))?;
+
+                    let host_type = self.check_expression(&host_arg.value)?;
+                    let port_type = self.check_expression(&port_arg.value)?;
+
+                    if host_type != HirType::String {
+                        return Err(DiagnosticError::Type(
+                            format!("tcp_listen 'host' parameter must be String, got {:?}", host_type)
+                        ));
+                    }
+                    if port_type != HirType::Int32 {
+                        return Err(DiagnosticError::Type(
+                            format!("tcp_listen 'port' parameter must be Int32, got {:?}", port_type)
+                        ));
+                    }
+
+                    return Ok(HirType::Enum("Result".to_string(), vec![HirType::Int32, HirType::String]));
+                }
+
+                // Handle built-in tcp_accept function
+                if function == "tcp_accept" {
+                    // tcp_accept(listener: Int32) -> Result<Int32, String>
+                    if args.len() != 1 {
+                        return Err(DiagnosticError::Type(
+                            "tcp_accept requires exactly 1 argument: 'listener'".to_string()
+                        ));
+                    }
+
+                    let listener_arg = args.iter().find(|arg| arg.name == "listener")
+                        .ok_or_else(|| DiagnosticError::Type("tcp_accept requires a 'listener' parameter".to_string()))?;
+
+                    let listener_type = self.check_expression(&listener_arg.value)?;
+                    if listener_type != HirType::Int32 {
+                        return Err(DiagnosticError::Type(
+                            format!("tcp_accept 'listener' parameter must be Int32, got {:?}", listener_type)
+                        ));
+                    }
+
+                    return Ok(HirType::Enum("Result".to_string(), vec![HirType::Int32, HirType::String]));
+                }
+
+                // Handle built-in tcp_connect function
+                if function == "tcp_connect" {
+                    // tcp_connect(host: String, port: Int32) -> Result<Int32, String>
+                    if args.len() != 2 {
+                        return Err(DiagnosticError::Type(
+                            "tcp_connect requires exactly 2 arguments: 'host' and 'port'".to_string()
+                        ));
+                    }
+
+                    let host_arg = args.iter().find(|arg| arg.name == "host")
+                        .ok_or_else(|| DiagnosticError::Type("tcp_connect requires a 'host' parameter".to_string()))?;
+                    let port_arg = args.iter().find(|arg| arg.name == "port")
+                        .ok_or_else(|| DiagnosticError::Type("tcp_connect requires a 'port' parameter".to_string()))?;
+
+                    let host_type = self.check_expression(&host_arg.value)?;
+                    let port_type = self.check_expression(&port_arg.value)?;
+
+                    if host_type != HirType::String {
+                        return Err(DiagnosticError::Type(
+                            format!("tcp_connect 'host' parameter must be String, got {:?}", host_type)
+                        ));
+                    }
+                    if port_type != HirType::Int32 {
+                        return Err(DiagnosticError::Type(
+                            format!("tcp_connect 'port' parameter must be Int32, got {:?}", port_type)
+                        ));
+                    }
+
+                    return Ok(HirType::Enum("Result".to_string(), vec![HirType::Int32, HirType::String]));
+                }
+
+                // Handle built-in tcp_read function
+                if function == "tcp_read" {
+                    // tcp_read(socket: Int32, max_bytes: Int32) -> Result<String, String>
+                    if args.len() != 2 {
+                        return Err(DiagnosticError::Type(
+                            "tcp_read requires exactly 2 arguments: 'socket' and 'max_bytes'".to_string()
+                        ));
+                    }
+
+                    let socket_arg = args.iter().find(|arg| arg.name == "socket")
+                        .ok_or_else(|| DiagnosticError::Type("tcp_read requires a 'socket' parameter".to_string()))?;
+                    let max_bytes_arg = args.iter().find(|arg| arg.name == "max_bytes")
+                        .ok_or_else(|| DiagnosticError::Type("tcp_read requires a 'max_bytes' parameter".to_string()))?;
+
+                    let socket_type = self.check_expression(&socket_arg.value)?;
+                    let max_bytes_type = self.check_expression(&max_bytes_arg.value)?;
+
+                    if socket_type != HirType::Int32 {
+                        return Err(DiagnosticError::Type(
+                            format!("tcp_read 'socket' parameter must be Int32, got {:?}", socket_type)
+                        ));
+                    }
+                    if max_bytes_type != HirType::Int32 {
+                        return Err(DiagnosticError::Type(
+                            format!("tcp_read 'max_bytes' parameter must be Int32, got {:?}", max_bytes_type)
+                        ));
+                    }
+
+                    return Ok(HirType::Enum("Result".to_string(), vec![HirType::String, HirType::String]));
+                }
+
+                // Handle built-in tcp_write function
+                if function == "tcp_write" {
+                    // tcp_write(socket: Int32, data: String) -> Result<Int32, String>
+                    if args.len() != 2 {
+                        return Err(DiagnosticError::Type(
+                            "tcp_write requires exactly 2 arguments: 'socket' and 'data'".to_string()
+                        ));
+                    }
+
+                    let socket_arg = args.iter().find(|arg| arg.name == "socket")
+                        .ok_or_else(|| DiagnosticError::Type("tcp_write requires a 'socket' parameter".to_string()))?;
+                    let data_arg = args.iter().find(|arg| arg.name == "data")
+                        .ok_or_else(|| DiagnosticError::Type("tcp_write requires a 'data' parameter".to_string()))?;
+
+                    let socket_type = self.check_expression(&socket_arg.value)?;
+                    let data_type = self.check_expression(&data_arg.value)?;
+
+                    if socket_type != HirType::Int32 {
+                        return Err(DiagnosticError::Type(
+                            format!("tcp_write 'socket' parameter must be Int32, got {:?}", socket_type)
+                        ));
+                    }
+                    if data_type != HirType::String {
+                        return Err(DiagnosticError::Type(
+                            format!("tcp_write 'data' parameter must be String, got {:?}", data_type)
+                        ));
+                    }
+
+                    return Ok(HirType::Enum("Result".to_string(), vec![HirType::Int32, HirType::String]));
+                }
+
+                // Handle built-in tcp_close function
+                if function == "tcp_close" {
+                    // tcp_close(socket: Int32) -> Result<Bool, String>
+                    if args.len() != 1 {
+                        return Err(DiagnosticError::Type(
+                            "tcp_close requires exactly 1 argument: 'socket'".to_string()
+                        ));
+                    }
+
+                    let socket_arg = args.iter().find(|arg| arg.name == "socket")
+                        .ok_or_else(|| DiagnosticError::Type("tcp_close requires a 'socket' parameter".to_string()))?;
+
+                    let socket_type = self.check_expression(&socket_arg.value)?;
+                    if socket_type != HirType::Int32 {
+                        return Err(DiagnosticError::Type(
+                            format!("tcp_close 'socket' parameter must be Int32, got {:?}", socket_type)
+                        ));
+                    }
+
+                    return Ok(HirType::Enum("Result".to_string(), vec![HirType::Bool, HirType::String]));
+                }
+
                 // Try to resolve the function name (handles both local and qualified names)
                 let resolved_name = self.module_table.resolve(function)
                     .unwrap_or_else(|| function.clone());

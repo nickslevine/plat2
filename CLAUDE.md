@@ -66,6 +66,21 @@
 - **Int to Int**: Wrapping behavior on overflow (two's complement)
 - **Example**: `let z: Float32 = x + cast(value = y, target = Float32)`
 
+### Networking (TCP)
+- **Built-in Functions**: All networking functions return `Result<T, String>` for error handling
+- **TCP Server**:
+  - `tcp_listen(host: String, port: Int32) -> Result<Int32, String>` - Create and bind listener
+  - `tcp_accept(listener: Int32) -> Result<Int32, String>` - Accept incoming connection
+- **TCP Client**:
+  - `tcp_connect(host: String, port: Int32) -> Result<Int32, String>` - Connect to server
+- **I/O Operations**:
+  - `tcp_read(socket: Int32, max_bytes: Int32) -> Result<String, String>` - Read from socket
+  - `tcp_write(socket: Int32, data: String) -> Result<Int32, String>` - Write to socket (returns bytes written)
+  - `tcp_close(socket: Int32) -> Result<Bool, String>` - Close socket
+- **File Descriptors**: Sockets are represented as `Int32` file descriptors
+- **Error Handling**: Use pattern matching on Result to handle success/failure
+- **Future**: UDP, non-blocking I/O, and higher-level abstractions can be built in Plat stdlib
+
 ### Testing
 - **Test Blocks**: `test test_block_name { ... }` groups related tests (snake_case identifier required)
 - **Test Functions**: Functions starting with `test_` are automatically discovered and run
@@ -180,6 +195,11 @@ plat2/
   - Helpful suggestions and "did you mean" for undefined symbols
   - Multi-label support showing related locations
   - Contextual help messages for fixing errors
+- **TCP Networking:**
+  - Built-in functions: tcp_listen, tcp_accept, tcp_connect, tcp_read, tcp_write, tcp_close
+  - File descriptor-based API (Int32 sockets)
+  - Result-based error handling for all network operations
+  - Blocking I/O with DNS resolution support
 
 **📋 TODO (Stretch Goals):**
 - [ ] Generic constraints (`T: Display`)
@@ -676,6 +696,43 @@ fn main() -> Int32 {
 - `parse_int64() -> Result<Int64, String>` - Parse to 64-bit integer
 - `parse_float() -> Result<Float64, String>` - Parse to 64-bit float
 - `parse_bool() -> Result<Bool, String>` - Parse "true" or "false"
+
+**TCP Networking with Result:**
+```plat
+fn main() -> Int32 {
+  // Connect to server
+  let socket_result: Result<Int32, String> = tcp_connect(host = "127.0.0.1", port = 8080);
+
+  let socket: Int32 = match socket_result {
+    Result::Ok(fd: Int32) -> fd,
+    Result::Err(err: String) -> {
+      print(value = "Connection failed: ${err}");
+      return 1;
+    }
+  };
+
+  // Send message
+  let write_result: Result<Int32, String> = tcp_write(socket = socket, data = "Hello, server!");
+
+  match write_result {
+    Result::Ok(bytes: Int32) -> print(value = "Sent ${bytes} bytes"),
+    Result::Err(err: String) -> print(value = "Send failed: ${err}")
+  };
+
+  // Read response
+  let read_result: Result<String, String> = tcp_read(socket = socket, max_bytes = 1024);
+
+  match read_result {
+    Result::Ok(msg: String) -> print(value = "Received: ${msg}"),
+    Result::Err(err: String) -> print(value = "Read failed: ${err}")
+  };
+
+  // Close connection
+  let close_result: Result<Bool, String> = tcp_close(socket = socket);
+
+  return 0;
+}
+```
 
 ---
 

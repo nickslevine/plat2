@@ -1,0 +1,73 @@
+fn main() -> Int32 {
+  print(value = "Starting TCP echo server on 127.0.0.1:8080...");
+
+  let listener_result: Result<Int32, String> = tcp_listen(host = "127.0.0.1", port = 8080);
+
+  let listener: Int32 = match listener_result {
+    Result::Ok(fd: Int32) -> fd,
+    Result::Err(err: String) -> {
+      print(value = "Failed to listen: ${err}");
+      return 1;
+    }
+  };
+
+  print(value = "Server listening on 127.0.0.1:8080");
+  print(value = "Waiting for connection...");
+
+  let client_result: Result<Int32, String> = tcp_accept(listener = listener);
+
+  let client: Int32 = match client_result {
+    Result::Ok(fd: Int32) -> fd,
+    Result::Err(err: String) -> {
+      print(value = "Failed to accept connection: ${err}");
+      let close_result: Result<Bool, String> = tcp_close(socket = listener);
+      return 1;
+    }
+  };
+
+  print(value = "Client connected!");
+
+  let data_result: Result<String, String> = tcp_read(socket = client, max_bytes = 1024);
+
+  let data: String = match data_result {
+    Result::Ok(msg: String) -> msg,
+    Result::Err(err: String) -> {
+      print(value = "Failed to read: ${err}");
+      let close1: Result<Bool, String> = tcp_close(socket = client);
+      let close2: Result<Bool, String> = tcp_close(socket = listener);
+      return 1;
+    }
+  };
+
+  print(value = "Received: ${data}");
+
+  let write_result: Result<Int32, String> = tcp_write(socket = client, data = data);
+
+  let bytes_written: Int32 = match write_result {
+    Result::Ok(n: Int32) -> n,
+    Result::Err(err: String) -> {
+      print(value = "Failed to write: ${err}");
+      let close1: Result<Bool, String> = tcp_close(socket = client);
+      let close2: Result<Bool, String> = tcp_close(socket = listener);
+      return 1;
+    }
+  };
+
+  print(value = "Echoed ${bytes_written} bytes back to client");
+
+  let close_client: Result<Bool, String> = tcp_close(socket = client);
+  let close_listener: Result<Bool, String> = tcp_close(socket = listener);
+
+  match close_client {
+    Result::Ok(success: Bool) -> print(value = "Client socket closed"),
+    Result::Err(err: String) -> print(value = "Failed to close client: ${err}")
+  };
+
+  match close_listener {
+    Result::Ok(success: Bool) -> print(value = "Server socket closed"),
+    Result::Err(err: String) -> print(value = "Failed to close server: ${err}")
+  };
+
+  print(value = "Server shutdown complete");
+  return 0;
+}

@@ -1,0 +1,58 @@
+// TCP Client Example
+// Connects to echo server and sends a message
+
+fn main() -> Int32 {
+  print(value = "Connecting to 127.0.0.1:8080...");
+
+  // Connect to server
+  let conn_result: Result<Int32, String> = tcp_connect(host = "127.0.0.1", port = 8080);
+
+  let socket: Int32 = match conn_result {
+    Result::Ok(fd: Int32) -> fd,
+    Result::Err(err: String) -> {
+      print(value = "Failed to connect: ${err}");
+      return 1;
+    }
+  };
+
+  print(value = "Connected!");
+
+  // Send message
+  let message: String = "Hello from Plat!";
+  let write_result: Result<Int32, String> = tcp_write(socket = socket, data = message);
+
+  let bytes_sent: Int32 = match write_result {
+    Result::Ok(n: Int32) -> n,
+    Result::Err(err: String) -> {
+      print(value = "Failed to send: ${err}");
+      let close_result: Result<Bool, String> = tcp_close(socket = socket);
+      return 1;
+    }
+  };
+
+  print(value = "Sent ${bytes_sent} bytes");
+
+  // Read echo response
+  let read_result: Result<String, String> = tcp_read(socket = socket, max_bytes = 1024);
+
+  let response: String = match read_result {
+    Result::Ok(msg: String) -> msg,
+    Result::Err(err: String) -> {
+      print(value = "Failed to read response: ${err}");
+      let close_result: Result<Bool, String> = tcp_close(socket = socket);
+      return 1;
+    }
+  };
+
+  print(value = "Received echo: ${response}");
+
+  // Close connection
+  let close_result: Result<Bool, String> = tcp_close(socket = socket);
+
+  match close_result {
+    Result::Ok(success: Bool) -> print(value = "Connection closed"),
+    Result::Err(err: String) -> print(value = "Failed to close: ${err}")
+  };
+
+  return 0;
+}

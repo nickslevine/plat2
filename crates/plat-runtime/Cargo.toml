@@ -12,6 +12,7 @@ crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 gc.workspace = true
+lazy_static = "1.4"
 
 [build-dependencies]
 # For linking with system libgc
