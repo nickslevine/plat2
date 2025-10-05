@@ -1,0 +1,30 @@
+// Test nested concurrent blocks
+fn main() -> Int32 {
+  print(value = "Testing nested concurrent blocks...");
+
+  concurrent {
+    let outer_task: Task<Int32> = spawn {
+      return 10;
+    };
+
+    concurrent {
+      let inner_task1: Task<Int32> = spawn {
+        return 20;
+      };
+
+      let inner_task2: Task<Int32> = spawn {
+        return 30;
+      };
+
+      let r1: Int32 = inner_task1.await();
+      let r2: Int32 = inner_task2.await();
+      print(value = "Inner tasks: ${r1}, ${r2}");
+    }
+
+    let r3: Int32 = outer_task.await();
+    print(value = "Outer task: ${r3}");
+  }
+
+  print(value = "All nested tasks completed!");
+  return 0;
+}

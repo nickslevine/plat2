@@ -317,18 +317,15 @@
 - **Better Approach:** Use condition variable or park/unpark
 - **Priority:** LOW (works but inefficient)
 
-**7. No Nested Scope Testing**
-- **Status:** ⚠️ UNTESTED
-- **Description:** Nested concurrent blocks haven't been tested
-- **Example:**
-  ```plat
-  concurrent {
-    concurrent {  // Nested scope
-      spawn { return 1; };
-    }
-  }
-  ```
-- **Priority:** MEDIUM (should work but needs verification)
+**7. No Nested Scope Testing** ✅ VERIFIED
+- **Status:** ✅ WORKING
+- **Description:** Nested concurrent blocks work correctly
+- **Test:** `test_concurrent_nested.plat` verifies:
+  - Inner scope tasks (20, 30)
+  - Outer scope tasks (10)
+  - Proper scope cleanup and awaiting
+- **Output:** All tasks execute and complete successfully
+- **Priority:** ✅ COMPLETE
 
 **8. No Actual Parallelism Yet** ✅ RESOLVED
 - **Status:** ✅ FIXED
