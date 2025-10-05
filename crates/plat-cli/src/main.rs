@@ -1,5 +1,6 @@
 use clap::{Parser, Subcommand};
 use colored::*;
+use globset::{Glob, GlobSet, GlobSetBuilder};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{self, Command};
@@ -36,6 +37,9 @@ enum Commands {
     Test {
         /// The Plat source file to test (optional - tests all .plat files in current directory if not specified)
         file: Option<PathBuf>,
+        /// Filter tests by pattern (supports glob syntax, can be specified multiple times)
+        #[arg(short = 'f', long = "filter")]
+        filter: Vec<String>,
     },
     /// Run benchmarks in a Plat source file
     Bench {
@@ -76,7 +80,7 @@ fn run() -> Result<()> {
         Commands::Build { file } => build_command(file),
         Commands::Run { file } => run_command(file),
         Commands::Fmt { file } => fmt_command(file),
-        Commands::Test { file } => test_command(file),
+        Commands::Test { file, filter } => test_command(file, filter),
         Commands::Bench { file } => bench_command(file),
     }
 }
@@ -436,14 +440,14 @@ fn fmt_command(file: PathBuf) -> Result<()> {
     Ok(())
 }
 
-fn test_command(file: Option<PathBuf>) -> Result<()> {
+fn test_command(file: Option<PathBuf>, filters: Vec<String>) -> Result<()> {
     match file {
-        Some(f) => test_single_file(f),
-        None => test_project(),
+        Some(f) => test_single_file(f, filters),
+        None => test_project(filters),
     }
 }
 
-fn test_single_file(file: PathBuf) -> Result<()> {
+fn test_single_file(file: PathBuf, filters: Vec<String>) -> Result<()> {
     validate_plat_file(&file)?;
 
     let source = fs::read_to_string(&file)
@@ -457,11 +461,17 @@ fn test_single_file(file: PathBuf) -> Result<()> {
     let mut program = parser.parse()
         .with_context(|| "Failed to parse program")?;
 
+    // Create test filter
+    let filter = TestFilter::new(filters)?;
+
+    // Get module name
+    let module_name = get_module_name(&program, &file);
+
     // Discover all test blocks with lifecycle hooks
-    let test_blocks = discover_test_blocks(&program);
+    let test_blocks = discover_test_blocks(&program, &filter, &module_name);
 
     if test_blocks.is_empty() {
-        println!("{} No tests found", "✓".yellow().bold());
+        println!("0 tests, 0 passed, 0 failed");
         return Ok(());
     }
 
@@ -508,7 +518,7 @@ fn test_single_file(file: PathBuf) -> Result<()> {
     }
 }
 
-fn test_project() -> Result<()> {
+fn test_project(filters: Vec<String>) -> Result<()> {
     let current_dir = std::env::current_dir()
         .with_context(|| "Failed to get current directory")?;
 
@@ -540,7 +550,7 @@ fn test_project() -> Result<()> {
         files_with_tests += 1;
         println!("\n{} {}", "Testing".green().bold(), file.display());
 
-        match test_single_file(file) {
+        match test_single_file(file, filters.clone()) {
             Ok(_) => total_passed += 1,
             Err(_) => total_failed += 1,
         }
@@ -570,6 +580,103 @@ struct TestBlockInfo {
     before_each_return_type: Option<String>,
 }
 
+/// Test filter for matching tests by pattern
+struct TestFilter {
+    matcher: GlobSet,
+    patterns: Vec<String>,
+}
+
+impl TestFilter {
+    /// Create a new test filter from a list of patterns
+    fn new(patterns: Vec<String>) -> Result<Self> {
+        if patterns.is_empty() {
+            // No filters - match everything
+            let mut builder = GlobSetBuilder::new();
+            builder.add(Glob::new("*")?);
+            let matcher = builder.build()?;
+            return Ok(Self {
+                matcher,
+                patterns: vec!["*".to_string()],
+            });
+        }
+
+        let mut builder = GlobSetBuilder::new();
+        let mut expanded_patterns = Vec::new();
+
+        for pattern in patterns {
+            // Expand shorthand patterns:
+            // - Bare names (no dots, no wildcards): add .* to match everything under it
+            // - Everything else: use as-is
+            let expanded = if !pattern.contains('*') && !pattern.contains('.') {
+                // Just a bare name: "query_tests" -> "query_tests.*"
+                format!("{}.*", pattern)
+            } else {
+                // Keep pattern as-is - user can use explicit wildcards if needed
+                pattern
+            };
+
+            builder.add(Glob::new(&expanded)?);
+            expanded_patterns.push(expanded);
+        }
+
+        let matcher = builder.build()?;
+        Ok(Self {
+            matcher,
+            patterns: expanded_patterns,
+        })
+    }
+
+    /// Check if a test matches any of the filter patterns
+    fn matches(&self, module: &str, test_block: &str, test_function: &str) -> bool {
+        // Build various path representations to match against
+        let paths_to_check = vec![
+            // Full path with module
+            if module.is_empty() {
+                format!("{}.{}", test_block, test_function)
+            } else {
+                format!("{}.{}.{}", module, test_block, test_function)
+            },
+            // Module + test block
+            if module.is_empty() {
+                test_block.to_string()
+            } else {
+                format!("{}.{}", module, test_block)
+            },
+            // Just module (if not empty)
+            module.to_string(),
+            // Test block + test function (without module for convenience)
+            format!("{}.{}", test_block, test_function),
+            // Just test block (for matching all tests in a block)
+            test_block.to_string(),
+        ];
+
+        // Check if any path matches any filter pattern
+        paths_to_check.iter().any(|path| {
+            !path.is_empty() && self.matcher.is_match(path)
+        })
+    }
+
+    /// Check if we have any filters (not just the default "*" matcher)
+    fn has_filters(&self) -> bool {
+        self.patterns.len() > 1 || (self.patterns.len() == 1 && self.patterns[0] != "*")
+    }
+}
+
+/// Extract the module name from a program
+fn get_module_name(program: &plat_ast::Program, file_path: &Path) -> String {
+    program.module_decl
+        .as_ref()
+        .map(|m| m.path.join("::"))
+        .unwrap_or_else(|| {
+            // Fall back to filename without extension
+            file_path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("")
+                .to_string()
+        })
+}
+
 /// Discover all test functions in a program
 fn discover_tests(program: &plat_ast::Program) -> Vec<(String, String)> {
     let mut tests = Vec::new();
@@ -586,7 +693,7 @@ fn discover_tests(program: &plat_ast::Program) -> Vec<(String, String)> {
 }
 
 /// Discover all test blocks with their functions and lifecycle hooks
-fn discover_test_blocks(program: &plat_ast::Program) -> Vec<TestBlockInfo> {
+fn discover_test_blocks(program: &plat_ast::Program, filter: &TestFilter, module_name: &str) -> Vec<TestBlockInfo> {
     let mut test_blocks = Vec::new();
 
     for test_block in &program.test_blocks {
@@ -605,10 +712,14 @@ fn discover_test_blocks(program: &plat_ast::Program) -> Vec<TestBlockInfo> {
             } else if function.name == "after_each" {
                 has_after_each = true;
             } else if function.name.starts_with("test_") {
-                test_functions.push(function.name.clone());
+                // Apply filter
+                if filter.matches(module_name, &test_block.name, &function.name) {
+                    test_functions.push(function.name.clone());
+                }
             }
         }
 
+        // Only include test blocks that have matching test functions after filtering
         if !test_functions.is_empty() {
             test_blocks.push(TestBlockInfo {
                 block_name: test_block.name.clone(),
@@ -684,6 +795,15 @@ fn generate_test_main_with_hooks(test_blocks: &[TestBlockInfo]) -> String {
 
     // Generate test runner main function
     output.push_str("fn main() -> Int32 {\n");
+
+    // Handle empty test list
+    if total_tests == 0 {
+        output.push_str("  print(value = \"0 tests, 0 passed, 0 failed\");\n");
+        output.push_str("  return 0;\n");
+        output.push_str("}\n");
+        return output;
+    }
+
     output.push_str("  var passed: Int32 = 0;\n");
     output.push_str("\n");
 

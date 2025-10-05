@@ -42,3 +42,4 @@ gc = { version = "0.5", features = ["derive"] }
 regex = "1.10"
 insta = { version = "1.40", features = ["yaml"] }
 tempfile = "3.10"
+globset = "0.4"

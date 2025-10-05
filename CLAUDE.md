@@ -76,6 +76,12 @@
   - `after_each(ctx)` receives the context for cleanup
   - Both hooks are optional
 - **Test Execution**: `plat test` compiles and runs all tests, reports results
+- **Test Filtering**: Filter tests with `-f`/`--filter` flag (supports glob patterns, can be repeated)
+  - `plat test -f query_tests` - Run all tests in `query_tests` block
+  - `plat test -f "query_tests.test_select_*"` - Run specific tests with wildcards
+  - `plat test -f database.* -f auth.*` - Multiple filters (runs tests matching any filter)
+  - `plat test -f "*.test_insert"` - Match test name across all blocks
+  - Three-level filtering: `module.test_block.test_function`
 - **Fail-Fast**: Assertion failures immediately stop the test and report the failure
 
 ### Benchmarking
@@ -100,15 +106,16 @@
 ## 🛠️ CLI Commands
 
 ```bash
-plat run <file.plat>     # Compile and run a single file
-plat run                 # Run main.plat in current directory
-plat build <file.plat>   # Compile to executable
-plat build               # Compile all .plat files in project
-plat test <file.plat>    # Run tests in a single file
-plat test                # Run all tests in project
-plat bench <file.plat>   # Run benchmarks in a single file
-plat bench               # Run all benchmarks in project
-plat fmt <file.plat>     # Format code with 2-space indentation
+plat run <file.plat>              # Compile and run a single file
+plat run                          # Run main.plat in current directory
+plat build <file.plat>            # Compile to executable
+plat build                        # Compile all .plat files in project
+plat test <file.plat>             # Run tests in a single file
+plat test                         # Run all tests in project
+plat test -f <pattern>            # Filter tests by pattern (glob syntax, repeatable)
+plat bench <file.plat>            # Run benchmarks in a single file
+plat bench                        # Run all benchmarks in project
+plat fmt <file.plat>              # Format code with 2-space indentation
 ```
 
 ---
@@ -155,7 +162,7 @@ plat2/
 - Default constructors (auto-generated init methods)
 - Named arguments (required for all function/method/constructor/print calls)
 - Default arguments for functions, methods, and constructors
-- Built-in test framework with automatic test discovery, assertions, and runner
+- Built-in test framework with automatic test discovery, assertions, runner, and filtering (glob patterns)
 - Numeric type casting with cast() function (wrapping overflow, truncating float→int)
 - **Result & Option integration:**
   - Collection indexing returns `Option<T>` for safe access
