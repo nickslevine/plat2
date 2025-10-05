@@ -163,12 +163,12 @@
   - Global task handle registry ✅
   - Automatic runtime initialization in main() ✅
 
-**Limitations:**
-- Parser requires return statements in spawn blocks (needs final expression support)
-- No variable capture yet (spawn closures must be self-contained)
-- Only i64 return values supported
-- Concurrent blocks execute sequentially (no actual parallelism yet)
-- No automatic scope cleanup
+**Limitations (see "KNOWN ISSUES & BLOCKERS" section below for details):**
+- Parser requires return statements in spawn blocks (#4)
+- No variable capture yet (#2)
+- Only i64 return values supported (#3)
+- Concurrent blocks execute sequentially (#8)
+- Scope cleanup added in Phase 2.4 ✅
 
 **Commit:** `feat: Add codegen for concurrent blocks and task spawning` ✅
 
@@ -198,9 +198,12 @@
 - ✅ Scope tracking implemented
 - ✅ Type inference for spawn blocks fixed
 - ✅ HIR support for Task<T>.await()
-- ⚠️  Codegen has CLIF verification errors (needs debugging)
-- ⚠️  Only i64 return types fully working
-- ⚠️  No variable capture in spawn closures yet
+- 🔴 **BLOCKED:** Codegen has CLIF verification errors (#1 - CRITICAL)
+- ⚠️  Only i64 return types fully working (#3)
+- ⚠️  No variable capture in spawn closures yet (#2)
+- ⚠️  No actual parallelism yet (#8)
+
+**See "KNOWN ISSUES & BLOCKERS" section below for full details**
 
 **Commit:** `feat: Add scope tracking and Task.await() support for structured concurrency` ✅
 
@@ -217,10 +220,125 @@
   - Test error propagation (panic in task)
 
 **Current Status:**
-- ⚠️ Test file created (test_concurrent_scope.plat) but CLIF errors prevent execution
-- ⚠️ Need to debug and fix Cranelift code generation issues first
+- ⚠️ Test file created (test_concurrent_scope.plat)
+- 🔴 **BLOCKED by Issue #1:** CLIF verification errors prevent execution
+- Cannot proceed until codegen issues are resolved
 
-**Commit:** `test: Add tests for basic structured concurrency` (PENDING)
+**Commit:** `test: Add tests for basic structured concurrency` (PENDING - BLOCKED)
+
+---
+
+## 🔴 KNOWN ISSUES & BLOCKERS (Phase 2)
+
+### Critical Issues
+
+**1. Cranelift CLIF Verification Errors**
+- **Status:** 🔴 BLOCKING
+- **Location:** Spawn block code generation
+- **Description:** The generated Cranelift IR fails verification when compiling spawn blocks
+- **Error:** "Module error: Compilation error: Verifier errors"
+- **Impact:** Cannot execute any concurrent code with spawn blocks
+- **Root Cause:** Unknown - needs debugging of generated CLIF
+- **Reproduction:** Compile `test_concurrent_scope.plat`
+- **Next Steps:**
+  1. Enable Cranelift debug output to see verifier errors
+  2. Inspect generated CLIF for spawn closure functions
+  3. Check for missing basic blocks or incorrect control flow
+  4. Verify all variables are properly defined before use
+
+### Major Limitations
+
+**2. No Variable Capture in Spawn Closures**
+- **Status:** ⚠️ LIMITATION
+- **Description:** Spawn blocks cannot capture variables from outer scope
+- **Example:**
+  ```plat
+  let x: Int32 = 42;
+  let task: Task<Int32> = spawn {
+    return x;  // ❌ ERROR: x not in scope
+  };
+  ```
+- **Workaround:** All values must be self-contained in spawn block
+- **Implementation Needed:**
+  1. Detect captured variables during HIR analysis
+  2. Generate closure struct with captured variable fields
+  3. Pass captures as function arguments
+  4. Update closure calling convention
+- **Priority:** HIGH (required for real-world use)
+
+**3. Limited Type Support for Task Return Values**
+- **Status:** ⚠️ LIMITATION
+- **Description:** Only `Task<Int32>` and `Task<Int64>` fully implemented
+- **Working Types:**
+  - ✅ Int32 → i32 (via ireduce)
+  - ✅ Int64 → i64 (native)
+- **Not Yet Implemented:**
+  - ❌ Bool, Float32, Float64
+  - ❌ String (heap-allocated types)
+  - ❌ Custom classes
+  - ❌ Collections (List, Dict, Set)
+  - ❌ Enums (Option, Result)
+- **Implementation Needed:**
+  1. Generic `plat_spawn_task_T()` and `plat_task_await_T()` functions
+  2. Type-specific code generation based on return type
+  3. Proper handling of heap-allocated return values
+- **Priority:** MEDIUM (can work around for MVP)
+
+**4. Parser Requires Explicit Return Statements**
+- **Status:** ⚠️ LIMITATION
+- **Description:** Spawn blocks must use `return` instead of final expressions
+- **Example:**
+  ```plat
+  // ❌ DOESN'T WORK:
+  spawn { 42 }
+
+  // ✅ REQUIRED:
+  spawn { return 42; }
+  ```
+- **Root Cause:** `parse_spawn_expression()` wraps body in `Expression::Block` which doesn't support final expressions
+- **Implementation Needed:**
+  1. Update block expression parser to support final expressions
+  2. Type check final expression as implicit return
+  3. Generate return in codegen if block ends with expression
+- **Priority:** LOW (cosmetic issue)
+
+### Minor Issues
+
+**5. No Panic Handling in Tasks**
+- **Status:** ⚠️ TODO
+- **Description:** Panics in spawned tasks may cause undefined behavior
+- **Expected Behavior:** Panic should propagate to parent scope on await
+- **Implementation Needed:** Add Result wrapper around task execution
+- **Priority:** MEDIUM (important for production)
+
+**6. Busy-Wait in task_await()**
+- **Status:** ⚠️ PERFORMANCE
+- **Description:** `plat_task_await_i64()` uses busy-waiting instead of parking thread
+- **Impact:** High CPU usage when waiting for tasks
+- **Better Approach:** Use condition variable or park/unpark
+- **Priority:** LOW (works but inefficient)
+
+**7. No Nested Scope Testing**
+- **Status:** ⚠️ UNTESTED
+- **Description:** Nested concurrent blocks haven't been tested
+- **Example:**
+  ```plat
+  concurrent {
+    concurrent {  // Nested scope
+      spawn { return 1; };
+    }
+  }
+  ```
+- **Priority:** MEDIUM (should work but needs verification)
+
+**8. No Actual Parallelism Yet**
+- **Status:** ⚠️ LIMITATION
+- **Description:** Tasks execute sequentially, not in parallel
+- **Root Cause:** Worker threads exist but scope exit waits immediately
+- **Implementation Needed:**
+  - Tasks should execute on worker thread pool
+  - Scope exit should only wait, not execute
+- **Priority:** HIGH (defeats the purpose of concurrency)
 
 ---
 
