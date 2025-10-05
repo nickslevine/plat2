@@ -3861,12 +3861,16 @@ impl TypeChecker {
             Literal::Bool(_, _) => Ok(HirType::Bool),
             Literal::Integer(_, int_type, _) => {
                 match int_type {
+                    IntType::I8 => Ok(HirType::Int8),
+                    IntType::I16 => Ok(HirType::Int16),
                     IntType::I32 => Ok(HirType::Int32),
                     IntType::I64 => Ok(HirType::Int64),
                 }
             }
             Literal::Float(_, float_type, _) => {
                 match float_type {
+                    FloatType::F8 => Ok(HirType::Float8),
+                    FloatType::F16 => Ok(HirType::Float16),
                     FloatType::F32 => Ok(HirType::Float32),
                     FloatType::F64 => Ok(HirType::Float64),
                 }

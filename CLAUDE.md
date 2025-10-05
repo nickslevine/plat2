@@ -20,7 +20,11 @@
 - **Built-in Enums**: `Option<T>`, `Result<T, E>`
 - **Custom Type Aliases**: `type UserID = String;` (interchangeable with underlying type)
 - **Newtypes**: `newtype DocumentID = String;` (distinct type at compile-time, same runtime representation)
-- **Numeric Literals**: Support underscores for readability (e.g., `1_000_000`, `3.141_592_653`)
+- **Numeric Literals**:
+  - Support underscores for readability (e.g., `1_000_000`, `3.141_592_653`)
+  - Typed suffixes for explicit types: `i8`, `i16`, `i32`, `i64`, `f8`, `f16`, `f32`, `f64`
+  - Examples: `0i8`, `127i8`, `1000i64`, `3.14f32`, `2.718f64`
+  - Default types: integers default to `Int32`, floats default to `Float64` (when no suffix provided)
 
 ### Naming Conventions (Enforced at Compile-Time)
 - **snake_case**: Variables, functions, parameters, module names, field names
@@ -170,7 +174,7 @@ plat2/
 - Type aliases
 - Newtypes (zero-cost distinct types)
 - Full numeric type support (Int8, Int16, Int32, Int64, Float8, Float16, Float32, Float64)
-- Numeric literals with underscores (e.g., 1_000_000, 3.141_592_653)
+- Typed numeric literals with suffixes (e.g., `0i8`, `127i8`, `3.14f32`) and underscores (e.g., `1_000_000`, `3.141_592_653`)
 - String methods (17 built-in functions including parsing)
 - Set methods (11 built-in operations)
 - Dict methods (11 built-in operations)
@@ -477,6 +481,35 @@ fn main() -> Int32 {
 
   // ❌ Newtype ERROR: DocumentID != UserID
   // let doc: DocumentID = user;
+
+  return 0;
+}
+```
+
+### Typed Numeric Literals
+```plat
+fn main() -> Int32 {
+  // Explicit integer types with suffix
+  let byte_value: Int8 = 127i8;
+  let short_value: Int16 = 32767i16;
+  let int_value: Int32 = 2147483647i32;
+  let long_value: Int64 = 9223372036854775807i64;
+
+  // Explicit float types with suffix
+  let small_float: Float32 = 3.14f32;
+  let large_float: Float64 = 2.718281828f64;
+
+  // Without suffix: defaults to Int32 for integers, Float64 for floats
+  let default_int: Int32 = 42;        // defaults to Int32
+  let default_float: Float64 = 3.14;  // defaults to Float64
+
+  // Underscores for readability (work with or without suffix)
+  let million: Int64 = 1_000_000i64;
+  let pi: Float32 = 3.141_592_653f32;
+
+  // Use case: Creating List[Int8] for binary data
+  let binary_data: List[Int8] = [0i8, 1i8, 127i8, -128i8];
+  print(value = "Binary data has ${binary_data.length()} bytes");
 
   return 0;
 }

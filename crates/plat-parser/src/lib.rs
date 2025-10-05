@@ -1013,6 +1013,8 @@ impl Parser {
         if let Some(Token::IntLiteral(n, int_type)) = self.match_if(|t| matches!(t, Token::IntLiteral(..))) {
             let span = self.previous_span();
             let ast_int_type = match int_type {
+                plat_lexer::IntType::I8 => IntType::I8,
+                plat_lexer::IntType::I16 => IntType::I16,
                 plat_lexer::IntType::I32 => IntType::I32,
                 plat_lexer::IntType::I64 => IntType::I64,
             };
@@ -1022,6 +1024,8 @@ impl Parser {
         if let Some(Token::FloatLiteral(value, float_type)) = self.match_if(|t| matches!(t, Token::FloatLiteral(_, _))) {
             let span = self.previous_span();
             let ast_float_type = match float_type {
+                plat_lexer::FloatType::F8 => FloatType::F8,
+                plat_lexer::FloatType::F16 => FloatType::F16,
                 plat_lexer::FloatType::F32 => FloatType::F32,
                 plat_lexer::FloatType::F64 => FloatType::F64,
             };
@@ -1458,6 +1462,8 @@ impl Parser {
         if let Some(Token::IntLiteral(n, int_type)) = self.match_if(|t| matches!(t, Token::IntLiteral(..))) {
             let span = self.previous_span();
             let ast_int_type = match int_type {
+                plat_lexer::IntType::I8 => IntType::I8,
+                plat_lexer::IntType::I16 => IntType::I16,
                 plat_lexer::IntType::I32 => IntType::I32,
                 plat_lexer::IntType::I64 => IntType::I64,
             };

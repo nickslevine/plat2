@@ -192,12 +192,16 @@ impl CodeGenerator {
             Expression::Literal(Literal::Bool(_, _)) => VariableType::Bool,
             Expression::Literal(Literal::Integer(_, int_type, _)) => {
                 match int_type {
+                    IntType::I8 => VariableType::Int8,
+                    IntType::I16 => VariableType::Int16,
                     IntType::I32 => VariableType::Int32,
                     IntType::I64 => VariableType::Int64,
                 }
             }
             Expression::Literal(Literal::Float(_, float_type, _)) => {
                 match float_type {
+                    FloatType::F8 => VariableType::Float8,
+                    FloatType::F16 => VariableType::Float16,
                     FloatType::F32 => VariableType::Float32,
                     FloatType::F64 => VariableType::Float64,
                 }
@@ -5652,12 +5656,16 @@ impl CodeGenerator {
             }
             Literal::Integer(i, int_type, _) => {
                 match int_type {
+                    IntType::I8 => Ok(builder.ins().iconst(I8, *i)),
+                    IntType::I16 => Ok(builder.ins().iconst(I16, *i)),
                     IntType::I32 => Ok(builder.ins().iconst(I32, *i)),
                     IntType::I64 => Ok(builder.ins().iconst(I64, *i)),
                 }
             }
             Literal::Float(f, float_type, _) => {
                 match float_type {
+                    FloatType::F8 => Ok(builder.ins().f32const(*f as f32)), // F8 not in Cranelift, use F32
+                    FloatType::F16 => Ok(builder.ins().f32const(*f as f32)), // F16 not in Cranelift, use F32
                     FloatType::F32 => Ok(builder.ins().f32const(*f as f32)),
                     FloatType::F64 => Ok(builder.ins().f64const(*f)),
                 }

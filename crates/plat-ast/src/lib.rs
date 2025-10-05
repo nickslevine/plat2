@@ -259,6 +259,8 @@ pub enum Literal {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum FloatType {
+    F8,
+    F16,
     F32,
     F64,
 }

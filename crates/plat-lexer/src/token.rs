@@ -89,12 +89,16 @@ pub enum StringPart {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum FloatType {
+    F8,
+    F16,
     F32,
     F64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum IntType {
+    I8,
+    I16,
     I32,
     I64,
 }

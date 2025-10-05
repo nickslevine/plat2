@@ -368,7 +368,7 @@ impl Lexer {
             .filter(|&c| *c != '_')
             .collect();
 
-        // Check for suffix (f32, f64, i32, i64)
+        // Check for suffix (f8, f16, f32, f64, i8, i16, i32, i64)
         let suffix = if self.peek() == Some('f') || self.peek() == Some('i') {
             let suffix_start = self.current;
             self.advance();
@@ -389,7 +389,7 @@ impl Lexer {
         };
 
         // Determine if this is a float or int based on presence of decimal point or exponent
-        let is_float_literal = is_float || has_exponent || matches!(suffix.as_deref(), Some("f32") | Some("f64"));
+        let is_float_literal = is_float || has_exponent || matches!(suffix.as_deref(), Some("f8") | Some("f16") | Some("f32") | Some("f64"));
 
         if is_float_literal {
             // Parse as float
@@ -405,6 +405,8 @@ impl Lexer {
                 ))?;
 
             let float_type = match suffix.as_deref() {
+                Some("f8") => token::FloatType::F8,
+                Some("f16") => token::FloatType::F16,
                 Some("f32") => token::FloatType::F32,
                 Some("f64") | None => token::FloatType::F64, // Default to f64
                 Some(s) => {
@@ -415,7 +417,7 @@ impl Lexer {
                             format!("Invalid float suffix '{}'", s)
                         )
                         .with_label("invalid suffix")
-                        .with_help("Valid suffixes are 'f32' and 'f64'")
+                        .with_help("Valid suffixes are 'f8', 'f16', 'f32', and 'f64'")
                     ));
                 }
             };
@@ -436,6 +438,8 @@ impl Lexer {
 
             // Determine integer type from suffix
             let int_type = match suffix.as_deref() {
+                Some("i8") => token::IntType::I8,
+                Some("i16") => token::IntType::I16,
                 Some("i32") => token::IntType::I32,
                 Some("i64") => token::IntType::I64,
                 None => token::IntType::I32, // Default to i32
@@ -447,7 +451,7 @@ impl Lexer {
                             format!("Invalid integer suffix '{}'", s)
                         )
                         .with_label("invalid suffix")
-                        .with_help("Valid suffixes are 'i32' and 'i64'")
+                        .with_help("Valid suffixes are 'i8', 'i16', 'i32', and 'i64'")
                     ));
                 }
             };

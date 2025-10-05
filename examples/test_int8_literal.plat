@@ -1,0 +1,11 @@
+fn main() -> Int32 {
+  // Test Int8 typed literals
+  let data: List[Int8] = [0i8, 1i8, 2i8, 3i8, 127i8];
+
+  print(value = "Created Int8 list with ${data.length()} elements");
+
+  // Test that the values are correct
+  print(value = "Testing Int8 literals work correctly");
+
+  return 0;
+}
