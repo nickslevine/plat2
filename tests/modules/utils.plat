@@ -3,9 +3,9 @@ mod utils;
 use math;
 
 fn double(x: Int32) -> Int32 {
-  return math::add(x, x);
+  return math::add(a = x, b = x);
 }
 
 fn square(x: Int32) -> Int32 {
-  return math::multiply(x, x);
+  return math::multiply(a = x, b = x);
 }

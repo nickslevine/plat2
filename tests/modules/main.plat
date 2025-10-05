@@ -2,14 +2,14 @@ use math;
 use utils;
 
 fn main() -> Int32 {
-  let x = math::add(10, 20);
-  print("10 + 20 = ${x}");
+  let x: Int32 = math::add(a = 10, b = 20);
+  print(value = "10 + 20 = ${x}");
 
-  let y = utils::double(15);
-  print("double(15) = ${y}");
+  let y: Int32 = utils::double(x = 15);
+  print(value = "double(15) = ${y}");
 
-  let z = utils::square(5);
-  print("square(5) = ${z}");
+  let z: Int32 = utils::square(x = 5);
+  print(value = "square(5) = ${z}");
 
   return 0;
 }

@@ -13,8 +13,9 @@ class Point {
   }
 }
 
-fn main() {
+fn main() -> Int32 {
   let p1: Point = Point.init(x = 10, y = 20);
   let magnitude: Int32 = p1.get_magnitude();
   print(value = "Magnitude: ${magnitude}");
+  return 0;
 }

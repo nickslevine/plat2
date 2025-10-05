@@ -539,9 +539,9 @@ fn test_project(filters: Vec<String>) -> Result<()> {
             .with_context(|| format!("Failed to read file: {}", file.display()))?;
 
         let parser = plat_parser::Parser::new(&source)
-            .with_context(|| "Failed to create parser")?;
+            .with_context(|| format!("Failed to create parser for file: {}", file.display()))?;
         let program = parser.parse()
-            .with_context(|| "Failed to parse program")?;
+            .with_context(|| format!("Failed to parse program in file: {}", file.display()))?;
 
         if program.test_blocks.is_empty() {
             continue;

@@ -6,7 +6,7 @@ class Node {
   let next: Option<Node>;
 }
 
-bench "gc allocation performance" {
+bench gc_allocation_performance {
   // Benchmark regular class allocation (contains pointers, uses plat_gc_alloc)
   fn bench_class_allocation() {
     let node: Node = Node.init(value = 42, next = Option::None);

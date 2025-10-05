@@ -84,6 +84,9 @@ Linting
 * concurrency / parallel utils
 * building modules efficiently / incrementally (eg depedencies, std) 
 * context management 
+* change from True to true, etc? 
+* todo/ not yet implemented declaration
+* allow TDD - not yet implemented compilation?
 
 
 

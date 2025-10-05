@@ -2,11 +2,11 @@
 mod simple;
 
 fn greet(name: String) -> Int32 {
-  print("Hello, ${name}!");
+  print(value = "Hello, ${name}!");
   return 0;
 }
 
 fn main() -> Int32 {
-  greet("World");
+  greet(name = "World");
   return 0;
 }

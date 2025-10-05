@@ -1,8 +1,8 @@
 use math;
 
 fn main() -> Int32 {
-  let x = math::add(10, 20);
-  let y = math::multiply(x, 2);
-  print("Result: ${y}");
+  let x: Int32 = math::add(a = 10, b = 20);
+  let y: Int32 = math::multiply(a = x, b = 2);
+  print(value = "Result: ${y}");
   return 0;
 }
