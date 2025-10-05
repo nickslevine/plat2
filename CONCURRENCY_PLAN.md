@@ -139,23 +139,38 @@
 
 ### 2.3 Codegen for Spawn
 
-- [ ] **Generate code for `concurrent` blocks** (`plat-codegen`)
-  - Create scope tracker (TaskScope)
-  - Allocate scope ID
-  - Generate body code
-  - Insert scope cleanup (await all tasks in scope)
+- [x] **Generate code for `concurrent` blocks** (`plat-codegen`)
+  - Sequential execution for now (no parallel execution yet)
+  - TODO: Create scope tracker (TaskScope)
+  - TODO: Allocate scope ID
+  - Generate body code ✅
+  - TODO: Insert scope cleanup (await all tasks in scope)
 
-- [ ] **Generate code for `spawn`**
-  - Extract closure body into separate function
-  - Capture variables (pass as args)
-  - Call runtime `spawn_task(fn_ptr, args, scope_id)`
-  - Return opaque Task<T> handle
+- [x] **Generate code for `spawn`**
+  - Extract closure body into separate function ✅
+  - TODO: Capture variables (pass as args)
+  - Call runtime `spawn_task_i64(fn_ptr)` ✅
+  - Return opaque Task<T> handle (i64 for now) ✅
 
-- [ ] **Generate code for `.await()`**
-  - Call runtime `task_await(task_id)` → blocks until complete
-  - Return result value
+- [x] **Generate code for `.await()`**
+  - Call runtime `task_await_i64(task_id)` → blocks until complete ✅
+  - Return result value ✅
 
-**Commit:** `feat: Add codegen for concurrent blocks and task spawning`
+- [x] **Runtime Support**
+  - Added `TaskWithResult<T>` for tasks with return values ✅
+  - Added `plat_spawn_task_i64()` C FFI ✅
+  - Added `plat_task_await_i64()` C FFI ✅
+  - Global task handle registry ✅
+  - Automatic runtime initialization in main() ✅
+
+**Limitations:**
+- Parser requires return statements in spawn blocks (needs final expression support)
+- No variable capture yet (spawn closures must be self-contained)
+- Only i64 return values supported
+- Concurrent blocks execute sequentially (no actual parallelism yet)
+- No automatic scope cleanup
+
+**Commit:** `feat: Add codegen for concurrent blocks and task spawning` ✅
 
 ### 2.4 Runtime Support for Task<T>
 
