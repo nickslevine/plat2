@@ -3,32 +3,28 @@
 ## Overview
 Implement low-level file system primitives following the same pattern as TCP networking functions. All functions return `Result<T, String>` for error handling and use Int32 file descriptors.
 
-## ⚠️ Known Issues
+## ✅ Fixed Issues
 
-### Result Enum Extraction Bug (Pre-existing)
-**Status**: Affects ALL built-in functions returning Result enums (parse_int, TCP functions, file I/O)
+### Result Enum Extraction Bug (FIXED)
+**Status**: ✅ RESOLVED
 
-**Symptoms**:
-- FFI functions that return `Result<T, E>` cannot be properly pattern matched
-- Extracted values are always 0/empty instead of the actual value
-- Example: `file_open()` returns Result but match extracts fd=0 instead of actual fd (e.g., 2000)
+**Issue**: FFI functions that return `Result<T, E>` couldn't be properly pattern matched - extracted values were always 0/empty instead of the actual value.
 
-**Root Cause**:
-- Built-in functions return i64 pointers to heap-allocated enums
-- Match expressions on these Results don't properly dereference and extract values
-- Regular Plat functions returning enums work correctly
-- Only affects FFI/built-in functions
+**Root Cause**: Built-in functions return i64 pointers to heap-allocated enums, but match expressions didn't properly detect and dereference them. The codegen assumed all enums were packed (discriminant in high 32 bits), but FFI functions use heap format.
 
-**Workaround**: None currently - Result-based error handling from built-ins is non-functional
+**Solution**: Added runtime format detection in match expression codegen:
+- Heap pointers: range [0x1000, 0x7FFFFFFFFFFF] → load discriminant and values from memory
+- Packed enums: outside pointer range → extract discriminant from high 32 bits, value from low 32 bits
+- Applied to: match discriminant extraction, pattern bindings, and `?` operator
 
-**Testing**:
-- `examples/test_result.plat` - parse_int returns 0 instead of 42
-- `examples/test_tcp_simple.plat` - tcp_listen returns fd=0 instead of actual fd
-- `examples/fs_test_final.plat` - file_open returns fd=0 instead of actual fd
-- `examples/test_enum_simple.plat` - Regular enums work correctly (returns 42) ✓
+**Testing** (all passing ✓):
+- `examples/test_result.plat` - parse_int returns 42 ✓
+- `examples/test_tcp_simple.plat` - tcp_listen returns valid fd ✓
+- `examples/test_enum_simple.plat` - Regular enums work (returns 42) ✓
 - `examples/test_enum_function.plat` - Functions returning enums work (returns 99) ✓
 
-**Next Steps**: Fix enum dereference in match codegen for FFI function returns
+**Files Modified**:
+- `crates/plat-codegen/src/lib.rs` - Added runtime format detection for match expressions, pattern bindings, and Try expressions
 
 ## Architecture Pattern (Based on Networking Implementation)
 - [x] Study existing TCP networking implementation in `plat-runtime/src/ffi/net.rs`
@@ -84,8 +80,9 @@ Implement low-level file system primitives following the same pattern as TCP net
 - [x] Export fs module in `crates/plat-runtime/src/ffi/mod.rs`
 - [x] Create test files for basic file operations
 - [x] Verify compilation and type checking works correctly
-- [ ] ~~Test all file modes (r, w, a, r+, w+, a+)~~ (blocked by Result extraction bug)
-- [ ] ~~Test error conditions (file not found, permission denied)~~ (blocked by Result extraction bug)
+- [x] **BUG FIX**: Fixed Result enum extraction from FFI functions
+- [ ] Test all file modes (r, w, a, r+, w+, a+) - **NOW UNBLOCKED**
+- [ ] Test error conditions (file not found, permission denied) - **NOW UNBLOCKED**
 
 ---
 

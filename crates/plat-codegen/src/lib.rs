@@ -4385,23 +4385,22 @@ impl CodeGenerator {
                     ));
                 }
 
-                // For enum values, try packed format first (works for unit and i32 data variants)
+                // For enum values, detect packed vs heap format at runtime
                 let disc_i32 = {
                     // Try packed format first - discriminant in high 32 bits
                     let packed_disc = builder.ins().ushr_imm(value_val, 32);
                     let packed_disc_i32 = builder.ins().ireduce(I32, packed_disc);
 
-                    // Only use heap format if packed discriminant is 0 AND value looks like a pointer
-                    let zero_const = builder.ins().iconst(I32, 0);
-                    let disc_is_zero = builder.ins().icmp(cranelift_codegen::ir::condcodes::IntCC::Equal, packed_disc_i32, zero_const);
-
+                    // Heap format if value looks like a valid pointer address
+                    // Heuristic: heap pointers are typically in range [0x1000, 0x7FFFFFFFFFFF]
+                    // Packed enums have discriminant in high 32 bits, often > 0x7FFFFFFFFFFF
                     let min_addr = builder.ins().iconst(I64, 0x1000);
-                    let looks_like_pointer = builder.ins().icmp(cranelift_codegen::ir::condcodes::IntCC::UnsignedGreaterThan, value_val, min_addr);
-                    let max_addr = builder.ins().iconst(I64, 0x800000000000); // Reasonable upper bound for pointers
-                    let not_too_big = builder.ins().icmp(cranelift_codegen::ir::condcodes::IntCC::UnsignedLessThan, value_val, max_addr);
-                    let pointer_range = builder.ins().band(looks_like_pointer, not_too_big);
+                    let max_pointer = builder.ins().iconst(I64, 0x7FFFFFFFFFFF); // Max 47-bit address
 
-                    let use_heap = builder.ins().band(disc_is_zero, pointer_range);
+                    // Check if value is in typical pointer range
+                    let above_min = builder.ins().icmp(cranelift_codegen::ir::condcodes::IntCC::UnsignedGreaterThan, value_val, min_addr);
+                    let below_max = builder.ins().icmp(cranelift_codegen::ir::condcodes::IntCC::UnsignedLessThan, value_val, max_pointer);
+                    let use_heap = builder.ins().band(above_min, below_max);
 
                     let packed_block = builder.create_block();
                     let heap_block = builder.create_block();
@@ -4486,14 +4485,46 @@ impl CodeGenerator {
                     if let Pattern::EnumVariant { bindings, .. } = &arm.pattern {
                         for (binding_idx, (binding_name, _binding_type)) in bindings.iter().enumerate() {
                             if !binding_name.is_empty() {
-                                // For now, assume all single-field data variants use packed format
-                                // and all multi-field variants use heap format
+                                // Use runtime detection to handle both packed and heap formats
+                                // This is needed because FFI functions return heap pointers,
+                                // while Plat functions return packed values
                                 let (field_val, var_type, cranelift_type) = if bindings.len() == 1 {
-                                    // Single field: assume packed format (discriminant in high, value in low)
+                                    // Single field: detect format at runtime
+                                    let min_addr = builder.ins().iconst(I64, 0x1000);
+                                    let max_pointer = builder.ins().iconst(I64, 0x7FFFFFFFFFFF);
+
+                                    let above_min = builder.ins().icmp(cranelift_codegen::ir::condcodes::IntCC::UnsignedGreaterThan, value_val, min_addr);
+                                    let below_max = builder.ins().icmp(cranelift_codegen::ir::condcodes::IntCC::UnsignedLessThan, value_val, max_pointer);
+                                    let use_heap = builder.ins().band(above_min, below_max);
+
+                                    // Create blocks for packed vs heap extraction
+                                    let packed_extract = builder.create_block();
+                                    let heap_extract = builder.create_block();
+                                    let extract_done = builder.create_block();
+                                    builder.append_block_param(extract_done, I32);
+
+                                    builder.ins().brif(use_heap, heap_extract, &[], packed_extract, &[]);
+
+                                    // Packed format: value in low 32 bits
+                                    builder.switch_to_block(packed_extract);
+                                    builder.seal_block(packed_extract);
                                     let packed_val = builder.ins().ireduce(I32, value_val);
-                                    (packed_val, VariableType::Int32, I32)
+                                    builder.ins().jump(extract_done, &[packed_val]);
+
+                                    // Heap format: load from offset 4 (after discriminant)
+                                    builder.switch_to_block(heap_extract);
+                                    builder.seal_block(heap_extract);
+                                    let heap_val = builder.ins().load(I32, MemFlags::new(), value_val, 4);
+                                    builder.ins().jump(extract_done, &[heap_val]);
+
+                                    // Done block
+                                    builder.switch_to_block(extract_done);
+                                    builder.seal_block(extract_done);
+                                    let extracted = builder.block_params(extract_done)[0];
+
+                                    (extracted, VariableType::Int32, I32)
                                 } else {
-                                    // Multi-field: assume heap format, load from offset
+                                    // Multi-field: always use heap format
                                     let offset = 4 + (binding_idx * 4) as i32; // 4-byte alignment for i32
                                     let loaded = builder.ins().load(I32, MemFlags::new(), value_val, offset);
                                     (loaded, VariableType::Int32, I32)
@@ -4559,36 +4590,43 @@ impl CodeGenerator {
                 //     Result::Err(e) -> return Result::Err(e),
                 // }
 
-                // Extract discriminant (similar to match expression handling)
-                // Packed format: discriminant in high 32 bits
-                let packed_disc = builder.ins().ushr_imm(expr_val, 32);
-                let disc_i32 = builder.ins().ireduce(I32, packed_disc);
+                // Extract discriminant using runtime format detection (like match expression)
+                let disc_i32 = {
+                    // Try packed format first - discriminant in high 32 bits
+                    let packed_disc = builder.ins().ushr_imm(expr_val, 32);
+                    let packed_disc_i32 = builder.ins().ireduce(I32, packed_disc);
 
-                // Check if discriminant is 0 (Some/Ok) or non-zero (None/Err)
-                // For both Option and Result, the success variant (Some/Ok) has discriminant != None/Err
-                // We need to determine which enum we're working with
-                // For simplicity, check if disc is 0 to determine the variant
+                    // Detect heap format using pointer range heuristic
+                    let min_addr = builder.ins().iconst(I64, 0x1000);
+                    let max_pointer = builder.ins().iconst(I64, 0x7FFFFFFFFFFF);
 
-                // Create blocks for the two paths
-                let success_block = builder.create_block(); // Some/Ok
-                let error_block = builder.create_block();   // None/Err
+                    let above_min = builder.ins().icmp(cranelift_codegen::ir::condcodes::IntCC::UnsignedGreaterThan, expr_val, min_addr);
+                    let below_max = builder.ins().icmp(cranelift_codegen::ir::condcodes::IntCC::UnsignedLessThan, expr_val, max_pointer);
+                    let use_heap = builder.ins().band(above_min, below_max);
 
-                // Determine discriminants for Option and Result
-                // Option: None=0, Some=1 (based on variant ordering)
-                // Result: Ok=0, Err=1 (based on variant ordering)
+                    let packed_block = builder.create_block();
+                    let heap_block = builder.create_block();
+                    let done_block = builder.create_block();
+                    builder.append_block_param(done_block, I32);
 
-                // We need to know if it's Option or Result to know which discriminant is success
-                // For now, use a heuristic: check the actual discriminant values
-                // Actually, let's use the standard discriminants:
-                // - Result::Ok = variant_discriminant("Result", "Ok")
-                // - Result::Err = variant_discriminant("Result", "Err")
-                // - Option::Some = variant_discriminant("Option", "Some")
-                // - Option::None = variant_discriminant("Option", "None")
+                    builder.ins().brif(use_heap, heap_block, &[], packed_block, &[]);
 
-                // Since we don't know at runtime which enum it is, we'll use a simpler approach:
-                // Check if disc matches the "success" pattern
-                // For both Option and Result, let's assume None/Err both have non-zero discriminant
-                // and Some/Ok have specific discriminants
+                    // Packed format: use extracted discriminant
+                    builder.switch_to_block(packed_block);
+                    builder.seal_block(packed_block);
+                    builder.ins().jump(done_block, &[packed_disc_i32]);
+
+                    // Heap format: load discriminant from memory
+                    builder.switch_to_block(heap_block);
+                    builder.seal_block(heap_block);
+                    let heap_disc = builder.ins().load(I32, MemFlags::new(), expr_val, 0);
+                    builder.ins().jump(done_block, &[heap_disc]);
+
+                    builder.switch_to_block(done_block);
+                    builder.seal_block(done_block);
+
+                    builder.block_params(done_block)[0]
+                };
 
                 // Compute discriminants
                 let ok_disc = Self::variant_discriminant("Result", "Ok");
@@ -4601,14 +4639,48 @@ impl CodeGenerator {
                 let is_some = builder.ins().icmp(IntCC::Equal, disc_i32, some_const);
                 let is_success = builder.ins().bor(is_ok, is_some);
 
+                // Create blocks for success and error paths
+                let success_block = builder.create_block();
+                let error_block = builder.create_block();
+
                 // Branch: if success, go to success_block; otherwise error_block
                 builder.ins().brif(is_success, success_block, &[], error_block, &[]);
 
-                // Success block: extract the value and continue
+                // Success block: extract the value using runtime format detection
                 builder.switch_to_block(success_block);
                 builder.seal_block(success_block);
-                // For packed format: value is in low 32 bits
-                let success_val = builder.ins().ireduce(I32, expr_val);
+
+                // Detect format again and extract value accordingly
+                let min_addr2 = builder.ins().iconst(I64, 0x1000);
+                let max_pointer2 = builder.ins().iconst(I64, 0x7FFFFFFFFFFF);
+
+                let above_min2 = builder.ins().icmp(cranelift_codegen::ir::condcodes::IntCC::UnsignedGreaterThan, expr_val, min_addr2);
+                let below_max2 = builder.ins().icmp(cranelift_codegen::ir::condcodes::IntCC::UnsignedLessThan, expr_val, max_pointer2);
+                let use_heap2 = builder.ins().band(above_min2, below_max2);
+
+                let packed_extract = builder.create_block();
+                let heap_extract = builder.create_block();
+                let extract_done = builder.create_block();
+                builder.append_block_param(extract_done, I32);
+
+                builder.ins().brif(use_heap2, heap_extract, &[], packed_extract, &[]);
+
+                // Packed format: value in low 32 bits
+                builder.switch_to_block(packed_extract);
+                builder.seal_block(packed_extract);
+                let packed_val = builder.ins().ireduce(I32, expr_val);
+                builder.ins().jump(extract_done, &[packed_val]);
+
+                // Heap format: load from offset 4 (after discriminant)
+                builder.switch_to_block(heap_extract);
+                builder.seal_block(heap_extract);
+                let heap_val = builder.ins().load(I32, MemFlags::new(), expr_val, 4);
+                builder.ins().jump(extract_done, &[heap_val]);
+
+                // Done block
+                builder.switch_to_block(extract_done);
+                builder.seal_block(extract_done);
+                let success_val = builder.block_params(extract_done)[0];
 
                 // Create a continuation block to merge the success path
                 let cont_block = builder.create_block();

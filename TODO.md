@@ -1,10 +1,14 @@
+## Next
+
+* bug - enum retuns
+
 * file system access
 * string concat bug
 
 ## stdlib
 * set up stdlib. 
 
-pathlib
+* pathlib
 * colored printing 
 * logging package
 * json, etc
@@ -35,6 +39,7 @@ Debugger.
 Linting
 
 ---
+* class to_string default implementation
 * automatic cli
 * overflow / underflow handling
 * struct (stack allocated?)?
