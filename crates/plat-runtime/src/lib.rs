@@ -265,6 +265,147 @@ pub extern "C" fn plat_task_await_f64(handle_id: u64) -> f64 {
 }
 
 // ============================================================================
+// Context-aware Spawn Functions (for variable capture)
+// ============================================================================
+
+/// Spawn a task with context that returns an i32 value
+/// The context pointer is passed to the closure
+#[no_mangle]
+pub extern "C" fn plat_spawn_task_i32_ctx(func: extern "C" fn(*mut u8) -> i32, ctx: *mut u8) -> u64 {
+    use green_runtime::{GreenThreadRuntime, task_with_result::TaskWithResult, get_scope_registry};
+    use std::sync::Arc;
+
+    // Convert raw pointer to usize for Send safety
+    let ctx_addr = ctx as usize;
+    let task = TaskWithResult::new(move || {
+        let ctx_ptr = ctx_addr as *mut u8;
+        func(ctx_ptr)
+    });
+    let handle = task.handle();
+    let task_id = task.id().as_u64();
+
+    let scope_registry = get_scope_registry();
+    scope_registry.register_task(handle.clone());
+
+    let runtime = GreenThreadRuntime::get();
+    let mut guard = runtime.lock();
+    if let Some(rt) = guard.as_mut() {
+        rt.spawn_with_result(task);
+    }
+
+    TASK_HANDLES.lock().unwrap().insert(task_id, Arc::new(handle));
+    task_id
+}
+
+/// Spawn a task with context that returns an i64 value
+#[no_mangle]
+pub extern "C" fn plat_spawn_task_i64_ctx(func: extern "C" fn(*mut u8) -> i64, ctx: *mut u8) -> u64 {
+    use green_runtime::{GreenThreadRuntime, task_with_result::TaskWithResult, get_scope_registry};
+    use std::sync::Arc;
+
+    let ctx_addr = ctx as usize;
+    let task = TaskWithResult::new(move || {
+        let ctx_ptr = ctx_addr as *mut u8;
+        func(ctx_ptr)
+    });
+    let handle = task.handle();
+    let task_id = task.id().as_u64();
+
+    let scope_registry = get_scope_registry();
+    scope_registry.register_task(handle.clone());
+
+    let runtime = GreenThreadRuntime::get();
+    let mut guard = runtime.lock();
+    if let Some(rt) = guard.as_mut() {
+        rt.spawn_with_result(task);
+    }
+
+    TASK_HANDLES.lock().unwrap().insert(task_id, Arc::new(handle));
+    task_id
+}
+
+/// Spawn a task with context that returns a bool value
+#[no_mangle]
+pub extern "C" fn plat_spawn_task_bool_ctx(func: extern "C" fn(*mut u8) -> bool, ctx: *mut u8) -> u64 {
+    use green_runtime::{GreenThreadRuntime, task_with_result::TaskWithResult, get_scope_registry};
+    use std::sync::Arc;
+
+    let ctx_addr = ctx as usize;
+    let task = TaskWithResult::new(move || {
+        let ctx_ptr = ctx_addr as *mut u8;
+        func(ctx_ptr)
+    });
+    let handle = task.handle();
+    let task_id = task.id().as_u64();
+
+    let scope_registry = get_scope_registry();
+    scope_registry.register_task(handle.clone());
+
+    let runtime = GreenThreadRuntime::get();
+    let mut guard = runtime.lock();
+    if let Some(rt) = guard.as_mut() {
+        rt.spawn_with_result(task);
+    }
+
+    TASK_HANDLES.lock().unwrap().insert(task_id, Arc::new(handle));
+    task_id
+}
+
+/// Spawn a task with context that returns an f32 value
+#[no_mangle]
+pub extern "C" fn plat_spawn_task_f32_ctx(func: extern "C" fn(*mut u8) -> f32, ctx: *mut u8) -> u64 {
+    use green_runtime::{GreenThreadRuntime, task_with_result::TaskWithResult, get_scope_registry};
+    use std::sync::Arc;
+
+    let ctx_addr = ctx as usize;
+    let task = TaskWithResult::new(move || {
+        let ctx_ptr = ctx_addr as *mut u8;
+        func(ctx_ptr)
+    });
+    let handle = task.handle();
+    let task_id = task.id().as_u64();
+
+    let scope_registry = get_scope_registry();
+    scope_registry.register_task(handle.clone());
+
+    let runtime = GreenThreadRuntime::get();
+    let mut guard = runtime.lock();
+    if let Some(rt) = guard.as_mut() {
+        rt.spawn_with_result(task);
+    }
+
+    TASK_HANDLES.lock().unwrap().insert(task_id, Arc::new(handle));
+    task_id
+}
+
+/// Spawn a task with context that returns an f64 value
+#[no_mangle]
+pub extern "C" fn plat_spawn_task_f64_ctx(func: extern "C" fn(*mut u8) -> f64, ctx: *mut u8) -> u64 {
+    use green_runtime::{GreenThreadRuntime, task_with_result::TaskWithResult, get_scope_registry};
+    use std::sync::Arc;
+
+    let ctx_addr = ctx as usize;
+    let task = TaskWithResult::new(move || {
+        let ctx_ptr = ctx_addr as *mut u8;
+        func(ctx_ptr)
+    });
+    let handle = task.handle();
+    let task_id = task.id().as_u64();
+
+    let scope_registry = get_scope_registry();
+    scope_registry.register_task(handle.clone());
+
+    let runtime = GreenThreadRuntime::get();
+    let mut guard = runtime.lock();
+    if let Some(rt) = guard.as_mut() {
+        rt.spawn_with_result(task);
+    }
+
+    TASK_HANDLES.lock().unwrap().insert(task_id, Arc::new(handle));
+    task_id
+}
+
+// ============================================================================
 // Scope Management for Structured Concurrency
 // ============================================================================
 

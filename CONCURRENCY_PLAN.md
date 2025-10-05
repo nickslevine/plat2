@@ -201,8 +201,8 @@
 - ✅ **FIXED:** CLIF verification errors resolved (#1)
 - ✅ **FIXED:** Tasks now execute in parallel on worker threads (#8)
 - ✅ **FIXED:** Task handle registry bug (#2 related)
-- ⚠️  Only i64 return types fully working (#3)
-- ⚠️  No variable capture in spawn closures yet (#2)
+- ✅ **FIXED:** Multiple return types (i32, i64, bool, f32, f64) now working (#3)
+- ✅ **FIXED:** Variable capture in spawn closures now working (#2)
 
 **See "KNOWN ISSUES & BLOCKERS" section below for full details**
 
@@ -247,47 +247,64 @@
 
 ### Major Limitations
 
-**2. No Variable Capture in Spawn Closures**
-- **Status:** ⚠️ LIMITATION
-- **Description:** Spawn blocks cannot capture variables from outer scope
+**2. No Variable Capture in Spawn Closures** ✅ COMPLETE
+- **Status:** ✅ FIXED
+- **Description:** Spawn blocks can now capture variables from outer scope
 - **Example:**
   ```plat
   let x: Int32 = 42;
+  let y: Int32 = 100;
   let task: Task<Int32> = spawn {
-    return x;  // ❌ ERROR: x not in scope
+    return x + y;  // ✅ Works! Captures x and y
   };
   ```
-- **Workaround:** All values must be self-contained in spawn block
-- **Implementation Needed:**
-  1. Detect captured variables during HIR analysis
-  2. Generate closure struct with captured variable fields
-  3. Pass captures as function arguments
-  4. Update closure calling convention
-- **Priority:** HIGH (required for real-world use)
+- **Solution Implemented:**
+  1. ✅ Detect captured variables during codegen using AST analysis
+  2. ✅ Allocate heap memory for capture struct (using malloc)
+  3. ✅ Store captured values in struct at spawn time
+  4. ✅ Pass context pointer to spawned closure
+  5. ✅ Extract captured values inside closure and make available as local variables
+  6. ✅ Added context-aware spawn functions (plat_spawn_task_*_ctx)
+  7. ✅ Convert raw pointers to usize for thread safety (Send trait)
+- **Technical Details:**
+  - Capture detection walks AST to find variables used but not defined locally
+  - Context struct allocated with malloc, size calculated from captured types
+  - Context passed as `*mut u8` parameter to closure
+  - Closure loads values from context memory at appropriate offsets
+  - Works with Int32, Int64, Bool, Float32, Float64
+- **Tested:** Successfully captures single and multiple variables
+- **Priority:** ✅ COMPLETE
 
-**3. Limited Type Support for Task Return Values** 🔄 PARTIAL
-- **Status:** 🔄 RUNTIME COMPLETE, CODEGEN INCOMPLETE
-- **Description:** Runtime support added for multiple types, codegen integration pending
+**3. Limited Type Support for Task Return Values** ✅ COMPLETE
+- **Status:** ✅ FIXED
+- **Description:** Runtime and codegen support for multiple primitive types
 - **Runtime Support (Complete):**
   - ✅ Int32 → i32 (plat_spawn_task_i32, plat_task_await_i32)
   - ✅ Int64 → i64 (plat_spawn_task_i64, plat_task_await_i64)
   - ✅ Bool → bool (plat_spawn_task_bool, plat_task_await_bool)
   - ✅ Float32 → f32 (plat_spawn_task_f32, plat_task_await_f32)
   - ✅ Float64 → f64 (plat_spawn_task_f64, plat_task_await_f64)
-- **Codegen Integration:**
-  - ⚠️ Currently hardcoded to use i64 functions only
-  - ⚠️ Needs type information from HIR to select correct spawn/await function
-  - ⚠️ Closure return type inference incomplete
+- **Codegen Integration (Complete):**
+  - ✅ Added Task<T> variant to VariableType enum
+  - ✅ Infer closure return type from spawn block
+  - ✅ Generate appropriate closure signature based on type
+  - ✅ Call correct spawn/await functions (plat_spawn_task_i32/i64/bool/f32/f64)
+  - ✅ Track Task<T> types in variable type system
+  - ✅ Extract inner type from Task<T> for await operations
 - **Not Yet Implemented:**
   - ❌ String (heap-allocated types)
   - ❌ Custom classes
   - ❌ Collections (List, Dict, Set)
   - ❌ Enums (Option, Result)
-- **Implementation Needed:**
-  1. Pass HIR type information to codegen for Task<T> types
-  2. Select appropriate spawn/await function based on T
-  3. Handle closure signature generation for different return types
-- **Priority:** MEDIUM (basic types work, advanced types can wait)
+- **Solution Implemented:**
+  1. Added `VariableType::Task(Box<VariableType>)` to track Task types
+  2. Modified `infer_block_return_type()` to analyze return statements
+  3. Added `get_spawn_function_name()` and `get_await_function_name()` helpers
+  4. Updated spawn expression codegen to infer type and use correct functions
+  5. Updated await expression codegen to extract Task inner type and call correct await
+  6. Modified `ast_type_to_variable_type_static()` to handle Task<T> type annotations
+- **Tested:** Working with Int32, Bool, Float32 return types
+- **Priority:** ✅ COMPLETE for basic types
 
 **4. Parser Requires Explicit Return Statements**
 - **Status:** ⚠️ LIMITATION

@@ -35,6 +35,7 @@ pub enum VariableType {
     Set,
     Class(String), // class name
     Enum(String), // enum name
+    Task(Box<VariableType>), // Task<T> with inner type
 }
 
 /// Metadata about a class field
@@ -231,6 +232,170 @@ impl CodeGenerator {
         }
     }
 
+    /// Infer the return type of a block by analyzing return statements
+    fn infer_block_return_type(block: &Block, variable_types: &HashMap<String, VariableType>) -> VariableType {
+        for stmt in &block.statements {
+            if let Statement::Return { value, .. } = stmt {
+                if let Some(expr) = value {
+                    return Self::infer_expression_type(expr, variable_types);
+                }
+            }
+        }
+        // Default to Int32 if no return found
+        VariableType::Int32
+    }
+
+    /// Get the spawn function name for a given return type
+    fn get_spawn_function_name(return_type: &VariableType) -> &'static str {
+        match return_type {
+            VariableType::Bool => "plat_spawn_task_bool",
+            VariableType::Int32 => "plat_spawn_task_i32",
+            VariableType::Int64 => "plat_spawn_task_i64",
+            VariableType::Float32 => "plat_spawn_task_f32",
+            VariableType::Float64 => "plat_spawn_task_f64",
+            _ => "plat_spawn_task_i64", // Default to i64 for unsupported types
+        }
+    }
+
+    /// Get the await function name for a given return type
+    fn get_await_function_name(return_type: &VariableType) -> &'static str {
+        match return_type {
+            VariableType::Bool => "plat_task_await_bool",
+            VariableType::Int32 => "plat_task_await_i32",
+            VariableType::Int64 => "plat_task_await_i64",
+            VariableType::Float32 => "plat_task_await_f32",
+            VariableType::Float64 => "plat_task_await_f64",
+            _ => "plat_task_await_i64", // Default to i64 for unsupported types
+        }
+    }
+
+    /// Find all captured variables in an expression (variables not defined in local_vars)
+    fn find_captured_variables(
+        expr: &Expression,
+        local_vars: &HashMap<String, VariableType>,
+        captured: &mut Vec<String>
+    ) {
+        match expr {
+            Expression::Identifier { name, .. } => {
+                if !local_vars.contains_key(name) && !captured.contains(name) {
+                    captured.push(name.clone());
+                }
+            }
+            Expression::Binary { left, right, .. } => {
+                Self::find_captured_variables(left, local_vars, captured);
+                Self::find_captured_variables(right, local_vars, captured);
+            }
+            Expression::Unary { operand, .. } => {
+                Self::find_captured_variables(operand, local_vars, captured);
+            }
+            Expression::Call { args, .. } => {
+                // Function name is a string, not an expression, no need to check for captures
+                for arg in args {
+                    Self::find_captured_variables(&arg.value, local_vars, captured);
+                }
+            }
+            Expression::MethodCall { object, args, .. } => {
+                Self::find_captured_variables(object, local_vars, captured);
+                for arg in args {
+                    Self::find_captured_variables(&arg.value, local_vars, captured);
+                }
+            }
+            Expression::Index { object, index, .. } => {
+                Self::find_captured_variables(object, local_vars, captured);
+                Self::find_captured_variables(index, local_vars, captured);
+            }
+            Expression::MemberAccess { object, .. } => {
+                Self::find_captured_variables(object, local_vars, captured);
+            }
+            Expression::Assignment { target, value, .. } => {
+                Self::find_captured_variables(target, local_vars, captured);
+                Self::find_captured_variables(value, local_vars, captured);
+            }
+            Expression::If { condition, then_branch, else_branch, .. } => {
+                Self::find_captured_variables(condition, local_vars, captured);
+                Self::find_captured_variables(then_branch, local_vars, captured);
+                if let Some(else_expr) = else_branch {
+                    Self::find_captured_variables(else_expr, local_vars, captured);
+                }
+            }
+            Expression::Block(block) => {
+                let mut block_locals = local_vars.clone();
+                for stmt in &block.statements {
+                    Self::find_captured_in_statement(stmt, &mut block_locals, captured);
+                }
+            }
+            Expression::Match { value, arms, .. } => {
+                Self::find_captured_variables(value, local_vars, captured);
+                for arm in arms {
+                    Self::find_captured_variables(&arm.body, local_vars, captured);
+                }
+            }
+            Expression::Cast { value, .. } => {
+                Self::find_captured_variables(value, local_vars, captured);
+            }
+            Expression::Spawn { body, .. } => {
+                // Don't recurse into spawn - it has its own scope
+                Self::find_captured_variables(body, local_vars, captured);
+            }
+            _ => {} // Literals and other expressions don't capture
+        }
+    }
+
+    /// Find captured variables in a statement
+    fn find_captured_in_statement(
+        stmt: &Statement,
+        local_vars: &mut HashMap<String, VariableType>,
+        captured: &mut Vec<String>
+    ) {
+        match stmt {
+            Statement::Let { name, value, .. } | Statement::Var { name, value, .. } => {
+                Self::find_captured_variables(value, local_vars, captured);
+                // Add to local vars (type doesn't matter for capture detection)
+                local_vars.insert(name.clone(), VariableType::Int32);
+            }
+            Statement::Return { value, .. } => {
+                if let Some(expr) = value {
+                    Self::find_captured_variables(expr, local_vars, captured);
+                }
+            }
+            Statement::Expression(expression) => {
+                Self::find_captured_variables(expression, local_vars, captured);
+            }
+            Statement::For { variable, iterable, body, .. } => {
+                Self::find_captured_variables(iterable, local_vars, captured);
+                local_vars.insert(variable.clone(), VariableType::Int32);
+                for stmt in &body.statements {
+                    Self::find_captured_in_statement(stmt, local_vars, captured);
+                }
+            }
+            Statement::While { condition, body, .. } => {
+                Self::find_captured_variables(condition, local_vars, captured);
+                for stmt in &body.statements {
+                    Self::find_captured_in_statement(stmt, local_vars, captured);
+                }
+            }
+            Statement::If { condition, then_branch, else_branch, .. } => {
+                Self::find_captured_variables(condition, local_vars, captured);
+                for stmt in &then_branch.statements {
+                    Self::find_captured_in_statement(stmt, local_vars, captured);
+                }
+                if let Some(else_block) = else_branch {
+                    for stmt in &else_block.statements {
+                        Self::find_captured_in_statement(stmt, local_vars, captured);
+                    }
+                }
+            }
+            Statement::Concurrent { body, .. } => {
+                for stmt in &body.statements {
+                    Self::find_captured_in_statement(stmt, local_vars, captured);
+                }
+            }
+            Statement::Print { value, .. } => {
+                Self::find_captured_variables(value, local_vars, captured);
+            }
+        }
+    }
+
     /// Convert a VariableType to the corresponding Cranelift Type
     fn variable_type_to_cranelift_type(var_type: &VariableType) -> Type {
         match var_type {
@@ -249,6 +414,7 @@ impl CodeGenerator {
             VariableType::Set => I64,       // Sets are pointers
             VariableType::Class(_) => I64,  // Class instances are pointers
             VariableType::Enum(_) => I64,   // Enums are 64-bit values (discriminant + data)
+            VariableType::Task(_) => I64,   // Task handles are 64-bit IDs
         }
     }
 
@@ -344,7 +510,15 @@ impl CodeGenerator {
             }
             AstType::Dict(_, _) => VariableType::Dict,
             AstType::Set(_) => VariableType::Set,
-            AstType::Named(type_name, _) => VariableType::Class(type_name.clone()),
+            AstType::Named(type_name, type_params) => {
+                // Check if this is a Task<T> type
+                if type_name == "Task" && type_params.len() == 1 {
+                    let inner_var_type = Self::ast_type_to_variable_type_static(type_aliases, &type_params[0]);
+                    VariableType::Task(Box::new(inner_var_type))
+                } else {
+                    VariableType::Class(type_name.clone())
+                }
+            }
         }
     }
     pub fn new() -> Result<Self, CodegenError> {
@@ -3609,11 +3783,26 @@ impl CodeGenerator {
                             return Err(CodegenError::UnsupportedFeature("await() method takes no arguments".to_string()));
                         }
 
+                        // Determine the inner type of the Task<T> from the object
+                        let task_inner_type = if let Expression::Identifier { name, .. } = object.as_ref() {
+                            if let Some(VariableType::Task(inner)) = variable_types.get(name) {
+                                (**inner).clone()
+                            } else {
+                                // Fallback to Int32 if type not found or not a Task
+                                VariableType::Int32
+                            }
+                        } else {
+                            // For complex expressions, default to Int32
+                            VariableType::Int32
+                        };
+
                         // Generate the task handle value
                         let task_handle = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
 
-                        // Declare plat_task_await_i64 function
-                        let await_func_name = "plat_task_await_i64";
+                        // Get the appropriate await function name based on inner type
+                        let await_func_name = Self::get_await_function_name(&task_inner_type);
+                        let await_return_type = Self::variable_type_to_cranelift_type(&task_inner_type);
+
                         let await_func_id = if let Some(&func_id) = functions.get(await_func_name) {
                             func_id
                         } else {
@@ -3621,7 +3810,7 @@ impl CodeGenerator {
                             let mut await_sig = module.make_signature();
                             await_sig.call_conv = CallConv::SystemV;
                             await_sig.params.push(AbiParam::new(I64)); // Task handle
-                            await_sig.returns.push(AbiParam::new(I64)); // Result value
+                            await_sig.returns.push(AbiParam::new(await_return_type)); // Result value
 
                             let func_id = module.declare_function(await_func_name, Linkage::Import, &await_sig)
                                 .map_err(CodegenError::ModuleError)?;
@@ -3633,10 +3822,7 @@ impl CodeGenerator {
                         let call = builder.ins().call(await_func_ref, &[task_handle]);
                         let result = builder.inst_results(call)[0];
 
-                        // For now, convert i64 result to i32 if needed
-                        // TODO: Handle generic return types properly
-                        let result_i32 = builder.ins().ireduce(I32, result);
-                        Ok(result_i32)
+                        Ok(result)
                     }
                     // Class methods
                     method_name if Self::is_class_type(object, variable_types) => {
@@ -4318,17 +4504,92 @@ impl CodeGenerator {
                 Ok(result)
             }
             Expression::Spawn { body, .. } => {
-                // For now, generate a simple closure that returns the body's value
-                // TODO: Handle variable capture
+                // Detect captured variables (variables from outer scope used in spawn body)
+                let mut captured_vars = Vec::new();
+                let empty_locals = HashMap::new();  // Spawn body starts with no local variables
+                Self::find_captured_variables(body, &empty_locals, &mut captured_vars);
+
+                // Filter captured_vars to only include those that exist in outer scope
+                captured_vars.retain(|name| variable_types.contains_key(name));
+
+                // Infer the return type of the spawn closure
+                let closure_return_type = if let Expression::Block(block) = body.as_ref() {
+                    Self::infer_block_return_type(block, variable_types)
+                } else {
+                    Self::infer_expression_type(body, variable_types)
+                };
 
                 // Create a unique closure function name
                 let closure_name = format!("__spawn_closure_{}", string_counter);
                 *string_counter += 1;
 
-                // Create the closure function signature (returns i64 for now)
+                // Create the closure function signature with the inferred return type
+                let cranelift_return_type = Self::variable_type_to_cranelift_type(&closure_return_type);
                 let mut sig = module.make_signature();
                 sig.call_conv = CallConv::SystemV;
-                sig.returns.push(AbiParam::new(I64));
+
+                // If there are captures, add context pointer parameter
+                let has_captures = !captured_vars.is_empty();
+                if has_captures {
+                    sig.params.push(AbiParam::new(I64)); // Context pointer
+                }
+                sig.returns.push(AbiParam::new(cranelift_return_type));
+
+                // Convert VariableType to AstType for statement generation
+                let return_ast_type = match closure_return_type {
+                    VariableType::Bool => AstType::Bool,
+                    VariableType::Int32 => AstType::Int32,
+                    VariableType::Int64 => AstType::Int64,
+                    VariableType::Float32 => AstType::Float32,
+                    VariableType::Float64 => AstType::Float64,
+                    _ => AstType::Int64, // Default
+                };
+
+                // Allocate context struct if needed
+                let ctx_ptr = if has_captures {
+                    // Calculate total size needed for captured variables
+                    let mut total_size = 0i64;
+                    for var_name in &captured_vars {
+                        if let Some(var_type) = variable_types.get(var_name) {
+                            let type_size = Self::variable_type_to_cranelift_type(var_type);
+                            total_size += type_size.bytes() as i64;
+                        }
+                    }
+
+                    // Allocate memory for context (using malloc-like function)
+                    let malloc_sig = {
+                        let mut sig = module.make_signature();
+                        sig.call_conv = CallConv::SystemV;
+                        sig.params.push(AbiParam::new(I64)); // size
+                        sig.returns.push(AbiParam::new(I64)); // pointer
+                        sig
+                    };
+                    let malloc_id = module.declare_function("malloc", Linkage::Import, &malloc_sig)
+                        .map_err(CodegenError::ModuleError)?;
+                    let malloc_ref = module.declare_func_in_func(malloc_id, builder.func);
+
+                    let size_val = builder.ins().iconst(I64, total_size);
+                    let call = builder.ins().call(malloc_ref, &[size_val]);
+                    let ptr = builder.inst_results(call)[0];
+
+                    // Store captured values in the context
+                    let mut offset = 0i32;
+                    for var_name in &captured_vars {
+                        if let Some(var) = variables.get(var_name) {
+                            let val = builder.use_var(*var);
+                            builder.ins().store(MemFlags::trusted(), val, ptr, offset);
+
+                            if let Some(var_type) = variable_types.get(var_name) {
+                                let type_size = Self::variable_type_to_cranelift_type(var_type);
+                                offset += type_size.bytes() as i32;
+                            }
+                        }
+                    }
+
+                    Some(ptr)
+                } else {
+                    None
+                };
 
                 // Declare the closure function
                 let closure_func_id = module.declare_function(&closure_name, Linkage::Local, &sig)
@@ -4343,6 +4604,14 @@ impl CodeGenerator {
                     let mut closure_builder = FunctionBuilder::new(&mut ctx.func, &mut fn_builder_ctx);
                     let entry_block = closure_builder.create_block();
                     closure_builder.switch_to_block(entry_block);
+
+                    // If there are captures, append block parameter for context
+                    let ctx_param = if has_captures {
+                        Some(closure_builder.append_block_param(entry_block, I64))
+                    } else {
+                        None
+                    };
+
                     closure_builder.seal_block(entry_block);
 
                     // Generate the body
@@ -4350,10 +4619,29 @@ impl CodeGenerator {
                     let mut closure_variable_types = HashMap::new();
                     let mut closure_variable_counter = 0;
 
+                    // Extract captured variables from context
+                    if let Some(ctx_val) = ctx_param {
+                        let mut offset = 0i32;
+                        for var_name in &captured_vars {
+                            if let Some(var_type) = variable_types.get(var_name) {
+                                let cranelift_type = Self::variable_type_to_cranelift_type(var_type);
+                                let loaded_val = closure_builder.ins().load(cranelift_type, MemFlags::trusted(), ctx_val, offset);
+
+                                let var = Variable::from_u32(closure_variable_counter);
+                                closure_variable_counter += 1;
+                                closure_builder.declare_var(var, cranelift_type);
+                                closure_builder.def_var(var, loaded_val);
+                                closure_variables.insert(var_name.clone(), var);
+                                closure_variable_types.insert(var_name.clone(), var_type.clone());
+
+                                offset += cranelift_type.bytes() as i32;
+                            }
+                        }
+                    }
+
                     // Special handling for Block expressions (the common case for spawn blocks)
                     if let Expression::Block(block) = body.as_ref() {
                         // Generate statements in the block
-                        // The block should contain return statements that will handle the return value
                         let empty_type_aliases = HashMap::new(); // No type aliases in closure scope
                         let mut has_return = false;
                         for stmt in &block.statements {
@@ -4368,16 +4656,22 @@ impl CodeGenerator {
                                 string_counter,
                                 class_metadata,
                                 &empty_type_aliases,
-                                &closure_name, // function name for debugging
-                                &Some(AstType::Int64), // return type (i64 for now)
+                                &closure_name,
+                                &Some(return_ast_type.clone()),
                                 test_mode
                             )?;
                         }
 
-                        // If the block didn't have a return, add a default return of 0
+                        // If the block didn't have a return, add a default return
                         if !has_return {
-                            let zero = closure_builder.ins().iconst(I64, 0);
-                            closure_builder.ins().return_(&[zero]);
+                            let default_val = match cranelift_return_type {
+                                I32 => closure_builder.ins().iconst(I32, 0),
+                                I64 => closure_builder.ins().iconst(I64, 0),
+                                F32 => closure_builder.ins().f32const(0.0),
+                                F64 => closure_builder.ins().f64const(0.0),
+                                _ => closure_builder.ins().iconst(I64, 0),
+                            };
+                            closure_builder.ins().return_(&[default_val]);
                         }
                     } else {
                         // For non-block expressions, generate as expression
@@ -4394,14 +4688,7 @@ impl CodeGenerator {
                             test_mode
                         )?;
 
-                        // Convert result to i64 if needed
-                        let result_i64 = match Self::infer_expression_type(body, &closure_variable_types) {
-                            VariableType::Int32 => closure_builder.ins().sextend(I64, result_val),
-                            VariableType::Int64 => result_val,
-                            _ => result_val, // For other types, just use as-is for now
-                        };
-
-                        closure_builder.ins().return_(&[result_i64]);
+                        closure_builder.ins().return_(&[result_val]);
                     }
 
                     // Finalize the closure function
@@ -4411,8 +4698,20 @@ impl CodeGenerator {
                         .map_err(CodegenError::ModuleError)?;
                 }
 
-                // Call plat_spawn_task_i64 with the closure function pointer
-                let spawn_func_name = "plat_spawn_task_i64";
+                // Get the appropriate spawn function name based on return type and captures
+                let spawn_func_name = if has_captures {
+                    match closure_return_type {
+                        VariableType::Bool => "plat_spawn_task_bool_ctx",
+                        VariableType::Int32 => "plat_spawn_task_i32_ctx",
+                        VariableType::Int64 => "plat_spawn_task_i64_ctx",
+                        VariableType::Float32 => "plat_spawn_task_f32_ctx",
+                        VariableType::Float64 => "plat_spawn_task_f64_ctx",
+                        _ => "plat_spawn_task_i64_ctx", // Default
+                    }
+                } else {
+                    Self::get_spawn_function_name(&closure_return_type)
+                };
+
                 let spawn_func_id = if let Some(&func_id) = functions.get(spawn_func_name) {
                     func_id
                 } else {
@@ -4420,6 +4719,9 @@ impl CodeGenerator {
                     let mut spawn_sig = module.make_signature();
                     spawn_sig.call_conv = CallConv::SystemV;
                     spawn_sig.params.push(AbiParam::new(I64)); // Function pointer
+                    if has_captures {
+                        spawn_sig.params.push(AbiParam::new(I64)); // Context pointer
+                    }
                     spawn_sig.returns.push(AbiParam::new(I64)); // Task handle
 
                     let func_id = module.declare_function(spawn_func_name, Linkage::Import, &spawn_sig)
@@ -4433,7 +4735,12 @@ impl CodeGenerator {
 
                 // Call spawn function
                 let spawn_func_ref = module.declare_func_in_func(spawn_func_id, builder.func);
-                let call = builder.ins().call(spawn_func_ref, &[closure_ptr]);
+                let spawn_args = if let Some(ctx) = ctx_ptr {
+                    vec![closure_ptr, ctx]
+                } else {
+                    vec![closure_ptr]
+                };
+                let call = builder.ins().call(spawn_func_ref, &spawn_args);
                 let task_handle = builder.inst_results(call)[0];
 
                 Ok(task_handle)
@@ -4909,6 +5216,21 @@ impl CodeGenerator {
                                         sig
                                     };
                                     let convert_id = module.declare_function("plat_class_to_string", Linkage::Import, &convert_sig)
+                                        .map_err(CodegenError::ModuleError)?;
+                                    let convert_ref = module.declare_func_in_func(convert_id, builder.func);
+                                    let call = builder.ins().call(convert_ref, &[expr_val]);
+                                    builder.inst_results(call)[0]
+                                }
+                                Some(VariableType::Task(_)) => {
+                                    // Task variable (task handle), convert to string as i64
+                                    let convert_sig = {
+                                        let mut sig = module.make_signature();
+                                        sig.call_conv = CallConv::SystemV;
+                                        sig.params.push(AbiParam::new(I64));
+                                        sig.returns.push(AbiParam::new(I64));
+                                        sig
+                                    };
+                                    let convert_id = module.declare_function("plat_i64_to_string", Linkage::Import, &convert_sig)
                                         .map_err(CodegenError::ModuleError)?;
                                     let convert_ref = module.declare_func_in_func(convert_id, builder.func);
                                     let call = builder.ins().call(convert_ref, &[expr_val]);
