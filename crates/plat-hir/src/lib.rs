@@ -2034,6 +2034,62 @@ impl TypeChecker {
                     return Ok(HirType::Bool);
                 }
 
+                // Handle built-in file_delete function
+                if function == "file_delete" {
+                    // file_delete(path: String) -> Result<Bool, String>
+                    if args.len() != 1 {
+                        return Err(DiagnosticError::Type(
+                            "file_delete requires exactly 1 argument: 'path'".to_string()
+                        ));
+                    }
+
+                    let path_arg = args.iter().find(|arg| arg.name == "path")
+                        .ok_or_else(|| DiagnosticError::Type("file_delete requires a 'path' parameter".to_string()))?;
+
+                    let path_type = self.check_expression(&path_arg.value)?;
+
+                    if path_type != HirType::String {
+                        return Err(DiagnosticError::Type(
+                            format!("file_delete 'path' parameter must be String, got {:?}", path_type)
+                        ));
+                    }
+
+                    return Ok(HirType::Enum("Result".to_string(), vec![HirType::Bool, HirType::String]));
+                }
+
+                // Handle built-in file_rename function
+                if function == "file_rename" {
+                    // file_rename(old_path: String, new_path: String) -> Result<Bool, String>
+                    if args.len() != 2 {
+                        return Err(DiagnosticError::Type(
+                            "file_rename requires exactly 2 arguments: 'old_path' and 'new_path'".to_string()
+                        ));
+                    }
+
+                    let old_path_arg = args.iter().find(|arg| arg.name == "old_path")
+                        .ok_or_else(|| DiagnosticError::Type("file_rename requires an 'old_path' parameter".to_string()))?;
+
+                    let new_path_arg = args.iter().find(|arg| arg.name == "new_path")
+                        .ok_or_else(|| DiagnosticError::Type("file_rename requires a 'new_path' parameter".to_string()))?;
+
+                    let old_path_type = self.check_expression(&old_path_arg.value)?;
+                    let new_path_type = self.check_expression(&new_path_arg.value)?;
+
+                    if old_path_type != HirType::String {
+                        return Err(DiagnosticError::Type(
+                            format!("file_rename 'old_path' parameter must be String, got {:?}", old_path_type)
+                        ));
+                    }
+
+                    if new_path_type != HirType::String {
+                        return Err(DiagnosticError::Type(
+                            format!("file_rename 'new_path' parameter must be String, got {:?}", new_path_type)
+                        ));
+                    }
+
+                    return Ok(HirType::Enum("Result".to_string(), vec![HirType::Bool, HirType::String]));
+                }
+
                 // Handle built-in channel_init function
                 if function == "channel_init" {
                     // channel_init<T>(capacity: Int32) -> Channel<T>

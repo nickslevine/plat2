@@ -1,0 +1,156 @@
+// Test file_delete and file_rename functions
+
+fn main() -> Int32 {
+    print(value = "=== Testing file_delete and file_rename ===");
+
+    // Test 1: Create a file, then delete it
+    print(value = "\n1. Testing file_delete success...");
+    let fd_result: Result<Int32, String> = file_open(path = "test_delete.txt", mode = "w");
+
+    let fd: Int32 = match fd_result {
+        Result::Ok(f: Int32) -> f,
+        Result::Err(msg: String) -> 0
+    };
+
+    if (fd == 0) {
+        print(value = "✗ FAIL: Failed to create file");
+        return 1;
+    }
+
+    let write_result: Result<Int32, String> = file_write(fd = fd, data = "To be deleted");
+    let write_success: Bool = match write_result {
+        Result::Ok(bytes: Int32) -> true,
+        Result::Err(msg: String) -> false
+    };
+
+    let close_result: Result<Bool, String> = file_close(fd = fd);
+    let close_success: Bool = match close_result {
+        Result::Ok(success: Bool) -> success,
+        Result::Err(msg: String) -> false
+    };
+
+    // Now delete the file
+    let delete_result: Result<Bool, String> = file_delete(path = "test_delete.txt");
+
+    let delete_success: Bool = match delete_result {
+        Result::Ok(success: Bool) -> true,
+        Result::Err(msg: String) -> false
+    };
+
+    if (delete_success) {
+        print(value = "✓ File deleted successfully");
+    } else {
+        print(value = "✗ FAIL: File deletion failed");
+        return 1;
+    }
+
+    // Verify file doesn't exist anymore
+    let exists: Bool = file_exists(path = "test_delete.txt");
+    if (exists) {
+        print(value = "✗ FAIL: File still exists after deletion");
+        return 1;
+    } else {
+        print(value = "✓ File confirmed deleted");
+    }
+
+    // Test 2: Try to delete a non-existent file (should fail)
+    print(value = "\n2. Testing file_delete on non-existent file...");
+    let delete_nonexistent: Result<Bool, String> = file_delete(path = "nonexistent_file.txt");
+
+    let got_error1: Bool = match delete_nonexistent {
+        Result::Ok(success: Bool) -> false,
+        Result::Err(msg: String) -> true
+    };
+
+    if (got_error1) {
+        print(value = "✓ Correctly failed to delete non-existent file");
+    } else {
+        print(value = "✗ FAIL: Deleting non-existent file should fail");
+        return 1;
+    }
+
+    // Test 3: Create a file and rename it
+    print(value = "\n3. Testing file_rename success...");
+    let fd2_result: Result<Int32, String> = file_open(path = "test_rename_old.txt", mode = "w");
+
+    let fd2: Int32 = match fd2_result {
+        Result::Ok(f: Int32) -> f,
+        Result::Err(msg: String) -> 0
+    };
+
+    if (fd2 == 0) {
+        print(value = "✗ FAIL: Failed to create file for rename");
+        return 1;
+    }
+
+    let write2_result: Result<Int32, String> = file_write(fd = fd2, data = "To be renamed");
+    let write2_success: Bool = match write2_result {
+        Result::Ok(bytes: Int32) -> true,
+        Result::Err(msg: String) -> false
+    };
+
+    let close2_result: Result<Bool, String> = file_close(fd = fd2);
+    let close2_success: Bool = match close2_result {
+        Result::Ok(success: Bool) -> success,
+        Result::Err(msg: String) -> false
+    };
+
+    // Rename the file
+    let rename_result: Result<Bool, String> = file_rename(old_path = "test_rename_old.txt", new_path = "test_rename_new.txt");
+
+    let rename_success: Bool = match rename_result {
+        Result::Ok(success: Bool) -> true,
+        Result::Err(msg: String) -> false
+    };
+
+    if (rename_success) {
+        print(value = "✓ File renamed successfully");
+    } else {
+        print(value = "✗ FAIL: File rename failed");
+        return 1;
+    }
+
+    // Verify old file doesn't exist
+    let old_exists: Bool = file_exists(path = "test_rename_old.txt");
+    if (old_exists) {
+        print(value = "✗ FAIL: Old filename still exists");
+        return 1;
+    } else {
+        print(value = "✓ Old filename confirmed gone");
+    }
+
+    // Verify new file exists
+    let new_exists: Bool = file_exists(path = "test_rename_new.txt");
+    if (new_exists) {
+        print(value = "✓ New filename exists");
+    } else {
+        print(value = "✗ FAIL: New filename doesn't exist");
+        return 1;
+    }
+
+    // Clean up: delete the renamed file
+    let cleanup_result: Result<Bool, String> = file_delete(path = "test_rename_new.txt");
+    let cleanup_success: Bool = match cleanup_result {
+        Result::Ok(success: Bool) -> success,
+        Result::Err(msg: String) -> false
+    };
+
+    // Test 4: Try to rename a non-existent file (should fail)
+    print(value = "\n4. Testing file_rename on non-existent file...");
+    let rename_nonexistent: Result<Bool, String> = file_rename(old_path = "nonexistent.txt", new_path = "also_nonexistent.txt");
+
+    let got_error2: Bool = match rename_nonexistent {
+        Result::Ok(success: Bool) -> false,
+        Result::Err(msg: String) -> true
+    };
+
+    if (got_error2) {
+        print(value = "✓ Correctly failed to rename non-existent file");
+    } else {
+        print(value = "✗ FAIL: Renaming non-existent file should fail");
+        return 1;
+    }
+
+    print(value = "\n=== All file operation tests passed! ===");
+    return 0;
+}

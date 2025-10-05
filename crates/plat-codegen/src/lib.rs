@@ -2758,6 +2758,59 @@ impl CodeGenerator {
                     return Ok(builder.inst_results(call)[0]);
                 }
 
+                // Handle built-in file_delete function
+                if function == "file_delete" {
+                    // file_delete(path: String) -> Result<Bool, String>
+                    let path_arg = args.iter().find(|arg| arg.name == "path")
+                        .ok_or_else(|| CodegenError::UnsupportedFeature("file_delete missing 'path' parameter".to_string()))?;
+
+                    let path_val = Self::generate_expression_helper(builder, &path_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+
+                    let func_sig = {
+                        let mut sig = module.make_signature();
+                        sig.call_conv = CallConv::SystemV;
+                        sig.params.push(AbiParam::new(I64)); // path string pointer
+                        sig.returns.push(AbiParam::new(I64)); // Result enum pointer
+                        sig
+                    };
+
+                    let func_id = module.declare_function("plat_file_delete", Linkage::Import, &func_sig)
+                        .map_err(CodegenError::ModuleError)?;
+                    let func_ref = module.declare_func_in_func(func_id, builder.func);
+
+                    let call = builder.ins().call(func_ref, &[path_val]);
+                    return Ok(builder.inst_results(call)[0]);
+                }
+
+                // Handle built-in file_rename function
+                if function == "file_rename" {
+                    // file_rename(old_path: String, new_path: String) -> Result<Bool, String>
+                    let old_path_arg = args.iter().find(|arg| arg.name == "old_path")
+                        .ok_or_else(|| CodegenError::UnsupportedFeature("file_rename missing 'old_path' parameter".to_string()))?;
+
+                    let new_path_arg = args.iter().find(|arg| arg.name == "new_path")
+                        .ok_or_else(|| CodegenError::UnsupportedFeature("file_rename missing 'new_path' parameter".to_string()))?;
+
+                    let old_path_val = Self::generate_expression_helper(builder, &old_path_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                    let new_path_val = Self::generate_expression_helper(builder, &new_path_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+
+                    let func_sig = {
+                        let mut sig = module.make_signature();
+                        sig.call_conv = CallConv::SystemV;
+                        sig.params.push(AbiParam::new(I64)); // old_path string pointer
+                        sig.params.push(AbiParam::new(I64)); // new_path string pointer
+                        sig.returns.push(AbiParam::new(I64)); // Result enum pointer
+                        sig
+                    };
+
+                    let func_id = module.declare_function("plat_file_rename", Linkage::Import, &func_sig)
+                        .map_err(CodegenError::ModuleError)?;
+                    let func_ref = module.declare_func_in_func(func_id, builder.func);
+
+                    let call = builder.ins().call(func_ref, &[old_path_val, new_path_val]);
+                    return Ok(builder.inst_results(call)[0]);
+                }
+
                 // Handle built-in channel_init function
                 if function == "channel_init" {
                     // channel_init<T>(capacity: Int32) -> Channel<T>

@@ -1,9 +1,8 @@
 ## Next
 
-* bug - enum retuns
-
 * file system access
 * string concat bug
+
 
 ## stdlib
 * set up stdlib. 
@@ -39,6 +38,8 @@ Debugger.
 Linting
 
 ---
+
+- Async/non-blocking file I/O - possibly implemented in stdlib? 
 * class to_string default implementation
 * automatic cli
 * overflow / underflow handling
@@ -80,6 +81,9 @@ Linting
 * language spec
 * implementation details spec
 * pre/post-conditions
+* concurrency / parallel utils
+* building modules efficiently / incrementally (eg depedencies, std) 
+
 
 
 ## GC

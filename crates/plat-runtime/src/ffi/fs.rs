@@ -360,3 +360,72 @@ pub extern "C" fn plat_file_is_dir(path_ptr: *const c_char) -> i32 {
         }
     }
 }
+
+/// Delete a file (not directory)
+/// Returns Result<Bool, String>
+#[no_mangle]
+pub extern "C" fn plat_file_delete(path_ptr: *const c_char) -> i64 {
+    unsafe {
+        if path_ptr.is_null() {
+            let err_msg = alloc_c_string("file_delete: path is null");
+            return create_result_enum_err_string(err_msg);
+        }
+
+        let path = match CStr::from_ptr(path_ptr).to_str() {
+            Ok(s) => s,
+            Err(_) => {
+                let err_msg = alloc_c_string("file_delete: invalid path string");
+                return create_result_enum_err_string(err_msg);
+            }
+        };
+
+        match std::fs::remove_file(path) {
+            Ok(_) => create_result_enum_ok_bool(true),
+            Err(e) => {
+                let err_msg = alloc_c_string(&format!("file_delete failed: {}", e));
+                create_result_enum_err_string(err_msg)
+            }
+        }
+    }
+}
+
+/// Rename or move a file
+/// Returns Result<Bool, String>
+#[no_mangle]
+pub extern "C" fn plat_file_rename(old_path_ptr: *const c_char, new_path_ptr: *const c_char) -> i64 {
+    unsafe {
+        if old_path_ptr.is_null() {
+            let err_msg = alloc_c_string("file_rename: old_path is null");
+            return create_result_enum_err_string(err_msg);
+        }
+
+        if new_path_ptr.is_null() {
+            let err_msg = alloc_c_string("file_rename: new_path is null");
+            return create_result_enum_err_string(err_msg);
+        }
+
+        let old_path = match CStr::from_ptr(old_path_ptr).to_str() {
+            Ok(s) => s,
+            Err(_) => {
+                let err_msg = alloc_c_string("file_rename: invalid old_path string");
+                return create_result_enum_err_string(err_msg);
+            }
+        };
+
+        let new_path = match CStr::from_ptr(new_path_ptr).to_str() {
+            Ok(s) => s,
+            Err(_) => {
+                let err_msg = alloc_c_string("file_rename: invalid new_path string");
+                return create_result_enum_err_string(err_msg);
+            }
+        };
+
+        match std::fs::rename(old_path, new_path) {
+            Ok(_) => create_result_enum_ok_bool(true),
+            Err(e) => {
+                let err_msg = alloc_c_string(&format!("file_rename failed: {}", e));
+                create_result_enum_err_string(err_msg)
+            }
+        }
+    }
+}

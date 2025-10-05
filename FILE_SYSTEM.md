@@ -127,21 +127,23 @@ Implement low-level file system primitives following the same pattern as TCP net
 ### Functions to Implement
 
 #### `file_delete(path: String) -> Result<Bool, String>`
-- [ ] Runtime FFI implementation in `fs.rs` (delete file, not directory)
-- [ ] Type checking in `plat-hir/src/lib.rs`
-- [ ] Code generation in `plat-codegen/src/lib.rs`
-- [ ] Test in `examples/file_test.plat`
+- [x] Runtime FFI implementation in `fs.rs` (delete file, not directory)
+- [x] Type checking in `plat-hir/src/lib.rs`
+- [x] Code generation in `plat-codegen/src/lib.rs`
+- [x] Test in `examples/test_delete_copy.plat`
 
 #### `file_rename(old_path: String, new_path: String) -> Result<Bool, String>`
-- [ ] Runtime FFI implementation in `fs.rs` (rename/move file)
-- [ ] Type checking in `plat-hir/src/lib.rs`
-- [ ] Code generation in `plat-codegen/src/lib.rs`
-- [ ] Test in `examples/file_test.plat`
+- [x] Runtime FFI implementation in `fs.rs` (rename/move file)
+- [x] Type checking in `plat-hir/src/lib.rs`
+- [x] Code generation in `plat-codegen/src/lib.rs`
+- [x] Test in `examples/test_delete_copy.plat`
 
 ### Phase 3 Testing
-- [ ] Test file deletion (file exists and doesn't exist cases)
-- [ ] Test file rename (same directory and move cases)
-- [ ] Test error cases (permission denied, etc.)
+- [x] Test file deletion (file exists and doesn't exist cases)
+- [x] Test file rename (same directory and move cases)
+- [x] Test error cases (permission denied, etc.)
+
+**Phase 3 Status**: ✅ **COMPLETE** - All file operation functions working correctly!
 
 ---
 
@@ -181,6 +183,136 @@ Implement low-level file system primitives following the same pattern as TCP net
 
 ---
 
+## Phase 5: Binary File Support
+**Priority: MEDIUM** - For non-text file operations
+
+### Functions to Implement
+
+#### `file_read_binary(fd: Int32, max_bytes: Int32) -> Result<List[Int8], String>`
+- [ ] Runtime FFI implementation in `fs.rs` (read bytes as List[Int8], no UTF-8 validation)
+- [ ] Type checking in `plat-hir/src/lib.rs`
+- [ ] Code generation in `plat-codegen/src/lib.rs`
+- [ ] Test in `examples/file_binary_test.plat`
+
+#### `file_write_binary(fd: Int32, data: List[Int8]) -> Result<Int32, String>`
+- [ ] Runtime FFI implementation in `fs.rs` (write raw bytes from List[Int8])
+- [ ] Type checking in `plat-hir/src/lib.rs`
+- [ ] Code generation in `plat-codegen/src/lib.rs`
+- [ ] Test in `examples/file_binary_test.plat`
+
+### Phase 5 Testing
+- [ ] Test reading binary files (images, executables)
+- [ ] Test writing binary data
+- [ ] Test round-trip binary operations (write then read)
+- [ ] Verify no UTF-8 corruption on binary data
+
+---
+
+## Phase 6: File Seeking/Positioning
+**Priority: MEDIUM** - For random access file operations
+
+### Functions to Implement
+
+#### `file_seek(fd: Int32, offset: Int64, whence: Int32) -> Result<Int64, String>`
+- [ ] Runtime FFI implementation in `fs.rs` (seek to position, whence: 0=start, 1=current, 2=end)
+- [ ] Type checking in `plat-hir/src/lib.rs`
+- [ ] Code generation in `plat-codegen/src/lib.rs`
+- [ ] Test in `examples/file_seek_test.plat`
+
+#### `file_tell(fd: Int32) -> Result<Int64, String>`
+- [ ] Runtime FFI implementation in `fs.rs` (get current position in file)
+- [ ] Type checking in `plat-hir/src/lib.rs`
+- [ ] Code generation in `plat-codegen/src/lib.rs`
+- [ ] Test in `examples/file_seek_test.plat`
+
+#### `file_rewind(fd: Int32) -> Result<Bool, String>`
+- [ ] Runtime FFI implementation in `fs.rs` (reset position to start of file)
+- [ ] Type checking in `plat-hir/src/lib.rs`
+- [ ] Code generation in `plat-codegen/src/lib.rs`
+- [ ] Test in `examples/file_seek_test.plat`
+
+### Phase 6 Testing
+- [ ] Test seeking from start, current, and end positions
+- [ ] Test tell() returns correct position after seeks
+- [ ] Test rewind() resets to beginning
+- [ ] Test seek beyond file boundaries (error cases)
+
+---
+
+## Phase 7: File Permissions/Attributes
+**Priority: MEDIUM** - For file metadata and permission management
+
+### Functions to Implement
+
+#### `file_chmod(path: String, mode: Int32) -> Result<Bool, String>`
+- [ ] Runtime FFI implementation in `fs.rs` (change file permissions, Unix mode bits)
+- [ ] Type checking in `plat-hir/src/lib.rs`
+- [ ] Code generation in `plat-codegen/src/lib.rs`
+- [ ] Test in `examples/file_permissions_test.plat`
+
+#### `file_get_permissions(path: String) -> Result<Int32, String>`
+- [ ] Runtime FFI implementation in `fs.rs` (get permission bits as Int32)
+- [ ] Type checking in `plat-hir/src/lib.rs`
+- [ ] Code generation in `plat-codegen/src/lib.rs`
+- [ ] Test in `examples/file_permissions_test.plat`
+
+#### `file_modified_time(path: String) -> Result<Int64, String>`
+- [ ] Runtime FFI implementation in `fs.rs` (get last modified timestamp, Unix epoch seconds)
+- [ ] Type checking in `plat-hir/src/lib.rs`
+- [ ] Code generation in `plat-codegen/src/lib.rs`
+- [ ] Test in `examples/file_permissions_test.plat`
+
+#### `file_created_time(path: String) -> Result<Int64, String>`
+- [ ] Runtime FFI implementation in `fs.rs` (get creation timestamp, Unix epoch seconds)
+- [ ] Type checking in `plat-hir/src/lib.rs`
+- [ ] Code generation in `plat-codegen/src/lib.rs`
+- [ ] Test in `examples/file_permissions_test.plat`
+
+### Phase 7 Testing
+- [ ] Test chmod with various permission modes (0644, 0755, etc.)
+- [ ] Test reading permissions and verify correctness
+- [ ] Test modified time changes after file writes
+- [ ] Test created time remains stable
+
+---
+
+## Phase 8: Symlink Operations
+**Priority: LOW** - For symbolic link management
+
+### Functions to Implement
+
+#### `symlink_create(target: String, link: String) -> Result<Bool, String>`
+- [ ] Runtime FFI implementation in `fs.rs` (create symbolic link)
+- [ ] Type checking in `plat-hir/src/lib.rs`
+- [ ] Code generation in `plat-codegen/src/lib.rs`
+- [ ] Test in `examples/file_symlink_test.plat`
+
+#### `symlink_read(path: String) -> Result<String, String>`
+- [ ] Runtime FFI implementation in `fs.rs` (read symlink target path)
+- [ ] Type checking in `plat-hir/src/lib.rs`
+- [ ] Code generation in `plat-codegen/src/lib.rs`
+- [ ] Test in `examples/file_symlink_test.plat`
+
+#### `file_is_symlink(path: String) -> Bool`
+- [ ] Runtime FFI implementation in `fs.rs` (check if path is a symbolic link)
+- [ ] Type checking in `plat-hir/src/lib.rs`
+- [ ] Code generation in `plat-codegen/src/lib.rs`
+- [ ] Test in `examples/file_symlink_test.plat`
+
+#### `symlink_delete(path: String) -> Result<Bool, String>`
+- [ ] Runtime FFI implementation in `fs.rs` (delete symbolic link without following)
+- [ ] Type checking in `plat-hir/src/lib.rs`
+- [ ] Code generation in `plat-codegen/src/lib.rs`
+- [ ] Test in `examples/file_symlink_test.plat`
+
+### Phase 8 Testing
+- [ ] Test creating symlinks to files and directories
+- [ ] Test reading symlink targets
+- [ ] Test symlink detection (is_symlink vs is_dir/exists)
+- [ ] Test deleting symlinks without affecting targets
+
+---
+
 ## Implementation Checklist for Each Function
 
 For each function, follow this pattern:
@@ -216,10 +348,6 @@ For each function, follow this pattern:
 ---
 
 ## Future Enhancements (Not in This Plan)
-- Binary file support (separate from String-based I/O)
-- File seeking/positioning
-- File permissions/attributes
-- Symlink operations
 - Path manipulation helpers (can be implemented in Plat stdlib)
 - Async/non-blocking file I/O
 
