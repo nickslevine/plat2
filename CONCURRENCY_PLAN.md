@@ -174,22 +174,35 @@
 
 ### 2.4 Runtime Support for Task<T>
 
-- [ ] **Add `Task<T>` representation in runtime**
-  - Store return value in task struct
-  - Use type-erased pointer (void*) for now
-  - Add completion flag (atomic bool)
+- [x] **Add `Task<T>` representation in runtime**
+  - TaskWithResult<T> struct with type parameter ✅
+  - TaskHandle<T> for awaiting results ✅
+  - Type-erased storage in global registry ✅
+  - Completion flag (atomic bool) ✅
 
-- [ ] **Implement `task_await()` C API**
-  - Busy-wait or condition variable
-  - Return result when task completes
-  - Handle panics (propagate to caller)
+- [x] **Implement `task_await()` C API**
+  - plat_task_await_i64() FFI function ✅
+  - Busy-wait until task completes ✅
+  - Returns i64 result value ✅
+  - TODO: Proper panic handling
 
-- [ ] **Implement scope tracking**
-  - Each scope has list of child task IDs
-  - On scope exit, await all children
-  - Ensures no tasks outlive scope
+- [x] **Implement scope tracking**
+  - ScopeRegistry with thread-local scope stack ✅
+  - plat_scope_enter/exit C FFI functions ✅
+  - Tasks registered with current scope ✅
+  - Scope exit awaits all child tasks ✅
+  - TODO: Nested scope testing
 
-**Commit:** `feat: Add runtime support for Task<T> and structured scopes`
+**Current Status:**
+- ✅ Runtime infrastructure complete
+- ✅ Scope tracking implemented
+- ✅ Type inference for spawn blocks fixed
+- ✅ HIR support for Task<T>.await()
+- ⚠️  Codegen has CLIF verification errors (needs debugging)
+- ⚠️  Only i64 return types fully working
+- ⚠️  No variable capture in spawn closures yet
+
+**Commit:** `feat: Add scope tracking and Task.await() support for structured concurrency` ✅
 
 ### 2.5 Testing
 
@@ -203,7 +216,11 @@
   - Verify no leaks (all tasks complete)
   - Test error propagation (panic in task)
 
-**Commit:** `test: Add tests for basic structured concurrency`
+**Current Status:**
+- ⚠️ Test file created (test_concurrent_scope.plat) but CLIF errors prevent execution
+- ⚠️ Need to debug and fix Cranelift code generation issues first
+
+**Commit:** `test: Add tests for basic structured concurrency` (PENDING)
 
 ---
 
