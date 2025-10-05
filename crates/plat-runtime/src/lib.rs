@@ -64,6 +64,12 @@ pub extern "C" fn plat_spawn_task(func: extern "C" fn()) -> u64 {
     task_id.as_u64()
 }
 
+// Global task handle registry (shared between spawn and await)
+lazy_static::lazy_static! {
+    static ref TASK_HANDLES: std::sync::Mutex<std::collections::HashMap<u64, std::sync::Arc<dyn std::any::Any + Send + Sync>>> =
+        std::sync::Mutex::new(std::collections::HashMap::new());
+}
+
 /// Spawn a task that returns an i64 value
 /// Returns an opaque task handle (pointer)
 #[no_mangle]
@@ -85,20 +91,10 @@ pub extern "C" fn plat_spawn_task_i64(func: extern "C" fn() -> i64) -> u64 {
         rt.spawn_with_result(task);
     }
 
-    // Store handle in global registry and return handle ID
-    use std::sync::Mutex;
-    use std::collections::HashMap;
-    use std::sync::atomic::{AtomicU64, Ordering};
+    // Store handle in global registry using task_id as key
+    TASK_HANDLES.lock().unwrap().insert(task_id, Arc::new(handle));
 
-    lazy_static::lazy_static! {
-        static ref TASK_HANDLES: Mutex<HashMap<u64, Arc<dyn std::any::Any + Send + Sync>>> = Mutex::new(HashMap::new());
-        static ref NEXT_HANDLE_ID: AtomicU64 = AtomicU64::new(1);
-    }
-
-    let handle_id = NEXT_HANDLE_ID.fetch_add(1, Ordering::SeqCst);
-    TASK_HANDLES.lock().unwrap().insert(handle_id, Arc::new(handle));
-
-    handle_id
+    task_id
 }
 
 /// Await a task and get its i64 result
@@ -106,13 +102,6 @@ pub extern "C" fn plat_spawn_task_i64(func: extern "C" fn() -> i64) -> u64 {
 #[no_mangle]
 pub extern "C" fn plat_task_await_i64(handle_id: u64) -> i64 {
     use green_runtime::task_with_result::TaskHandle;
-    use std::sync::Mutex;
-    use std::collections::HashMap;
-    use std::sync::Arc;
-
-    lazy_static::lazy_static! {
-        static ref TASK_HANDLES: Mutex<HashMap<u64, Arc<dyn std::any::Any + Send + Sync>>> = Mutex::new(HashMap::new());
-    }
 
     // Retrieve handle from registry
     let handles = TASK_HANDLES.lock().unwrap();

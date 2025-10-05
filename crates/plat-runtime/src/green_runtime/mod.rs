@@ -26,6 +26,7 @@ pub fn get_scope_registry() -> Arc<ScopeRegistry> {
 pub struct GreenThreadRuntime {
     scheduler: Scheduler,
     num_workers: usize,
+    workers: Vec<Worker<Task>>,
     worker_handles: Vec<std::thread::JoinHandle<()>>,
 }
 
@@ -38,12 +39,13 @@ impl GreenThreadRuntime {
             num_workers
         };
 
-        let (scheduler, _workers) = Scheduler::new(num_workers);
+        let (scheduler, workers) = Scheduler::new(num_workers);
         let worker_handles = Vec::new();
 
         GreenThreadRuntime {
             scheduler,
             num_workers,
+            workers,
             worker_handles,
         }
     }
@@ -64,11 +66,11 @@ impl GreenThreadRuntime {
 
     /// Start worker threads
     pub fn start_workers(&mut self) {
-        // Create workers for all threads
-        let (_scheduler, workers) = Scheduler::new(self.num_workers);
+        // Take the workers (we can only start once)
+        let workers = std::mem::take(&mut self.workers);
         let scheduler = self.scheduler.clone();
 
-        // Spawn worker threads
+        // Spawn worker threads using the workers that are connected to our scheduler
         for (worker_id, worker) in workers.into_iter().enumerate() {
             let scheduler_clone = scheduler.clone();
 

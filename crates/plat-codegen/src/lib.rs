@@ -1062,7 +1062,29 @@ impl CodeGenerator {
                         let error_code = builder.ins().iconst(I32, 1);
                         builder.ins().return_(&[error_code]);
                     } else {
-                        builder.ins().return_(&[val]);
+                        // Convert return value type if needed to match function signature
+                        let return_val = if let Some(expected_type) = function_return_type {
+                            let expr_type = Self::infer_expression_type(expr, variable_types);
+                            match (expr_type, expected_type) {
+                                // Convert i32 to i64 (sign extend)
+                                (VariableType::Int32, AstType::Int64) => {
+                                    builder.ins().sextend(I64, val)
+                                }
+                                // Convert i32 to i32 (no-op, but handle explicitly)
+                                (VariableType::Int32, AstType::Int32) => val,
+                                // i64 to i64 (no conversion needed)
+                                (VariableType::Int64, AstType::Int64) => val,
+                                // i64 to i32 (truncate)
+                                (VariableType::Int64, AstType::Int32) => {
+                                    builder.ins().ireduce(I32, val)
+                                }
+                                // Default: use as-is
+                                _ => val,
+                            }
+                        } else {
+                            val
+                        };
+                        builder.ins().return_(&[return_val]);
                     }
                 } else {
                     builder.ins().return_(&[]);
