@@ -899,6 +899,21 @@ impl CodeGenerator {
         // Extract the functions HashMap and type_aliases to avoid borrowing self while builder exists
         let functions_copy = self.functions.clone();
         let type_aliases_copy = self.type_aliases.clone();
+
+        // Initialize runtime for main function
+        if function.name == "main" {
+            // Declare plat_runtime_init function
+            let mut init_sig = self.module.make_signature();
+            init_sig.call_conv = CallConv::SystemV;
+
+            let init_func_id = self.module.declare_function("plat_runtime_init", Linkage::Import, &init_sig)
+                .map_err(CodegenError::ModuleError)?;
+            let init_func_ref = self.module.declare_func_in_func(init_func_id, builder.func);
+
+            // Call runtime init
+            builder.ins().call(init_func_ref, &[]);
+        }
+
         let mut has_return = false;
         for statement in &function.body.statements {
             has_return |= Self::generate_statement_helper(
@@ -1326,8 +1341,8 @@ impl CodeGenerator {
                 Ok(false) // for loops don't guarantee return
             }
             Statement::Concurrent { body, .. } => {
-                // For now, just execute the block sequentially
-                // Full concurrent runtime support will come in Phase 2.3 (Codegen)
+                // Execute concurrent block
+                // TODO: Add full scope tracking and automatic awaiting of all spawned tasks
                 for stmt in &body.statements {
                     let returned = Self::generate_statement_helper(
                         builder,
@@ -3527,6 +3542,41 @@ impl CodeGenerator {
                             _ => Err(CodegenError::UnsupportedFeature(format!("Set method '{}' not implemented", method)))
                         }
                     }
+                    "await" => {
+                        // Task.await() method
+                        if !args.is_empty() {
+                            return Err(CodegenError::UnsupportedFeature("await() method takes no arguments".to_string()));
+                        }
+
+                        // Generate the task handle value
+                        let task_handle = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+
+                        // Declare plat_task_await_i64 function
+                        let await_func_name = "plat_task_await_i64";
+                        let await_func_id = if let Some(&func_id) = functions.get(await_func_name) {
+                            func_id
+                        } else {
+                            // Declare the await function
+                            let mut await_sig = module.make_signature();
+                            await_sig.call_conv = CallConv::SystemV;
+                            await_sig.params.push(AbiParam::new(I64)); // Task handle
+                            await_sig.returns.push(AbiParam::new(I64)); // Result value
+
+                            let func_id = module.declare_function(await_func_name, Linkage::Import, &await_sig)
+                                .map_err(CodegenError::ModuleError)?;
+                            func_id
+                        };
+
+                        // Call await function
+                        let await_func_ref = module.declare_func_in_func(await_func_id, builder.func);
+                        let call = builder.ins().call(await_func_ref, &[task_handle]);
+                        let result = builder.inst_results(call)[0];
+
+                        // For now, convert i64 result to i32 if needed
+                        // TODO: Handle generic return types properly
+                        let result_i32 = builder.ins().ireduce(I32, result);
+                        Ok(result_i32)
+                    }
                     // Class methods
                     method_name if Self::is_class_type(object, variable_types) => {
                         let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
@@ -4205,6 +4255,93 @@ impl CodeGenerator {
                 };
 
                 Ok(result)
+            }
+            Expression::Spawn { body, .. } => {
+                // For now, generate a simple closure that returns the body's value
+                // TODO: Handle variable capture
+
+                // Create a unique closure function name
+                let closure_name = format!("__spawn_closure_{}", string_counter);
+                *string_counter += 1;
+
+                // Create the closure function signature (returns i64 for now)
+                let mut sig = module.make_signature();
+                sig.call_conv = CallConv::SystemV;
+                sig.returns.push(AbiParam::new(I64));
+
+                // Declare the closure function
+                let closure_func_id = module.declare_function(&closure_name, Linkage::Local, &sig)
+                    .map_err(CodegenError::ModuleError)?;
+
+                // Generate the closure function body
+                {
+                    let mut ctx = module.make_context();
+                    let mut fn_builder_ctx = FunctionBuilderContext::new();
+                    ctx.func.signature = sig.clone();
+
+                    let mut closure_builder = FunctionBuilder::new(&mut ctx.func, &mut fn_builder_ctx);
+                    let entry_block = closure_builder.create_block();
+                    closure_builder.switch_to_block(entry_block);
+                    closure_builder.seal_block(entry_block);
+
+                    // Generate the body expression
+                    let mut closure_variables = HashMap::new();
+                    let mut closure_variable_types = HashMap::new();
+                    let mut closure_variable_counter = 0;
+
+                    let result_val = Self::generate_expression_helper(
+                        &mut closure_builder,
+                        body,
+                        &closure_variables,
+                        &closure_variable_types,
+                        functions,
+                        module,
+                        string_counter,
+                        &mut closure_variable_counter,
+                        class_metadata,
+                        test_mode
+                    )?;
+
+                    // Convert result to i64 if needed
+                    let result_i64 = match Self::infer_expression_type(body, &closure_variable_types) {
+                        VariableType::Int32 => closure_builder.ins().sextend(I64, result_val),
+                        VariableType::Int64 => result_val,
+                        _ => result_val, // For other types, just use as-is for now
+                    };
+
+                    closure_builder.ins().return_(&[result_i64]);
+                    closure_builder.finalize();
+
+                    module.define_function(closure_func_id, &mut ctx)
+                        .map_err(CodegenError::ModuleError)?;
+                }
+
+                // Call plat_spawn_task_i64 with the closure function pointer
+                let spawn_func_name = "plat_spawn_task_i64";
+                let spawn_func_id = if let Some(&func_id) = functions.get(spawn_func_name) {
+                    func_id
+                } else {
+                    // Declare the spawn function
+                    let mut spawn_sig = module.make_signature();
+                    spawn_sig.call_conv = CallConv::SystemV;
+                    spawn_sig.params.push(AbiParam::new(I64)); // Function pointer
+                    spawn_sig.returns.push(AbiParam::new(I64)); // Task handle
+
+                    let func_id = module.declare_function(spawn_func_name, Linkage::Import, &spawn_sig)
+                        .map_err(CodegenError::ModuleError)?;
+                    func_id
+                };
+
+                // Get the closure function pointer
+                let closure_func_ref = module.declare_func_in_func(closure_func_id, builder.func);
+                let closure_ptr = builder.ins().func_addr(I64, closure_func_ref);
+
+                // Call spawn function
+                let spawn_func_ref = module.declare_func_in_func(spawn_func_id, builder.func);
+                let call = builder.ins().call(spawn_func_ref, &[closure_ptr]);
+                let task_handle = builder.inst_results(call)[0];
+
+                Ok(task_handle)
             }
             _ => {
                 // TODO: Implement any remaining expressions

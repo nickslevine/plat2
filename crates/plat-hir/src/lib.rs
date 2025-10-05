@@ -3516,6 +3516,17 @@ impl TypeChecker {
                 Ok(HirType::Set(Box::new(element_hir_type)))
             }
             Type::Named(name, type_params) => {
+                // Check for built-in Task type first
+                if name == "Task" {
+                    if type_params.len() != 1 {
+                        return Err(DiagnosticError::Type(
+                            "Task requires exactly one type parameter".to_string()
+                        ));
+                    }
+                    let inner_type = self.ast_type_to_hir_type(&type_params[0])?;
+                    return Ok(HirType::Task(Box::new(inner_type)));
+                }
+
                 // Check if this is a newtype first (distinct from type aliases)
                 if self.newtypes.contains_key(name) {
                     // Newtypes shouldn't have type parameters

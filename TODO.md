@@ -67,6 +67,8 @@
 * unify dot and :: syntax? 
 * dive into c api / ffi
 * blas
+* language spec
+* implementation details spec
 
 
 ## GC
@@ -78,3 +80,4 @@
   smoother pause times
   3. Benchmark Suite - Once plat bench command
   is working, run full performance tests
+

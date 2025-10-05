@@ -1,4 +1,5 @@
 pub mod task;
+pub mod task_with_result;
 pub mod scheduler;
 
 use std::sync::Arc;
@@ -98,6 +99,15 @@ impl GreenThreadRuntime {
         let task_id = task.id();
         self.scheduler.push_task(task);
         task_id
+    }
+
+    /// Spawn a task with result by converting it to a regular Task
+    pub fn spawn_with_result<T: Send + 'static>(&mut self, task_with_result: task_with_result::TaskWithResult<T>) {
+        // Convert TaskWithResult to a regular Task by wrapping the execution
+        let task = Task::new(move || {
+            task_with_result.execute();
+        });
+        self.scheduler.push_task(task);
     }
 
     /// Shutdown the runtime
