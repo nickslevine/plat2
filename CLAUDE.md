@@ -85,6 +85,45 @@
 - **Error Handling**: Use pattern matching on Result to handle success/failure
 - **Future**: UDP, non-blocking I/O, and higher-level abstractions can be built in Plat stdlib
 
+### File System Operations
+- **Built-in Functions**: All file functions return `Result<T, String>` for error handling (except simple predicates)
+- **Core File I/O**:
+  - `file_open(path: String, mode: String) -> Result<Int32, String>` - Open file with mode ("r", "w", "a", "r+", "w+", "a+")
+  - `file_read(fd: Int32, max_bytes: Int32) -> Result<String, String>` - Read UTF-8 text from file
+  - `file_write(fd: Int32, data: String) -> Result<Int32, String>` - Write text to file (returns bytes written)
+  - `file_close(fd: Int32) -> Result<Bool, String>` - Close file descriptor
+- **Binary File I/O**:
+  - `file_read_binary(fd: Int32, max_bytes: Int32) -> Result<List[Int8], String>` - Read raw bytes
+  - `file_write_binary(fd: Int32, data: List[Int8]) -> Result<Int32, String>` - Write raw bytes
+- **File Metadata**:
+  - `file_exists(path: String) -> Bool` - Check if file/directory exists
+  - `file_size(path: String) -> Result<Int64, String>` - Get file size in bytes
+  - `file_is_dir(path: String) -> Bool` - Check if path is a directory
+  - `file_is_symlink(path: String) -> Bool` - Check if path is a symbolic link
+- **File Operations**:
+  - `file_delete(path: String) -> Result<Bool, String>` - Delete a file
+  - `file_rename(old_path: String, new_path: String) -> Result<Bool, String>` - Rename/move a file
+- **Directory Operations**:
+  - `dir_create(path: String) -> Result<Bool, String>` - Create directory (parent must exist)
+  - `dir_create_all(path: String) -> Result<Bool, String>` - Create directory with all parents
+  - `dir_remove(path: String) -> Result<Bool, String>` - Remove empty directory
+  - `dir_list(path: String) -> Result<String, String>` - List directory contents (newline-separated)
+- **File Seeking**:
+  - `file_seek(fd: Int32, offset: Int64, whence: Int32) -> Result<Int64, String>` - Seek to position (0=start, 1=current, 2=end)
+  - `file_tell(fd: Int32) -> Result<Int64, String>` - Get current position
+  - `file_rewind(fd: Int32) -> Result<Bool, String>` - Reset to start of file
+- **File Permissions**:
+  - `file_chmod(path: String, mode: Int32) -> Result<Bool, String>` - Change permissions (Unix mode bits)
+  - `file_get_permissions(path: String) -> Result<Int32, String>` - Get permission bits
+  - `file_modified_time(path: String) -> Result<Int64, String>` - Get last modified time (Unix epoch)
+  - `file_created_time(path: String) -> Result<Int64, String>` - Get creation time (Unix epoch)
+- **Symlink Operations**:
+  - `symlink_create(target: String, link: String) -> Result<Bool, String>` - Create symbolic link
+  - `symlink_read(path: String) -> Result<String, String>` - Read symlink target path
+  - `symlink_delete(path: String) -> Result<Bool, String>` - Delete symlink (verifies it's actually a symlink)
+- **File Descriptors**: Files use `Int32` file descriptors (start at 2000, separate from network FDs)
+- **Platform Support**: Cross-platform with platform-specific handling where needed (Unix/Windows)
+
 ### Testing
 - **Test Blocks**: `test test_block_name { ... }` groups related tests (snake_case identifier required)
 - **Test Functions**: Functions starting with `test_` are automatically discovered and run
@@ -204,6 +243,16 @@ plat2/
   - File descriptor-based API (Int32 sockets)
   - Result-based error handling for all network operations
   - Blocking I/O with DNS resolution support
+- **File System Operations:**
+  - Core I/O: file_open, file_read, file_write, file_close (text and binary modes)
+  - File metadata: file_exists, file_size, file_is_dir, file_is_symlink
+  - File operations: file_delete, file_rename
+  - Directory operations: dir_create, dir_create_all, dir_remove, dir_list
+  - File seeking: file_seek, file_tell, file_rewind
+  - Permissions: file_chmod, file_get_permissions, file_modified_time, file_created_time
+  - Symlinks: symlink_create, symlink_read, symlink_delete
+  - File descriptor-based API (Int32 FDs starting at 2000)
+  - Result-based error handling with platform-specific support
 - **Structured Concurrency:**
   - Green thread runtime with work-stealing scheduler
   - `concurrent {}` blocks with automatic scope cleanup
@@ -773,6 +822,76 @@ fn main() -> Int32 {
 
   // Close connection
   let close_result: Result<Bool, String> = tcp_close(socket = socket);
+
+  return 0;
+}
+```
+
+**File System Operations with Result:**
+```plat
+fn main() -> Int32 {
+  // Write to a file
+  let file_result: Result<Int32, String> = file_open(path = "data.txt", mode = "w");
+
+  let fd: Int32 = match file_result {
+    Result::Ok(descriptor: Int32) -> descriptor,
+    Result::Err(err: String) -> {
+      print(value = "Failed to open file: ${err}");
+      return 1;
+    }
+  };
+
+  let write_result: Result<Int32, String> = file_write(fd = fd, data = "Hello, file system!");
+
+  match write_result {
+    Result::Ok(bytes: Int32) -> print(value = "Wrote ${bytes} bytes"),
+    Result::Err(err: String) -> print(value = "Write failed: ${err}")
+  };
+
+  let close_result: Result<Bool, String> = file_close(fd = fd);
+
+  // Read from the file
+  let read_fd_result: Result<Int32, String> = file_open(path = "data.txt", mode = "r");
+
+  let read_fd: Int32 = match read_fd_result {
+    Result::Ok(descriptor: Int32) -> descriptor,
+    Result::Err(err: String) -> {
+      print(value = "Failed to open file: ${err}");
+      return 1;
+    }
+  };
+
+  let read_result: Result<String, String> = file_read(fd = read_fd, max_bytes = 1024);
+
+  match read_result {
+    Result::Ok(content: String) -> print(value = "Read: ${content}"),
+    Result::Err(err: String) -> print(value = "Read failed: ${err}")
+  };
+
+  let close_read: Result<Bool, String> = file_close(fd = read_fd);
+
+  // Check file metadata
+  if (file_exists(path = "data.txt")) {
+    let size_result: Result<Int64, String> = file_size(path = "data.txt");
+    match size_result {
+      Result::Ok(size: Int64) -> print(value = "File size: ${size} bytes"),
+      Result::Err(err: String) -> print(value = "Size check failed: ${err}")
+    };
+  }
+
+  // Binary file operations
+  let binary_data: List[Int8] = [0i8, 1i8, 2i8, 3i8, 255i8];
+  let bin_fd_result: Result<Int32, String> = file_open(path = "binary.dat", mode = "w");
+
+  let bin_fd: Int32 = match bin_fd_result {
+    Result::Ok(descriptor: Int32) -> descriptor,
+    Result::Err(err: String) -> -1
+  };
+
+  if (bin_fd >= 0) {
+    let bin_write: Result<Int32, String> = file_write_binary(fd = bin_fd, data = binary_data);
+    let bin_close: Result<Bool, String> = file_close(fd = bin_fd);
+  }
 
   return 0;
 }

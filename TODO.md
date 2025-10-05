@@ -34,6 +34,10 @@
 ## Tooling
 Syntax Highlighting
 LSP
+  show argument names
+  show inferred types
+  show where inherited methods come from
+  fuzzy method search / autocomplete? 
 Debugger. 
 Linting
 
