@@ -3176,6 +3176,107 @@ impl CodeGenerator {
                     return Ok(builder.inst_results(call)[0]);
                 }
 
+                // Handle built-in symlink_create function
+                if function == "symlink_create" {
+                    // symlink_create(target: String, link: String) -> Result<Bool, String>
+                    let target_arg = args.iter().find(|arg| arg.name == "target")
+                        .ok_or_else(|| CodegenError::UnsupportedFeature("symlink_create missing 'target' parameter".to_string()))?;
+
+                    let link_arg = args.iter().find(|arg| arg.name == "link")
+                        .ok_or_else(|| CodegenError::UnsupportedFeature("symlink_create missing 'link' parameter".to_string()))?;
+
+                    let target_val = Self::generate_expression_helper(builder, &target_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                    let link_val = Self::generate_expression_helper(builder, &link_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+
+                    let func_sig = {
+                        let mut sig = module.make_signature();
+                        sig.call_conv = CallConv::SystemV;
+                        sig.params.push(AbiParam::new(I64)); // target (string pointer)
+                        sig.params.push(AbiParam::new(I64)); // link (string pointer)
+                        sig.returns.push(AbiParam::new(I64)); // Result enum pointer
+                        sig
+                    };
+
+                    let func_id = module.declare_function("plat_symlink_create", Linkage::Import, &func_sig)
+                        .map_err(CodegenError::ModuleError)?;
+                    let func_ref = module.declare_func_in_func(func_id, builder.func);
+
+                    let call = builder.ins().call(func_ref, &[target_val, link_val]);
+                    return Ok(builder.inst_results(call)[0]);
+                }
+
+                // Handle built-in symlink_read function
+                if function == "symlink_read" {
+                    // symlink_read(path: String) -> Result<String, String>
+                    let path_arg = args.iter().find(|arg| arg.name == "path")
+                        .ok_or_else(|| CodegenError::UnsupportedFeature("symlink_read missing 'path' parameter".to_string()))?;
+
+                    let path_val = Self::generate_expression_helper(builder, &path_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+
+                    let func_sig = {
+                        let mut sig = module.make_signature();
+                        sig.call_conv = CallConv::SystemV;
+                        sig.params.push(AbiParam::new(I64)); // path (string pointer)
+                        sig.returns.push(AbiParam::new(I64)); // Result enum pointer
+                        sig
+                    };
+
+                    let func_id = module.declare_function("plat_symlink_read", Linkage::Import, &func_sig)
+                        .map_err(CodegenError::ModuleError)?;
+                    let func_ref = module.declare_func_in_func(func_id, builder.func);
+
+                    let call = builder.ins().call(func_ref, &[path_val]);
+                    return Ok(builder.inst_results(call)[0]);
+                }
+
+                // Handle built-in file_is_symlink function
+                if function == "file_is_symlink" {
+                    // file_is_symlink(path: String) -> Bool
+                    let path_arg = args.iter().find(|arg| arg.name == "path")
+                        .ok_or_else(|| CodegenError::UnsupportedFeature("file_is_symlink missing 'path' parameter".to_string()))?;
+
+                    let path_val = Self::generate_expression_helper(builder, &path_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+
+                    let func_sig = {
+                        let mut sig = module.make_signature();
+                        sig.call_conv = CallConv::SystemV;
+                        sig.params.push(AbiParam::new(I64)); // path (string pointer)
+                        sig.returns.push(AbiParam::new(I32)); // Bool (i32)
+                        sig
+                    };
+
+                    let func_id = module.declare_function("plat_file_is_symlink", Linkage::Import, &func_sig)
+                        .map_err(CodegenError::ModuleError)?;
+                    let func_ref = module.declare_func_in_func(func_id, builder.func);
+
+                    let call = builder.ins().call(func_ref, &[path_val]);
+                    return Ok(builder.inst_results(call)[0]);
+                }
+
+                // Handle built-in symlink_delete function
+                if function == "symlink_delete" {
+                    // symlink_delete(path: String) -> Result<Bool, String>
+                    let path_arg = args.iter().find(|arg| arg.name == "path")
+                        .ok_or_else(|| CodegenError::UnsupportedFeature("symlink_delete missing 'path' parameter".to_string()))?;
+
+                    let path_val = Self::generate_expression_helper(builder, &path_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+
+                    let func_sig = {
+                        let mut sig = module.make_signature();
+                        sig.call_conv = CallConv::SystemV;
+                        sig.params.push(AbiParam::new(I64)); // path (string pointer)
+                        sig.returns.push(AbiParam::new(I64)); // Result enum pointer
+                        sig
+                    };
+
+                    let func_id = module.declare_function("plat_symlink_delete", Linkage::Import, &func_sig)
+                        .map_err(CodegenError::ModuleError)?;
+                    let func_ref = module.declare_func_in_func(func_id, builder.func);
+
+                    let call = builder.ins().call(func_ref, &[path_val]);
+                    return Ok(builder.inst_results(call)[0]);
+                }
+
                 // Handle built-in channel_init function
                 if function == "channel_init" {
                     // channel_init<T>(capacity: Int32) -> Channel<T>

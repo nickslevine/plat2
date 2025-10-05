@@ -940,3 +940,181 @@ pub extern "C" fn plat_file_created_time(path_ptr: *const c_char) -> i64 {
         }
     }
 }
+
+/// Create a symbolic link
+/// Returns Result<Bool, String>
+#[no_mangle]
+pub extern "C" fn plat_symlink_create(target_ptr: *const c_char, link_ptr: *const c_char) -> i64 {
+    unsafe {
+        if target_ptr.is_null() {
+            let err_msg = alloc_c_string("symlink_create: target is null");
+            return create_result_enum_err_string(err_msg);
+        }
+
+        if link_ptr.is_null() {
+            let err_msg = alloc_c_string("symlink_create: link is null");
+            return create_result_enum_err_string(err_msg);
+        }
+
+        let target = match CStr::from_ptr(target_ptr).to_str() {
+            Ok(s) => s,
+            Err(_) => {
+                let err_msg = alloc_c_string("symlink_create: invalid target string");
+                return create_result_enum_err_string(err_msg);
+            }
+        };
+
+        let link = match CStr::from_ptr(link_ptr).to_str() {
+            Ok(s) => s,
+            Err(_) => {
+                let err_msg = alloc_c_string("symlink_create: invalid link string");
+                return create_result_enum_err_string(err_msg);
+            }
+        };
+
+        #[cfg(unix)]
+        {
+            match std::os::unix::fs::symlink(target, link) {
+                Ok(_) => create_result_enum_ok_bool(true),
+                Err(e) => {
+                    let err_msg = alloc_c_string(&format!("symlink_create failed: {}", e));
+                    create_result_enum_err_string(err_msg)
+                }
+            }
+        }
+
+        #[cfg(windows)]
+        {
+            // On Windows, we need to check if target is a directory or file
+            let is_dir = std::path::Path::new(target).is_dir();
+            let result = if is_dir {
+                std::os::windows::fs::symlink_dir(target, link)
+            } else {
+                std::os::windows::fs::symlink_file(target, link)
+            };
+
+            match result {
+                Ok(_) => create_result_enum_ok_bool(true),
+                Err(e) => {
+                    let err_msg = alloc_c_string(&format!("symlink_create failed: {}", e));
+                    create_result_enum_err_string(err_msg)
+                }
+            }
+        }
+
+        #[cfg(not(any(unix, windows)))]
+        {
+            let err_msg = alloc_c_string("symlink_create: not supported on this platform");
+            create_result_enum_err_string(err_msg)
+        }
+    }
+}
+
+/// Read a symbolic link's target
+/// Returns Result<String, String>
+#[no_mangle]
+pub extern "C" fn plat_symlink_read(path_ptr: *const c_char) -> i64 {
+    unsafe {
+        if path_ptr.is_null() {
+            let err_msg = alloc_c_string("symlink_read: path is null");
+            return create_result_enum_err_string(err_msg);
+        }
+
+        let path = match CStr::from_ptr(path_ptr).to_str() {
+            Ok(s) => s,
+            Err(_) => {
+                let err_msg = alloc_c_string("symlink_read: invalid path string");
+                return create_result_enum_err_string(err_msg);
+            }
+        };
+
+        match std::fs::read_link(path) {
+            Ok(target) => {
+                match target.to_str() {
+                    Some(target_str) => {
+                        let c_str = alloc_c_string(target_str);
+                        create_result_enum_ok_string(c_str)
+                    }
+                    None => {
+                        let err_msg = alloc_c_string("symlink_read: target path contains invalid UTF-8");
+                        create_result_enum_err_string(err_msg)
+                    }
+                }
+            }
+            Err(e) => {
+                let err_msg = alloc_c_string(&format!("symlink_read failed: {}", e));
+                create_result_enum_err_string(err_msg)
+            }
+        }
+    }
+}
+
+/// Check if path is a symbolic link
+/// Returns Bool (1 = true, 0 = false)
+#[no_mangle]
+pub extern "C" fn plat_file_is_symlink(path_ptr: *const c_char) -> i32 {
+    unsafe {
+        if path_ptr.is_null() {
+            return 0; // false
+        }
+
+        let path = match CStr::from_ptr(path_ptr).to_str() {
+            Ok(s) => s,
+            Err(_) => return 0, // false for invalid path
+        };
+
+        match std::fs::symlink_metadata(path) {
+            Ok(metadata) => {
+                if metadata.file_type().is_symlink() {
+                    1 // true
+                } else {
+                    0 // false
+                }
+            }
+            Err(_) => 0, // false if path doesn't exist or other error
+        }
+    }
+}
+
+/// Delete a symbolic link (without following it)
+/// Returns Result<Bool, String>
+#[no_mangle]
+pub extern "C" fn plat_symlink_delete(path_ptr: *const c_char) -> i64 {
+    unsafe {
+        if path_ptr.is_null() {
+            let err_msg = alloc_c_string("symlink_delete: path is null");
+            return create_result_enum_err_string(err_msg);
+        }
+
+        let path = match CStr::from_ptr(path_ptr).to_str() {
+            Ok(s) => s,
+            Err(_) => {
+                let err_msg = alloc_c_string("symlink_delete: invalid path string");
+                return create_result_enum_err_string(err_msg);
+            }
+        };
+
+        // Verify it's actually a symlink before deleting
+        match std::fs::symlink_metadata(path) {
+            Ok(metadata) => {
+                if !metadata.file_type().is_symlink() {
+                    let err_msg = alloc_c_string("symlink_delete: path is not a symbolic link");
+                    return create_result_enum_err_string(err_msg);
+                }
+            }
+            Err(e) => {
+                let err_msg = alloc_c_string(&format!("symlink_delete: failed to read metadata: {}", e));
+                return create_result_enum_err_string(err_msg);
+            }
+        }
+
+        // On both Unix and Windows, remove_file works for symlinks
+        match std::fs::remove_file(path) {
+            Ok(_) => create_result_enum_ok_bool(true),
+            Err(e) => {
+                let err_msg = alloc_c_string(&format!("symlink_delete failed: {}", e));
+                create_result_enum_err_string(err_msg)
+            }
+        }
+    }
+}

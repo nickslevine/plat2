@@ -2428,6 +2428,108 @@ impl TypeChecker {
                     return Ok(HirType::Enum("Result".to_string(), vec![HirType::Int64, HirType::String]));
                 }
 
+                // Handle built-in symlink_create function
+                if function == "symlink_create" {
+                    // symlink_create(target: String, link: String) -> Result<Bool, String>
+                    if args.len() != 2 {
+                        return Err(DiagnosticError::Type(
+                            "symlink_create requires exactly 2 arguments: 'target' and 'link'".to_string()
+                        ));
+                    }
+
+                    let target_arg = args.iter().find(|arg| arg.name == "target")
+                        .ok_or_else(|| DiagnosticError::Type("symlink_create requires a 'target' parameter".to_string()))?;
+
+                    let link_arg = args.iter().find(|arg| arg.name == "link")
+                        .ok_or_else(|| DiagnosticError::Type("symlink_create requires a 'link' parameter".to_string()))?;
+
+                    let target_type = self.check_expression(&target_arg.value)?;
+                    let link_type = self.check_expression(&link_arg.value)?;
+
+                    if target_type != HirType::String {
+                        return Err(DiagnosticError::Type(
+                            format!("symlink_create 'target' parameter must be String, got {:?}", target_type)
+                        ));
+                    }
+
+                    if link_type != HirType::String {
+                        return Err(DiagnosticError::Type(
+                            format!("symlink_create 'link' parameter must be String, got {:?}", link_type)
+                        ));
+                    }
+
+                    return Ok(HirType::Enum("Result".to_string(), vec![HirType::Bool, HirType::String]));
+                }
+
+                // Handle built-in symlink_read function
+                if function == "symlink_read" {
+                    // symlink_read(path: String) -> Result<String, String>
+                    if args.len() != 1 {
+                        return Err(DiagnosticError::Type(
+                            "symlink_read requires exactly 1 argument: 'path'".to_string()
+                        ));
+                    }
+
+                    let path_arg = args.iter().find(|arg| arg.name == "path")
+                        .ok_or_else(|| DiagnosticError::Type("symlink_read requires a 'path' parameter".to_string()))?;
+
+                    let path_type = self.check_expression(&path_arg.value)?;
+
+                    if path_type != HirType::String {
+                        return Err(DiagnosticError::Type(
+                            format!("symlink_read 'path' parameter must be String, got {:?}", path_type)
+                        ));
+                    }
+
+                    return Ok(HirType::Enum("Result".to_string(), vec![HirType::String, HirType::String]));
+                }
+
+                // Handle built-in file_is_symlink function
+                if function == "file_is_symlink" {
+                    // file_is_symlink(path: String) -> Bool
+                    if args.len() != 1 {
+                        return Err(DiagnosticError::Type(
+                            "file_is_symlink requires exactly 1 argument: 'path'".to_string()
+                        ));
+                    }
+
+                    let path_arg = args.iter().find(|arg| arg.name == "path")
+                        .ok_or_else(|| DiagnosticError::Type("file_is_symlink requires a 'path' parameter".to_string()))?;
+
+                    let path_type = self.check_expression(&path_arg.value)?;
+
+                    if path_type != HirType::String {
+                        return Err(DiagnosticError::Type(
+                            format!("file_is_symlink 'path' parameter must be String, got {:?}", path_type)
+                        ));
+                    }
+
+                    return Ok(HirType::Bool);
+                }
+
+                // Handle built-in symlink_delete function
+                if function == "symlink_delete" {
+                    // symlink_delete(path: String) -> Result<Bool, String>
+                    if args.len() != 1 {
+                        return Err(DiagnosticError::Type(
+                            "symlink_delete requires exactly 1 argument: 'path'".to_string()
+                        ));
+                    }
+
+                    let path_arg = args.iter().find(|arg| arg.name == "path")
+                        .ok_or_else(|| DiagnosticError::Type("symlink_delete requires a 'path' parameter".to_string()))?;
+
+                    let path_type = self.check_expression(&path_arg.value)?;
+
+                    if path_type != HirType::String {
+                        return Err(DiagnosticError::Type(
+                            format!("symlink_delete 'path' parameter must be String, got {:?}", path_type)
+                        ));
+                    }
+
+                    return Ok(HirType::Enum("Result".to_string(), vec![HirType::Bool, HirType::String]));
+                }
+
                 // Handle built-in channel_init function
                 if function == "channel_init" {
                     // channel_init<T>(capacity: Int32) -> Channel<T>

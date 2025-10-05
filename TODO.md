@@ -84,9 +84,12 @@ Linting
 * concurrency / parallel utils
 * building modules efficiently / incrementally (eg depedencies, std) 
 * context management 
+  * tool to allow ai tools to request specific language docs context efficiently. 
 * change from True to true, etc? 
 * todo/ not yet implemented declaration
 * allow TDD - not yet implemented compilation?
+* helpful compiler messages for structured concurrency. 
+
 
 
 
