@@ -26,7 +26,11 @@
 * parallel loops
 
 
-
+## Tooling
+Syntax Highlighting
+LSP
+Debugger. 
+Linting
 
 ---
 * automatic cli
@@ -50,7 +54,6 @@
 * first-class pandas, numpy, pytorch, matrix. platnum. 
 * ffi
 * incremental compilation and caching 
-* enforce composition over inheritance? one level of inheritance? 
 * revisit verbosity. type inference, etc. 
 * docs
 * plat by example / the plat book

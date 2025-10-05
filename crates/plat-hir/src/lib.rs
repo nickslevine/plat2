@@ -2776,6 +2776,16 @@ impl TypeChecker {
                             ))
                         }
                     }
+                    // Task methods
+                    (HirType::Task(inner_type), "await") => {
+                        if !args.is_empty() {
+                            return Err(DiagnosticError::Type(
+                                "await() method takes no arguments".to_string()
+                            ));
+                        }
+                        // await() returns the inner type T from Task<T>
+                        Ok((**inner_type).clone())
+                    }
                     _ => Err(DiagnosticError::Type(
                         format!("Type {:?} has no method '{}'", object_type, method)
                     ))
@@ -3302,12 +3312,98 @@ impl TypeChecker {
                 }
 
                 // Type check the spawn body and infer its return type
-                let body_type = self.check_expression(body)?;
+                // Special handling for block expressions to infer type from return statements
+                let body_type = match body.as_ref() {
+                    Expression::Block(block) => {
+                        // Infer return type from the block's return statements
+                        self.infer_block_return_type(block)?
+                    }
+                    _ => {
+                        // For other expressions, just check normally
+                        self.check_expression(body)?
+                    }
+                };
 
                 // Return Task<T> where T is the body's type
                 Ok(HirType::Task(Box::new(body_type)))
             }
         }
+    }
+
+    /// Infer the return type of a block by finding return statements
+    /// Used for spawn blocks which should return Task<T> based on their return type
+    fn infer_block_return_type(&mut self, block: &Block) -> Result<HirType, DiagnosticError> {
+        // Check block in a new scope
+        self.push_scope();
+
+        let mut return_type = HirType::Unit; // Default to Unit if no return found
+
+        // Look through statements to find return statements
+        for statement in &block.statements {
+            if let Some(ret_type) = self.find_return_type_in_statement(statement)? {
+                return_type = ret_type;
+                break; // Use first return found
+            }
+        }
+
+        self.pop_scope();
+        Ok(return_type)
+    }
+
+    /// Recursively search for return statements and get their type
+    fn find_return_type_in_statement(&mut self, statement: &Statement) -> Result<Option<HirType>, DiagnosticError> {
+        match statement {
+            Statement::Return { value, .. } => {
+                if let Some(expr) = value {
+                    let ret_type = self.check_expression(expr)?;
+                    Ok(Some(ret_type))
+                } else {
+                    Ok(Some(HirType::Unit))
+                }
+            }
+            Statement::If { condition, then_branch, else_branch, .. } => {
+                // Check condition first
+                self.check_expression(condition)?;
+
+                // Look for returns in then branch
+                if let Some(ret_type) = self.find_return_type_in_block(then_branch)? {
+                    return Ok(Some(ret_type));
+                }
+
+                // Look for returns in else branch if it exists
+                if let Some(else_blk) = else_branch {
+                    if let Some(ret_type) = self.find_return_type_in_block(else_blk)? {
+                        return Ok(Some(ret_type));
+                    }
+                }
+
+                Ok(None)
+            }
+            Statement::While { condition, body, .. } => {
+                self.check_expression(condition)?;
+                self.find_return_type_in_block(body)
+            }
+            Statement::For { .. } => {
+                // Type-check but don't look for returns in for loops for simplicity
+                self.check_statement(statement)?;
+                Ok(None)
+            }
+            _ => {
+                // Other statements - just type check normally
+                self.check_statement(statement)?;
+                Ok(None)
+            }
+        }
+    }
+
+    /// Find return type in a block
+    fn find_return_type_in_block(&mut self, block: &Block) -> Result<Option<HirType>, DiagnosticError> {
+        for statement in &block.statements {
+            if let Some(ret_type) = self.find_return_type_in_statement(statement)? {
+                return Ok(Some(ret_type));
+            }
+        }
+        Ok(None)
     }
 
     fn check_literal(&mut self, literal: &Literal) -> Result<HirType, DiagnosticError> {

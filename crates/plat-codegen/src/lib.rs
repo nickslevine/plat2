@@ -1341,8 +1341,28 @@ impl CodeGenerator {
                 Ok(false) // for loops don't guarantee return
             }
             Statement::Concurrent { body, .. } => {
-                // Execute concurrent block
-                // TODO: Add full scope tracking and automatic awaiting of all spawned tasks
+                // Execute concurrent block with scope tracking
+
+                // Declare plat_scope_enter function
+                let mut enter_sig = module.make_signature();
+                enter_sig.call_conv = CallConv::SystemV;
+                enter_sig.returns.push(AbiParam::new(I64)); // Returns scope ID
+
+                let enter_func_name = "plat_scope_enter";
+                let enter_func_id = if let Some(&func_id) = functions.get(enter_func_name) {
+                    func_id
+                } else {
+                    module.declare_function(enter_func_name, Linkage::Import, &enter_sig)
+                        .map_err(CodegenError::ModuleError)?
+                };
+                let enter_func_ref = module.declare_func_in_func(enter_func_id, builder.func);
+
+                // Call plat_scope_enter to get scope ID
+                let call_inst = builder.ins().call(enter_func_ref, &[]);
+                let scope_id = builder.inst_results(call_inst)[0];
+
+                // Execute the concurrent block body
+                let mut body_returned = false;
                 for stmt in &body.statements {
                     let returned = Self::generate_statement_helper(
                         builder,
@@ -1360,10 +1380,29 @@ impl CodeGenerator {
                         test_mode
                     )?;
                     if returned {
-                        return Ok(true);
+                        body_returned = true;
+                        break;
                     }
                 }
-                Ok(false)
+
+                // Declare plat_scope_exit function
+                let mut exit_sig = module.make_signature();
+                exit_sig.call_conv = CallConv::SystemV;
+                exit_sig.params.push(AbiParam::new(I64)); // Takes scope ID
+
+                let exit_func_name = "plat_scope_exit";
+                let exit_func_id = if let Some(&func_id) = functions.get(exit_func_name) {
+                    func_id
+                } else {
+                    module.declare_function(exit_func_name, Linkage::Import, &exit_sig)
+                        .map_err(CodegenError::ModuleError)?
+                };
+                let exit_func_ref = module.declare_func_in_func(exit_func_id, builder.func);
+
+                // Call plat_scope_exit to wait for all spawned tasks
+                builder.ins().call(exit_func_ref, &[scope_id]);
+
+                Ok(body_returned)
             }
         }
     }
@@ -4284,32 +4323,66 @@ impl CodeGenerator {
                     closure_builder.switch_to_block(entry_block);
                     closure_builder.seal_block(entry_block);
 
-                    // Generate the body expression
+                    // Generate the body
                     let mut closure_variables = HashMap::new();
                     let mut closure_variable_types = HashMap::new();
                     let mut closure_variable_counter = 0;
 
-                    let result_val = Self::generate_expression_helper(
-                        &mut closure_builder,
-                        body,
-                        &closure_variables,
-                        &closure_variable_types,
-                        functions,
-                        module,
-                        string_counter,
-                        &mut closure_variable_counter,
-                        class_metadata,
-                        test_mode
-                    )?;
+                    // Special handling for Block expressions (the common case for spawn blocks)
+                    if let Expression::Block(block) = body.as_ref() {
+                        // Generate statements in the block
+                        // The block should contain return statements that will handle the return value
+                        let empty_type_aliases = HashMap::new(); // No type aliases in closure scope
+                        let mut has_return = false;
+                        for stmt in &block.statements {
+                            has_return |= Self::generate_statement_helper(
+                                &mut closure_builder,
+                                stmt,
+                                &mut closure_variables,
+                                &mut closure_variable_types,
+                                &mut closure_variable_counter,
+                                functions,
+                                module,
+                                string_counter,
+                                class_metadata,
+                                &empty_type_aliases,
+                                &closure_name, // function name for debugging
+                                &Some(AstType::Int64), // return type (i64 for now)
+                                test_mode
+                            )?;
+                        }
 
-                    // Convert result to i64 if needed
-                    let result_i64 = match Self::infer_expression_type(body, &closure_variable_types) {
-                        VariableType::Int32 => closure_builder.ins().sextend(I64, result_val),
-                        VariableType::Int64 => result_val,
-                        _ => result_val, // For other types, just use as-is for now
-                    };
+                        // If the block didn't have a return, add a default return of 0
+                        if !has_return {
+                            let zero = closure_builder.ins().iconst(I64, 0);
+                            closure_builder.ins().return_(&[zero]);
+                        }
+                    } else {
+                        // For non-block expressions, generate as expression
+                        let result_val = Self::generate_expression_helper(
+                            &mut closure_builder,
+                            body,
+                            &closure_variables,
+                            &closure_variable_types,
+                            functions,
+                            module,
+                            string_counter,
+                            &mut closure_variable_counter,
+                            class_metadata,
+                            test_mode
+                        )?;
 
-                    closure_builder.ins().return_(&[result_i64]);
+                        // Convert result to i64 if needed
+                        let result_i64 = match Self::infer_expression_type(body, &closure_variable_types) {
+                            VariableType::Int32 => closure_builder.ins().sextend(I64, result_val),
+                            VariableType::Int64 => result_val,
+                            _ => result_val, // For other types, just use as-is for now
+                        };
+
+                        closure_builder.ins().return_(&[result_i64]);
+                    }
+
+                    // Finalize the closure function
                     closure_builder.finalize();
 
                     module.define_function(closure_func_id, &mut ctx)

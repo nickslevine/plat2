@@ -68,12 +68,16 @@ pub extern "C" fn plat_spawn_task(func: extern "C" fn()) -> u64 {
 /// Returns an opaque task handle (pointer)
 #[no_mangle]
 pub extern "C" fn plat_spawn_task_i64(func: extern "C" fn() -> i64) -> u64 {
-    use green_runtime::{GreenThreadRuntime, task_with_result::TaskWithResult};
+    use green_runtime::{GreenThreadRuntime, task_with_result::TaskWithResult, get_scope_registry};
     use std::sync::Arc;
 
     let task = TaskWithResult::new(move || func());
     let handle = task.handle();
     let task_id = task.id().as_u64();
+
+    // Register the handle with the current scope (for structured concurrency)
+    let scope_registry = get_scope_registry();
+    scope_registry.register_task(handle.clone());
 
     let runtime = GreenThreadRuntime::get();
     let mut guard = runtime.lock();
@@ -121,4 +125,37 @@ pub extern "C" fn plat_task_await_i64(handle_id: u64) -> i64 {
 
     // If handle not found or wrong type, return 0
     0
+}
+
+// ============================================================================
+// Scope Management for Structured Concurrency
+// ============================================================================
+
+/// Enter a new concurrent scope
+/// Returns the scope ID
+#[no_mangle]
+pub extern "C" fn plat_scope_enter() -> u64 {
+    use green_runtime::get_scope_registry;
+
+    let registry = get_scope_registry();
+    let scope_id = registry.enter_scope();
+    scope_id.as_u64()
+}
+
+/// Exit a concurrent scope (waits for all spawned tasks)
+#[no_mangle]
+pub extern "C" fn plat_scope_exit(scope_id: u64) {
+    use green_runtime::{get_scope_registry, scope::ScopeId};
+
+    let registry = get_scope_registry();
+
+    // We need to reconstruct the ScopeId from the u64
+    // This is a bit hacky but works for now
+    // In a real implementation, we might want to validate the scope_id
+
+    // For now, we'll just call exit_scope with the raw value
+    // We need a way to create a ScopeId from a u64
+    // Let's add a from_u64 method to ScopeId
+
+    registry.exit_scope(green_runtime::scope::ScopeId::from_u64(scope_id));
 }

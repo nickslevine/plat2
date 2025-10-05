@@ -1,6 +1,7 @@
 pub mod task;
 pub mod task_with_result;
 pub mod scheduler;
+pub mod scope;
 
 use std::sync::Arc;
 use parking_lot::Mutex;
@@ -9,9 +10,16 @@ use crossbeam_deque::Worker;
 
 use task::{Task, TaskId};
 use scheduler::Scheduler;
+use scope::ScopeRegistry;
 
 lazy_static! {
     static ref RUNTIME: Arc<Mutex<Option<GreenThreadRuntime>>> = Arc::new(Mutex::new(None));
+    static ref SCOPE_REGISTRY: Arc<ScopeRegistry> = Arc::new(ScopeRegistry::new());
+}
+
+/// Get the global scope registry
+pub fn get_scope_registry() -> Arc<ScopeRegistry> {
+    SCOPE_REGISTRY.clone()
 }
 
 /// Green thread runtime with M:N threading
