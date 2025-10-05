@@ -2686,6 +2686,78 @@ impl CodeGenerator {
                     return Ok(builder.inst_results(call)[0]);
                 }
 
+                // Handle built-in file_exists function
+                if function == "file_exists" {
+                    // file_exists(path: String) -> Bool
+                    let path_arg = args.iter().find(|arg| arg.name == "path")
+                        .ok_or_else(|| CodegenError::UnsupportedFeature("file_exists missing 'path' parameter".to_string()))?;
+
+                    let path_val = Self::generate_expression_helper(builder, &path_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+
+                    let func_sig = {
+                        let mut sig = module.make_signature();
+                        sig.call_conv = CallConv::SystemV;
+                        sig.params.push(AbiParam::new(I64)); // path string pointer
+                        sig.returns.push(AbiParam::new(I32)); // bool (0 or 1)
+                        sig
+                    };
+
+                    let func_id = module.declare_function("plat_file_exists", Linkage::Import, &func_sig)
+                        .map_err(CodegenError::ModuleError)?;
+                    let func_ref = module.declare_func_in_func(func_id, builder.func);
+
+                    let call = builder.ins().call(func_ref, &[path_val]);
+                    return Ok(builder.inst_results(call)[0]);
+                }
+
+                // Handle built-in file_size function
+                if function == "file_size" {
+                    // file_size(path: String) -> Result<Int64, String>
+                    let path_arg = args.iter().find(|arg| arg.name == "path")
+                        .ok_or_else(|| CodegenError::UnsupportedFeature("file_size missing 'path' parameter".to_string()))?;
+
+                    let path_val = Self::generate_expression_helper(builder, &path_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+
+                    let func_sig = {
+                        let mut sig = module.make_signature();
+                        sig.call_conv = CallConv::SystemV;
+                        sig.params.push(AbiParam::new(I64)); // path string pointer
+                        sig.returns.push(AbiParam::new(I64)); // Result enum pointer
+                        sig
+                    };
+
+                    let func_id = module.declare_function("plat_file_size", Linkage::Import, &func_sig)
+                        .map_err(CodegenError::ModuleError)?;
+                    let func_ref = module.declare_func_in_func(func_id, builder.func);
+
+                    let call = builder.ins().call(func_ref, &[path_val]);
+                    return Ok(builder.inst_results(call)[0]);
+                }
+
+                // Handle built-in file_is_dir function
+                if function == "file_is_dir" {
+                    // file_is_dir(path: String) -> Bool
+                    let path_arg = args.iter().find(|arg| arg.name == "path")
+                        .ok_or_else(|| CodegenError::UnsupportedFeature("file_is_dir missing 'path' parameter".to_string()))?;
+
+                    let path_val = Self::generate_expression_helper(builder, &path_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+
+                    let func_sig = {
+                        let mut sig = module.make_signature();
+                        sig.call_conv = CallConv::SystemV;
+                        sig.params.push(AbiParam::new(I64)); // path string pointer
+                        sig.returns.push(AbiParam::new(I32)); // bool (0 or 1)
+                        sig
+                    };
+
+                    let func_id = module.declare_function("plat_file_is_dir", Linkage::Import, &func_sig)
+                        .map_err(CodegenError::ModuleError)?;
+                    let func_ref = module.declare_func_in_func(func_id, builder.func);
+
+                    let call = builder.ins().call(func_ref, &[path_val]);
+                    return Ok(builder.inst_results(call)[0]);
+                }
+
                 // Handle built-in channel_init function
                 if function == "channel_init" {
                     // channel_init<T>(capacity: Int32) -> Channel<T>

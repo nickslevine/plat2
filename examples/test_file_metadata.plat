@@ -1,0 +1,90 @@
+// Test Phase 2 file system functions: file_exists, file_size, file_is_dir
+
+fn main() -> Int32 {
+    print(value = "=== Testing Phase 2 File Metadata Functions ===");
+
+    // Test 1: file_exists with existing file
+    print(value = "\n1. Testing file_exists with this file...");
+    let exists: Bool = file_exists(path = "examples/test_file_metadata.plat");
+    if (exists) {
+        print(value = "✓ File exists!");
+    } else {
+        print(value = "✗ FAIL: File should exist");
+        return 1;
+    }
+
+    // Test 2: file_exists with non-existent file
+    print(value = "\n2. Testing file_exists with non-existent file...");
+    let not_exists: Bool = file_exists(path = "examples/this_does_not_exist.plat");
+    if (not_exists) {
+        print(value = "✗ FAIL: File should not exist");
+        return 1;
+    } else {
+        print(value = "✓ File does not exist (as expected)!");
+    }
+
+    // Test 3: file_size for this file
+    print(value = "\n3. Testing file_size for this file...");
+    let size_result: Result<Int64, String> = file_size(path = "examples/test_file_metadata.plat");
+
+    let has_size: Bool = match size_result {
+        Result::Ok(s: Int64) -> true,
+        Result::Err(msg: String) -> false
+    };
+
+    if (has_size == false) {
+        print(value = "✗ FAIL: Could not get file size");
+        return 1;
+    }
+
+    print(value = "✓ File size retrieved successfully");
+
+    // Test 4: file_size for non-existent file (should error)
+    print(value = "\n4. Testing file_size with non-existent file...");
+    let bad_size: Result<Int64, String> = file_size(path = "examples/nonexistent.plat");
+
+    let got_error: Bool = match bad_size {
+        Result::Ok(s: Int64) -> false,
+        Result::Err(msg: String) -> true
+    };
+
+    if (got_error) {
+        print(value = "✓ Got expected error");
+    } else {
+        print(value = "✗ FAIL: Should have returned an error");
+        return 1;
+    }
+
+    // Test 5: file_is_dir with a directory
+    print(value = "\n5. Testing file_is_dir with 'examples' directory...");
+    let is_dir: Bool = file_is_dir(path = "examples");
+    if (is_dir) {
+        print(value = "✓ examples is a directory!");
+    } else {
+        print(value = "✗ FAIL: examples should be a directory");
+        return 1;
+    }
+
+    // Test 6: file_is_dir with a file (should be false)
+    print(value = "\n6. Testing file_is_dir with a file...");
+    let is_file_dir: Bool = file_is_dir(path = "examples/test_file_metadata.plat");
+    if (is_file_dir) {
+        print(value = "✗ FAIL: File should not be a directory");
+        return 1;
+    } else {
+        print(value = "✓ File is not a directory (as expected)!");
+    }
+
+    // Test 7: file_is_dir with non-existent path
+    print(value = "\n7. Testing file_is_dir with non-existent path...");
+    let nonexistent_dir: Bool = file_is_dir(path = "this/does/not/exist");
+    if (nonexistent_dir) {
+        print(value = "✗ FAIL: Non-existent path should not be a directory");
+        return 1;
+    } else {
+        print(value = "✓ Non-existent path is not a directory (as expected)!");
+    }
+
+    print(value = "\n=== All Phase 2 tests passed! ===");
+    return 0;
+}

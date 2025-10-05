@@ -1965,6 +1965,75 @@ impl TypeChecker {
                     return Ok(HirType::Enum("Result".to_string(), vec![HirType::Bool, HirType::String]));
                 }
 
+                // Handle built-in file_exists function
+                if function == "file_exists" {
+                    // file_exists(path: String) -> Bool
+                    if args.len() != 1 {
+                        return Err(DiagnosticError::Type(
+                            "file_exists requires exactly 1 argument: 'path'".to_string()
+                        ));
+                    }
+
+                    let path_arg = args.iter().find(|arg| arg.name == "path")
+                        .ok_or_else(|| DiagnosticError::Type("file_exists requires a 'path' parameter".to_string()))?;
+
+                    let path_type = self.check_expression(&path_arg.value)?;
+
+                    if path_type != HirType::String {
+                        return Err(DiagnosticError::Type(
+                            format!("file_exists 'path' parameter must be String, got {:?}", path_type)
+                        ));
+                    }
+
+                    return Ok(HirType::Bool);
+                }
+
+                // Handle built-in file_size function
+                if function == "file_size" {
+                    // file_size(path: String) -> Result<Int64, String>
+                    if args.len() != 1 {
+                        return Err(DiagnosticError::Type(
+                            "file_size requires exactly 1 argument: 'path'".to_string()
+                        ));
+                    }
+
+                    let path_arg = args.iter().find(|arg| arg.name == "path")
+                        .ok_or_else(|| DiagnosticError::Type("file_size requires a 'path' parameter".to_string()))?;
+
+                    let path_type = self.check_expression(&path_arg.value)?;
+
+                    if path_type != HirType::String {
+                        return Err(DiagnosticError::Type(
+                            format!("file_size 'path' parameter must be String, got {:?}", path_type)
+                        ));
+                    }
+
+                    return Ok(HirType::Enum("Result".to_string(), vec![HirType::Int64, HirType::String]));
+                }
+
+                // Handle built-in file_is_dir function
+                if function == "file_is_dir" {
+                    // file_is_dir(path: String) -> Bool
+                    if args.len() != 1 {
+                        return Err(DiagnosticError::Type(
+                            "file_is_dir requires exactly 1 argument: 'path'".to_string()
+                        ));
+                    }
+
+                    let path_arg = args.iter().find(|arg| arg.name == "path")
+                        .ok_or_else(|| DiagnosticError::Type("file_is_dir requires a 'path' parameter".to_string()))?;
+
+                    let path_type = self.check_expression(&path_arg.value)?;
+
+                    if path_type != HirType::String {
+                        return Err(DiagnosticError::Type(
+                            format!("file_is_dir 'path' parameter must be String, got {:?}", path_type)
+                        ));
+                    }
+
+                    return Ok(HirType::Bool);
+                }
+
                 // Handle built-in channel_init function
                 if function == "channel_init" {
                     // channel_init<T>(capacity: Int32) -> Channel<T>

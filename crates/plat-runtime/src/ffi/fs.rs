@@ -50,6 +50,17 @@ unsafe fn create_result_enum_ok_bool(value: bool) -> i64 {
     ptr as i64
 }
 
+/// Create Result::Ok(i64) enum value
+unsafe fn create_result_enum_ok_i64(value: i64) -> i64 {
+    let ok_disc = variant_hash("Ok");
+    // Heap-allocated: [discriminant:i32][padding:i32][value:i64]
+    let ptr = plat_gc_alloc(16) as *mut i32;
+    *ptr = ok_disc as i32;
+    let val_ptr = ptr.add(2) as *mut i64;
+    *val_ptr = value;
+    ptr as i64
+}
+
 /// Create Result::Ok(String) enum value
 unsafe fn create_result_enum_ok_string(value: *const c_char) -> i64 {
     let ok_disc = variant_hash("Ok");
@@ -267,5 +278,85 @@ pub extern "C" fn plat_file_close(fd: i32) -> i64 {
         // File descriptor not found
         let err_msg = alloc_c_string("file_close: invalid file descriptor");
         create_result_enum_err_string(err_msg)
+    }
+}
+
+/// Check if file exists
+/// Returns Bool (1 = true, 0 = false)
+#[no_mangle]
+pub extern "C" fn plat_file_exists(path_ptr: *const c_char) -> i32 {
+    unsafe {
+        if path_ptr.is_null() {
+            return 0; // false
+        }
+
+        let path = match CStr::from_ptr(path_ptr).to_str() {
+            Ok(s) => s,
+            Err(_) => return 0, // false for invalid path
+        };
+
+        if std::path::Path::new(path).exists() {
+            1 // true
+        } else {
+            0 // false
+        }
+    }
+}
+
+/// Get file size in bytes
+/// Returns Result<Int64, String>
+#[no_mangle]
+pub extern "C" fn plat_file_size(path_ptr: *const c_char) -> i64 {
+    unsafe {
+        if path_ptr.is_null() {
+            let err_msg = alloc_c_string("file_size: path is null");
+            return create_result_enum_err_string(err_msg);
+        }
+
+        let path = match CStr::from_ptr(path_ptr).to_str() {
+            Ok(s) => s,
+            Err(_) => {
+                let err_msg = alloc_c_string("file_size: invalid path string");
+                return create_result_enum_err_string(err_msg);
+            }
+        };
+
+        match std::fs::metadata(path) {
+            Ok(metadata) => {
+                let size = metadata.len() as i64;
+                create_result_enum_ok_i64(size)
+            }
+            Err(e) => {
+                let err_msg = alloc_c_string(&format!("file_size failed: {}", e));
+                create_result_enum_err_string(err_msg)
+            }
+        }
+    }
+}
+
+/// Check if path is a directory
+/// Returns Bool (1 = true, 0 = false)
+#[no_mangle]
+pub extern "C" fn plat_file_is_dir(path_ptr: *const c_char) -> i32 {
+    unsafe {
+        if path_ptr.is_null() {
+            return 0; // false
+        }
+
+        let path = match CStr::from_ptr(path_ptr).to_str() {
+            Ok(s) => s,
+            Err(_) => return 0, // false for invalid path
+        };
+
+        match std::fs::metadata(path) {
+            Ok(metadata) => {
+                if metadata.is_dir() {
+                    1 // true
+                } else {
+                    0 // false
+                }
+            }
+            Err(_) => 0, // false if path doesn't exist or other error
+        }
     }
 }

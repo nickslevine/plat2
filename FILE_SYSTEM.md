@@ -95,27 +95,29 @@ Implement low-level file system primitives following the same pattern as TCP net
 ### Functions to Implement
 
 #### `file_exists(path: String) -> Bool`
-- [ ] Runtime FFI implementation in `fs.rs` (simple boolean check, no Result needed)
-- [ ] Type checking in `plat-hir/src/lib.rs`
-- [ ] Code generation in `plat-codegen/src/lib.rs`
-- [ ] Test in `examples/file_test.plat`
+- [x] Runtime FFI implementation in `fs.rs` (simple boolean check, no Result needed)
+- [x] Type checking in `plat-hir/src/lib.rs`
+- [x] Code generation in `plat-codegen/src/lib.rs`
+- [x] Test in `examples/test_file_metadata.plat`
 
 #### `file_size(path: String) -> Result<Int64, String>`
-- [ ] Runtime FFI implementation in `fs.rs` (returns file size in bytes, Int64 for large files)
-- [ ] Type checking in `plat-hir/src/lib.rs`
-- [ ] Code generation in `plat-codegen/src/lib.rs`
-- [ ] Test in `examples/file_test.plat`
+- [x] Runtime FFI implementation in `fs.rs` (returns file size in bytes, Int64 for large files)
+- [x] Type checking in `plat-hir/src/lib.rs`
+- [x] Code generation in `plat-codegen/src/lib.rs`
+- [x] Test in `examples/test_file_metadata.plat`
 
 #### `file_is_dir(path: String) -> Bool`
-- [ ] Runtime FFI implementation in `fs.rs` (check if path is a directory)
-- [ ] Type checking in `plat-hir/src/lib.rs`
-- [ ] Code generation in `plat-codegen/src/lib.rs`
-- [ ] Test in `examples/file_test.plat`
+- [x] Runtime FFI implementation in `fs.rs` (check if path is a directory)
+- [x] Type checking in `plat-hir/src/lib.rs`
+- [x] Code generation in `plat-codegen/src/lib.rs`
+- [x] Test in `examples/test_file_metadata.plat`
 
 ### Phase 2 Testing
-- [ ] Test file existence checks
-- [ ] Test file size for various file sizes
-- [ ] Test directory vs file detection
+- [x] Test file existence checks
+- [x] Test file size for various file sizes
+- [x] Test directory vs file detection
+
+**Phase 2 Status**: ✅ **COMPLETE** - All file metadata functions working correctly!
 
 ---
 
