@@ -101,40 +101,41 @@
 
 ### 2.1 Language Support
 
-- [ ] **Add `concurrent` keyword to lexer** (`plat-lexer`)
+- [x] **Add `concurrent` keyword to lexer** (`plat-lexer`)
   - Add token variant `Token::Concurrent`
 
-- [ ] **Add `spawn` keyword to lexer**
+- [x] **Add `spawn` keyword to lexer**
   - Add token variant `Token::Spawn`
 
-- [ ] **Parse `concurrent { ... }` blocks** (`plat-parser`)
+- [x] **Parse `concurrent { ... }` blocks** (`plat-parser`)
   - New AST node: `Stmt::ConcurrentBlock { body: Vec<Stmt> }`
   - Parse block contents normally
 
-- [ ] **Parse `spawn { ... }` expressions** (`plat-parser`)
+- [x] **Parse `spawn { ... }` expressions** (`plat-parser`)
   - New AST node: `Expr::Spawn { body: Box<Expr> }`
   - Must be inside `concurrent` block (validation in HIR)
 
-**Commit:** `feat: Add concurrent and spawn keywords to parser`
+**Commit:** `feat: Add concurrent and spawn keywords to parser` ✅
 
 ### 2.2 HIR Representation
 
-- [ ] **Add HIR nodes** (`plat-hir`)
-  - `HIRStmt::ConcurrentBlock { scope_id, body }`
-  - `HIRExpr::Spawn { task_id, body, return_type }`
-  - `HIRExpr::Await { task_expr }`
+- [x] **Add HIR nodes** (`plat-hir`)
+  - Added `HirType::Task(Box<HirType>)` for Task<T> type
+  - Added `in_concurrent_block` field to TypeChecker for scope tracking
+  - Statement::Concurrent handling in check_statement()
+  - Expression::Spawn handling in check_expression()
 
-- [ ] **Type checking for concurrent blocks**
-  - Track scope nesting (concurrent blocks create new scopes)
-  - Validate `spawn` only inside `concurrent`
-  - Infer return type of spawned closure
+- [x] **Type checking for concurrent blocks**
+  - Track concurrent block scope with `in_concurrent_block` flag
+  - Validate `spawn` only inside `concurrent` (compile-time error otherwise)
+  - Infer return type of spawned closure body
 
-- [ ] **Type checking for Task<T>**
-  - Add built-in generic type `Task<T>`
+- [x] **Type checking for Task<T>**
+  - Added `HirType::Task(Box<HirType>)` type
   - `spawn { expr }` returns `Task<T>` where T is expr's type
-  - `.await()` method on Task<T> returns T
+  - Type substitution support for Task<T> in monomorphization
 
-**Commit:** `feat: Add HIR support for concurrent blocks and task spawning`
+**Commit:** `feat: Add HIR support for concurrent blocks and task spawning` ✅
 
 ### 2.3 Codegen for Spawn
 

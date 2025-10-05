@@ -1,5 +1,8 @@
 
 ## stdlib
+* set up stdlib. 
+
+
 * colored printing 
 * logging package
 * json, etc

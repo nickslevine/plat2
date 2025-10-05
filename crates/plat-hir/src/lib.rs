@@ -149,6 +149,7 @@ pub struct TypeChecker {
     bench_mode: bool, // Whether we're in bench mode (compiling benchmarks)
     test_block_names: HashSet<String>, // Track test block names for uniqueness validation
     bench_block_names: HashSet<String>, // Track bench block names for uniqueness validation
+    in_concurrent_block: bool, // Track if we're currently inside a concurrent block (for spawn validation)
     filename: String, // Source filename for error reporting
 }
 
@@ -171,6 +172,7 @@ pub enum HirType {
     Class(String, Vec<HirType>), // name, type parameters
     TypeParameter(String), // For generic type parameters like T, U, etc.
     Newtype(String), // Distinct type wrapping another type
+    Task(Box<HirType>), // Task<T> for concurrent spawn expressions
     Unit, // For functions that don't return anything
 }
 
@@ -243,6 +245,7 @@ impl TypeChecker {
             bench_mode: false, // Default: not in bench mode
             test_block_names: HashSet::new(), // Track test block names
             bench_block_names: HashSet::new(), // Track bench block names
+            in_concurrent_block: false, // Default: not in concurrent block
             filename: "<unknown>".to_string(), // Default filename
         };
 
@@ -275,6 +278,7 @@ impl TypeChecker {
             bench_mode: false, // Default: not in bench mode
             test_block_names: HashSet::new(), // Track test block names
             bench_block_names: HashSet::new(), // Track bench block names
+            in_concurrent_block: false, // Default: not in concurrent block
             filename: "<unknown>".to_string(), // Default filename
         };
 
@@ -1564,11 +1568,17 @@ impl TypeChecker {
                 }
             }
             Statement::Concurrent { body, .. } => {
-                // For now, just check the block contents
-                // Full implementation will come in Phase 2.2 (HIR support)
+                // Mark that we're entering a concurrent block
+                let was_in_concurrent = self.in_concurrent_block;
+                self.in_concurrent_block = true;
+
+                // Type check the concurrent block body
                 self.push_scope();
                 self.check_block(body)?;
                 self.pop_scope();
+
+                // Restore the previous concurrent block state
+                self.in_concurrent_block = was_in_concurrent;
             }
         }
         Ok(())
@@ -3278,20 +3288,24 @@ impl TypeChecker {
                 Ok(target_hir_type)
             }
             Expression::Spawn { body, span } => {
-                // For now, spawn expressions are not fully implemented
-                // Full implementation will come in Phase 2.2 (HIR support) and beyond
-                // We'll check the body expression but return an error for now
-                self.check_expression(body)?;
+                // Validate that spawn is inside a concurrent block
+                if !self.in_concurrent_block {
+                    return Err(DiagnosticError::Rich(
+                        Diagnostic::syntax_error(
+                            &self.filename,
+                            *span,
+                            "spawn can only be used inside a concurrent block"
+                        )
+                        .with_label("spawn must be inside concurrent { ... }")
+                        .with_help("Wrap this in a concurrent block:\n  concurrent {\n    spawn { ... }\n  }")
+                    ));
+                }
 
-                return Err(DiagnosticError::Rich(
-                    Diagnostic::syntax_error(
-                        &self.filename,
-                        *span,
-                        "spawn expressions are not yet implemented"
-                    )
-                    .with_label("concurrent features are planned for a future release")
-                    .with_help("This feature is under development - stay tuned!")
-                ));
+                // Type check the spawn body and infer its return type
+                let body_type = self.check_expression(body)?;
+
+                // Return Task<T> where T is the body's type
+                Ok(HirType::Task(Box::new(body_type)))
             }
         }
     }
@@ -3962,6 +3976,9 @@ impl TypeSubstitutable for HirType {
                     name.clone(),
                     type_params.iter().map(|t| t.substitute_types(substitution)).collect()
                 )
+            }
+            HirType::Task(inner_type) => {
+                HirType::Task(Box::new(inner_type.substitute_types(substitution)))
             }
             // Primitive types and newtypes don't need substitution
             HirType::Bool | HirType::Int8 | HirType::Int16 | HirType::Int32 | HirType::Int64 | HirType::Float8 | HirType::Float16 | HirType::Float32 | HirType::Float64 | HirType::String | HirType::Unit | HirType::Newtype(_) => {

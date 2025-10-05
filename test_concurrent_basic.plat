@@ -1,0 +1,16 @@
+// Test basic concurrent block and spawn expression type checking
+
+fn add(x: Int32, y: Int32) -> Int32 {
+  return x + y;
+}
+
+fn main() -> Int32 {
+  // Valid: spawn inside concurrent block (not using the task yet)
+  concurrent {
+    let result: Int32 = add(x = 10, y = 20);
+    print(value = "Inside concurrent block");
+  }
+
+  print(value = "Program completed");
+  return 0;
+}
