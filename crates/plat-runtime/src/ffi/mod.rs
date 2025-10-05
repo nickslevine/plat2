@@ -9,6 +9,7 @@ pub mod set;
 pub mod class;
 pub mod gc_bindings;
 pub mod net;
+pub mod fs;
 
 // Re-export commonly used items
 pub use array::{RuntimeArray, ARRAY_TYPE_I32, ARRAY_TYPE_I64, ARRAY_TYPE_BOOL, ARRAY_TYPE_STRING, ARRAY_TYPE_CLASS};

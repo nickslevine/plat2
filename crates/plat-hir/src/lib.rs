@@ -1849,6 +1849,122 @@ impl TypeChecker {
                     return Ok(HirType::Enum("Result".to_string(), vec![HirType::Bool, HirType::String]));
                 }
 
+                // Handle built-in file_open function
+                if function == "file_open" {
+                    // file_open(path: String, mode: String) -> Result<Int32, String>
+                    if args.len() != 2 {
+                        return Err(DiagnosticError::Type(
+                            "file_open requires exactly 2 arguments: 'path' and 'mode'".to_string()
+                        ));
+                    }
+
+                    let path_arg = args.iter().find(|arg| arg.name == "path")
+                        .ok_or_else(|| DiagnosticError::Type("file_open requires a 'path' parameter".to_string()))?;
+                    let mode_arg = args.iter().find(|arg| arg.name == "mode")
+                        .ok_or_else(|| DiagnosticError::Type("file_open requires a 'mode' parameter".to_string()))?;
+
+                    let path_type = self.check_expression(&path_arg.value)?;
+                    let mode_type = self.check_expression(&mode_arg.value)?;
+
+                    if path_type != HirType::String {
+                        return Err(DiagnosticError::Type(
+                            format!("file_open 'path' parameter must be String, got {:?}", path_type)
+                        ));
+                    }
+                    if mode_type != HirType::String {
+                        return Err(DiagnosticError::Type(
+                            format!("file_open 'mode' parameter must be String, got {:?}", mode_type)
+                        ));
+                    }
+
+                    return Ok(HirType::Enum("Result".to_string(), vec![HirType::Int32, HirType::String]));
+                }
+
+                // Handle built-in file_read function
+                if function == "file_read" {
+                    // file_read(fd: Int32, max_bytes: Int32) -> Result<String, String>
+                    if args.len() != 2 {
+                        return Err(DiagnosticError::Type(
+                            "file_read requires exactly 2 arguments: 'fd' and 'max_bytes'".to_string()
+                        ));
+                    }
+
+                    let fd_arg = args.iter().find(|arg| arg.name == "fd")
+                        .ok_or_else(|| DiagnosticError::Type("file_read requires a 'fd' parameter".to_string()))?;
+                    let max_bytes_arg = args.iter().find(|arg| arg.name == "max_bytes")
+                        .ok_or_else(|| DiagnosticError::Type("file_read requires a 'max_bytes' parameter".to_string()))?;
+
+                    let fd_type = self.check_expression(&fd_arg.value)?;
+                    let max_bytes_type = self.check_expression(&max_bytes_arg.value)?;
+
+                    if fd_type != HirType::Int32 {
+                        return Err(DiagnosticError::Type(
+                            format!("file_read 'fd' parameter must be Int32, got {:?}", fd_type)
+                        ));
+                    }
+                    if max_bytes_type != HirType::Int32 {
+                        return Err(DiagnosticError::Type(
+                            format!("file_read 'max_bytes' parameter must be Int32, got {:?}", max_bytes_type)
+                        ));
+                    }
+
+                    return Ok(HirType::Enum("Result".to_string(), vec![HirType::String, HirType::String]));
+                }
+
+                // Handle built-in file_write function
+                if function == "file_write" {
+                    // file_write(fd: Int32, data: String) -> Result<Int32, String>
+                    if args.len() != 2 {
+                        return Err(DiagnosticError::Type(
+                            "file_write requires exactly 2 arguments: 'fd' and 'data'".to_string()
+                        ));
+                    }
+
+                    let fd_arg = args.iter().find(|arg| arg.name == "fd")
+                        .ok_or_else(|| DiagnosticError::Type("file_write requires a 'fd' parameter".to_string()))?;
+                    let data_arg = args.iter().find(|arg| arg.name == "data")
+                        .ok_or_else(|| DiagnosticError::Type("file_write requires a 'data' parameter".to_string()))?;
+
+                    let fd_type = self.check_expression(&fd_arg.value)?;
+                    let data_type = self.check_expression(&data_arg.value)?;
+
+                    if fd_type != HirType::Int32 {
+                        return Err(DiagnosticError::Type(
+                            format!("file_write 'fd' parameter must be Int32, got {:?}", fd_type)
+                        ));
+                    }
+                    if data_type != HirType::String {
+                        return Err(DiagnosticError::Type(
+                            format!("file_write 'data' parameter must be String, got {:?}", data_type)
+                        ));
+                    }
+
+                    return Ok(HirType::Enum("Result".to_string(), vec![HirType::Int32, HirType::String]));
+                }
+
+                // Handle built-in file_close function
+                if function == "file_close" {
+                    // file_close(fd: Int32) -> Result<Bool, String>
+                    if args.len() != 1 {
+                        return Err(DiagnosticError::Type(
+                            "file_close requires exactly 1 argument: 'fd'".to_string()
+                        ));
+                    }
+
+                    let fd_arg = args.iter().find(|arg| arg.name == "fd")
+                        .ok_or_else(|| DiagnosticError::Type("file_close requires a 'fd' parameter".to_string()))?;
+
+                    let fd_type = self.check_expression(&fd_arg.value)?;
+
+                    if fd_type != HirType::Int32 {
+                        return Err(DiagnosticError::Type(
+                            format!("file_close 'fd' parameter must be Int32, got {:?}", fd_type)
+                        ));
+                    }
+
+                    return Ok(HirType::Enum("Result".to_string(), vec![HirType::Bool, HirType::String]));
+                }
+
                 // Handle built-in channel_init function
                 if function == "channel_init" {
                     // channel_init<T>(capacity: Int32) -> Channel<T>

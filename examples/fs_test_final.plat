@@ -1,0 +1,9 @@
+fn main() -> Int32 {
+    let r: Result<Int32, String> = file_open(path = "test.txt", mode = "w");
+    let fd: Int32 = match r {
+        Result::Ok(f: Int32) -> f,
+        Result::Err(e: String) -> 0
+    };
+    print(value = "Done");
+    return 0;
+}

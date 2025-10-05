@@ -1,0 +1,12 @@
+enum MyEnum {
+    Value(Int32)
+}
+
+fn main() -> Int32 {
+    let e: MyEnum = MyEnum::Value(field0 = 42);
+    let n: Int32 = match e {
+        MyEnum::Value(x: Int32) -> x
+    };
+    print(value = "Got: ${n}");
+    return 0;
+}

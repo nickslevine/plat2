@@ -1,0 +1,10 @@
+fn main() -> Int32 {
+    let s: String = "42";
+    let r: Result<Int32, String> = s.parse_int();
+    let n: Int32 = match r {
+        Result::Ok(val: Int32) -> val,
+        Result::Err(e: String) -> 0
+    };
+    print(value = "Parsed: ${n}");
+    return 0;
+}
