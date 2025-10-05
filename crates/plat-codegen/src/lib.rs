@@ -1,7 +1,7 @@
 /// Cranelift-based code generation for the Plat language
 /// Generates native machine code from the Plat AST
 
-use plat_ast::{self as ast, BinaryOp, Block, Expression, Literal, MatchArm, Pattern, Program, Statement, UnaryOp, FloatType};
+use plat_ast::{self as ast, BinaryOp, Block, Expression, IntType, Literal, MatchArm, Pattern, Program, Statement, UnaryOp, FloatType};
 use plat_ast::Type as AstType;
 use cranelift_codegen::ir::types::*;
 use std::os::raw::c_char;
@@ -110,7 +110,7 @@ impl CodeGenerator {
             match &arm.body {
                 Expression::Literal(Literal::String(_, _)) => has_string_literal = true,
                 Expression::Literal(Literal::InterpolatedString(_, _)) => has_string_literal = true,
-                Expression::Literal(Literal::Integer(_, _)) => has_integer_literal = true,
+                Expression::Literal(Literal::Integer(_, _, _)) => has_integer_literal = true,
                 Expression::Identifier { .. } => has_pattern_binding = true,
                 _ => {}
             }
@@ -150,7 +150,7 @@ impl CodeGenerator {
                 }
                 match &elements[0] {
                     Expression::Literal(Literal::Bool(_, _)) => VariableType::Bool,
-                    Expression::Literal(Literal::Integer(_, _)) => VariableType::Int32,
+                    Expression::Literal(Literal::Integer(_, _, _)) => VariableType::Int32,
                     Expression::Literal(Literal::String(_, _)) => VariableType::String,
                     Expression::Literal(Literal::InterpolatedString(_, _)) => VariableType::String,
                     Expression::EnumConstructor { enum_name, .. } => VariableType::Enum(enum_name.clone()),
@@ -188,12 +188,10 @@ impl CodeGenerator {
     fn infer_expression_type(expr: &Expression, variable_types: &HashMap<String, VariableType>) -> VariableType {
         match expr {
             Expression::Literal(Literal::Bool(_, _)) => VariableType::Bool,
-            Expression::Literal(Literal::Integer(val, _)) => {
-                // Use i32 for smaller values, i64 for larger
-                if *val >= i32::MIN as i64 && *val <= i32::MAX as i64 {
-                    VariableType::Int32
-                } else {
-                    VariableType::Int64
+            Expression::Literal(Literal::Integer(_, int_type, _)) => {
+                match int_type {
+                    IntType::I32 => VariableType::Int32,
+                    IntType::I64 => VariableType::Int64,
                 }
             }
             Expression::Literal(Literal::Float(_, float_type, _)) => {
@@ -1811,7 +1809,7 @@ impl CodeGenerator {
             // Determine value type
             let type_val = match value_expr {
                 Expression::Literal(Literal::Bool(_, _)) => 2u8, // DICT_VALUE_TYPE_BOOL
-                Expression::Literal(Literal::Integer(val, _)) => {
+                Expression::Literal(Literal::Integer(val, _, _)) => {
                     if *val > i32::MAX as i64 || *val < i32::MIN as i64 {
                         1u8 // DICT_VALUE_TYPE_I64
                     } else {
@@ -1929,7 +1927,7 @@ impl CodeGenerator {
             // Determine value type
             let type_val = match element_expr {
                 Expression::Literal(Literal::Bool(_, _)) => 2u8, // SET_VALUE_TYPE_BOOL
-                Expression::Literal(Literal::Integer(val, _)) => {
+                Expression::Literal(Literal::Integer(val, _, _)) => {
                     if *val > i32::MAX as i64 || *val < i32::MIN as i64 {
                         1u8 // SET_VALUE_TYPE_I64
                     } else {
@@ -4817,7 +4815,7 @@ impl CodeGenerator {
                 Expression::Literal(Literal::Bool(_, _)) => &AstType::Bool,
                 Expression::Literal(Literal::String(_, _)) => &AstType::String,
                 Expression::Literal(Literal::InterpolatedString(_, _)) => &AstType::String,
-                Expression::Literal(Literal::Integer(value, _)) => {
+                Expression::Literal(Literal::Integer(value, _, _)) => {
                     if *value > i32::MAX as i64 || *value < i32::MIN as i64 {
                         &AstType::Int64
                     } else {
@@ -4907,8 +4905,11 @@ impl CodeGenerator {
                 let val = if *b { 1i64 } else { 0i64 };
                 Ok(builder.ins().iconst(I32, val))
             }
-            Literal::Integer(i, _) => {
-                Ok(builder.ins().iconst(I32, *i))
+            Literal::Integer(i, int_type, _) => {
+                match int_type {
+                    IntType::I32 => Ok(builder.ins().iconst(I32, *i)),
+                    IntType::I64 => Ok(builder.ins().iconst(I64, *i)),
+                }
             }
             Literal::Float(f, float_type, _) => {
                 match float_type {
@@ -5502,7 +5503,7 @@ impl CodeGenerator {
                     // Determine value type (simplified - assuming i32 values for now)
                     let type_val = match value_expr {
                         Expression::Literal(Literal::Bool(_, _)) => 2u8, // DICT_VALUE_TYPE_BOOL
-                        Expression::Literal(Literal::Integer(val, _)) => {
+                        Expression::Literal(Literal::Integer(val, _, _)) => {
                             if *val > i32::MAX as i64 || *val < i32::MIN as i64 {
                                 1u8 // DICT_VALUE_TYPE_I64
                             } else {
@@ -5601,7 +5602,7 @@ impl CodeGenerator {
                     // Determine value type
                     let type_val = match element_expr {
                         Expression::Literal(Literal::Bool(_, _)) => 2u8, // SET_VALUE_TYPE_BOOL
-                        Expression::Literal(Literal::Integer(val, _)) => {
+                        Expression::Literal(Literal::Integer(val, _, _)) => {
                             if *val > i32::MAX as i64 || *val < i32::MIN as i64 {
                                 1u8 // SET_VALUE_TYPE_I64
                             } else {
@@ -5709,7 +5710,7 @@ impl CodeGenerator {
         const DICT_VALUE_TYPE_STRING: u8 = 3;
 
         match expr {
-            Expression::Literal(Literal::Integer(_, _)) => DICT_VALUE_TYPE_I32,
+            Expression::Literal(Literal::Integer(_, _, _)) => DICT_VALUE_TYPE_I32,
             Expression::Literal(Literal::String(_, _)) | Expression::Literal(Literal::InterpolatedString(_, _)) => DICT_VALUE_TYPE_STRING,
             Expression::Literal(Literal::Bool(_, _)) => DICT_VALUE_TYPE_BOOL,
             Expression::Identifier { name, .. } => {
@@ -5805,7 +5806,7 @@ impl CodeGenerator {
         const SET_VALUE_TYPE_STRING: u8 = 3;
 
         match expr {
-            Expression::Literal(Literal::Integer(_, _)) => SET_VALUE_TYPE_I32,
+            Expression::Literal(Literal::Integer(_, _, _)) => SET_VALUE_TYPE_I32,
             Expression::Literal(Literal::String(_, _)) | Expression::Literal(Literal::InterpolatedString(_, _)) => SET_VALUE_TYPE_STRING,
             Expression::Literal(Literal::Bool(_, _)) => SET_VALUE_TYPE_BOOL,
             Expression::Identifier { name, .. } => {

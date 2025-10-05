@@ -3,7 +3,7 @@ mod tests;
 
 use plat_ast::*;
 use plat_diags::{Diagnostic, DiagnosticError};
-use plat_lexer::{Lexer, Span, StringPart, Token, TokenWithSpan};
+use plat_lexer::{IntType, Lexer, Span, StringPart, Token, TokenWithSpan};
 
 pub struct Parser {
     tokens: Vec<TokenWithSpan>,
@@ -692,7 +692,7 @@ impl Parser {
                     Expression::Binary { span, .. } => span.start,
                     Expression::Unary { span, .. } => span.start,
                     Expression::Literal(lit) => match lit {
-                        Literal::Bool(_, s) | Literal::Integer(_, s) | Literal::Float(_, _, s) |
+                        Literal::Bool(_, s) | Literal::Integer(_, _, s) | Literal::Float(_, _, s) |
                         Literal::String(_, s) | Literal::InterpolatedString(_, s) |
                         Literal::Array(_, s) | Literal::Dict(_, s) | Literal::Set(_, s) => s.start,
                     },
@@ -1010,9 +1010,13 @@ impl Parser {
             return Ok(Expression::Literal(Literal::Bool(false, span)));
         }
 
-        if let Some(Token::IntLiteral(n)) = self.match_if(|t| matches!(t, Token::IntLiteral(_))) {
+        if let Some(Token::IntLiteral(n, int_type)) = self.match_if(|t| matches!(t, Token::IntLiteral(..))) {
             let span = self.previous_span();
-            return Ok(Expression::Literal(Literal::Integer(n, span)));
+            let ast_int_type = match int_type {
+                plat_lexer::IntType::I32 => IntType::I32,
+                plat_lexer::IntType::I64 => IntType::I64,
+            };
+            return Ok(Expression::Literal(Literal::Integer(n, ast_int_type, span)));
         }
 
         if let Some(Token::FloatLiteral(value, float_type)) = self.match_if(|t| matches!(t, Token::FloatLiteral(_, _))) {
@@ -1172,7 +1176,7 @@ impl Parser {
             Expression::Binary { span, .. } => span.start,
             Expression::Unary { span, .. } => span.start,
             Expression::Literal(lit) => match lit {
-                Literal::Bool(_, s) | Literal::Integer(_, s) | Literal::Float(_, _, s) |
+                Literal::Bool(_, s) | Literal::Integer(_, _, s) | Literal::Float(_, _, s) |
                 Literal::String(_, s) | Literal::InterpolatedString(_, s) |
                 Literal::Array(_, s) | Literal::Dict(_, s) | Literal::Set(_, s) => s.start,
             },
@@ -1451,9 +1455,13 @@ impl Parser {
             return Ok(Pattern::Literal(Literal::Bool(is_true, span)));
         }
 
-        if let Some(Token::IntLiteral(n)) = self.match_if(|t| matches!(t, Token::IntLiteral(_))) {
+        if let Some(Token::IntLiteral(n, int_type)) = self.match_if(|t| matches!(t, Token::IntLiteral(..))) {
             let span = self.previous_span();
-            return Ok(Pattern::Literal(Literal::Integer(n, span)));
+            let ast_int_type = match int_type {
+                plat_lexer::IntType::I32 => IntType::I32,
+                plat_lexer::IntType::I64 => IntType::I64,
+            };
+            return Ok(Pattern::Literal(Literal::Integer(n, ast_int_type, span)));
         }
 
         if let Some(Token::StringLiteral(s)) = self.match_if(|t| matches!(t, Token::StringLiteral(_))) {
@@ -1613,7 +1621,7 @@ impl Parser {
         match expr {
             Expression::Literal(lit) => match lit {
                 Literal::Bool(_, span) => *span,
-                Literal::Integer(_, span) => *span,
+                Literal::Integer(_, _, span) => *span,
                 Literal::Float(_, _, span) => *span,
                 Literal::String(_, span) => *span,
                 Literal::InterpolatedString(_, span) => *span,

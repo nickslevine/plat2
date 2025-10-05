@@ -1,3 +1,4 @@
+pub use plat_lexer::IntType;
 use plat_lexer::Span;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -247,7 +248,7 @@ pub enum Expression {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Literal {
     Bool(bool, Span),
-    Integer(i64, Span),
+    Integer(i64, IntType, Span), // value, type (i32/i64), span
     Float(f64, FloatType, Span), // value, type (f32/f64), span
     String(String, Span),
     InterpolatedString(Vec<InterpolationPart>, Span),

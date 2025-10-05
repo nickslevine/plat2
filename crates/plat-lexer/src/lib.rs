@@ -2,7 +2,7 @@ mod token;
 #[cfg(test)]
 mod tests;
 
-pub use token::{FloatType, Span, StringPart, Token, TokenWithSpan};
+pub use token::{FloatType, IntType, Span, StringPart, Token, TokenWithSpan};
 
 use plat_diags::{Diagnostic, DiagnosticError};
 
@@ -434,22 +434,25 @@ impl Lexer {
                     .with_help("Check the number format and ensure it fits in the integer range")
                 ))?;
 
-            // Validate suffix if present
-            if let Some(suffix) = suffix {
-                if suffix != "i32" && suffix != "i64" {
+            // Determine integer type from suffix
+            let int_type = match suffix.as_deref() {
+                Some("i32") => token::IntType::I32,
+                Some("i64") => token::IntType::I64,
+                None => token::IntType::I32, // Default to i32
+                Some(s) => {
                     return Err(DiagnosticError::Rich(
                         Diagnostic::syntax_error(
                             &self.filename,
                             Span::new(start, self.current),
-                            format!("Invalid integer suffix '{}'", suffix)
+                            format!("Invalid integer suffix '{}'", s)
                         )
                         .with_label("invalid suffix")
                         .with_help("Valid suffixes are 'i32' and 'i64'")
                     ));
                 }
-            }
+            };
 
-            self.add_token(Token::IntLiteral(value), start);
+            self.add_token(Token::IntLiteral(value, int_type), start);
         }
 
         Ok(())

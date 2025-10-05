@@ -3409,7 +3409,12 @@ impl TypeChecker {
     fn check_literal(&mut self, literal: &Literal) -> Result<HirType, DiagnosticError> {
         match literal {
             Literal::Bool(_, _) => Ok(HirType::Bool),
-            Literal::Integer(_, _) => Ok(HirType::Int32), // Default integer type
+            Literal::Integer(_, int_type, _) => {
+                match int_type {
+                    IntType::I32 => Ok(HirType::Int32),
+                    IntType::I64 => Ok(HirType::Int64),
+                }
+            }
             Literal::Float(_, float_type, _) => {
                 match float_type {
                     FloatType::F32 => Ok(HirType::Float32),

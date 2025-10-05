@@ -628,7 +628,13 @@ impl Formatter {
     fn format_literal(&mut self, literal: &Literal) {
         match literal {
             Literal::Bool(value, _) => self.write(&value.to_string()),
-            Literal::Integer(value, _) => self.write(&value.to_string()),
+            Literal::Integer(value, int_type, _) => {
+                self.write(&value.to_string());
+                // Add type suffix if i64
+                if *int_type == IntType::I64 {
+                    self.write("_i64");
+                }
+            }
             Literal::Float(value, float_type, _) => {
                 self.write(&value.to_string());
                 // Add type suffix if f32

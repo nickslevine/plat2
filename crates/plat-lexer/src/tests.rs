@@ -54,15 +54,17 @@ mod tests {
 
     #[test]
     fn test_numbers() {
+        use crate::IntType;
+
         let input = "42 100 0 999i32 1234i64";
         let tokens = tokenize(input);
 
         assert_eq!(tokens, vec![
-            Token::IntLiteral(42),
-            Token::IntLiteral(100),
-            Token::IntLiteral(0),
-            Token::IntLiteral(999),
-            Token::IntLiteral(1234),
+            Token::IntLiteral(42, IntType::I32),
+            Token::IntLiteral(100, IntType::I32),
+            Token::IntLiteral(0, IntType::I32),
+            Token::IntLiteral(999, IntType::I32),
+            Token::IntLiteral(1234, IntType::I64),
             Token::Eof,
         ]);
     }
@@ -150,6 +152,8 @@ mod tests {
 
     #[test]
     fn test_comments() {
+        use crate::IntType;
+
         let input = "let x = 5; // this is a comment\nlet y = 10;";
         let tokens = tokenize(input);
 
@@ -157,12 +161,12 @@ mod tests {
             Token::Let,
             Token::Ident("x".to_string()),
             Token::Assign,
-            Token::IntLiteral(5),
+            Token::IntLiteral(5, IntType::I32),
             Token::Semicolon,
             Token::Let,
             Token::Ident("y".to_string()),
             Token::Assign,
-            Token::IntLiteral(10),
+            Token::IntLiteral(10, IntType::I32),
             Token::Semicolon,
             Token::Eof,
         ]);
@@ -220,6 +224,8 @@ mod tests {
 
     #[test]
     fn test_whitespace_handling() {
+        use crate::IntType;
+
         let input = "  let  \n\t x   =\r\n  5  ";
         let tokens = tokenize(input);
 
@@ -227,7 +233,7 @@ mod tests {
             Token::Let,
             Token::Ident("x".to_string()),
             Token::Assign,
-            Token::IntLiteral(5),
+            Token::IntLiteral(5, IntType::I32),
             Token::Eof,
         ]);
     }
@@ -245,21 +251,23 @@ mod tests {
 
     #[test]
     fn test_range_operators() {
+        use crate::IntType;
+
         let input = "0..5";
         let tokens = tokenize(input);
         assert_eq!(tokens, vec![
-            Token::IntLiteral(0),
+            Token::IntLiteral(0, IntType::I32),
             Token::DotDot,
-            Token::IntLiteral(5),
+            Token::IntLiteral(5, IntType::I32),
             Token::Eof,
         ]);
 
         let input = "0..=10";
         let tokens = tokenize(input);
         assert_eq!(tokens, vec![
-            Token::IntLiteral(0),
+            Token::IntLiteral(0, IntType::I32),
             Token::DotDotEq,
-            Token::IntLiteral(10),
+            Token::IntLiteral(10, IntType::I32),
             Token::Eof,
         ]);
 
@@ -278,12 +286,14 @@ mod tests {
 
     #[test]
     fn test_numbers_with_underscores() {
+        use crate::IntType;
+
         let input = "1_000_000 2_000i32 3_500_000i64";
         let tokens = tokenize(input);
         assert_eq!(tokens, vec![
-            Token::IntLiteral(1_000_000),
-            Token::IntLiteral(2_000),
-            Token::IntLiteral(3_500_000),
+            Token::IntLiteral(1_000_000, IntType::I32),
+            Token::IntLiteral(2_000, IntType::I32),
+            Token::IntLiteral(3_500_000, IntType::I64),
             Token::Eof,
         ]);
     }
