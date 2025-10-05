@@ -741,3 +741,202 @@ pub extern "C" fn plat_file_rewind(fd: i32) -> i64 {
         }
     }
 }
+
+/// Change file permissions (Unix mode bits)
+/// Returns Result<Bool, String>
+/// Note: On Windows, only read-only attribute can be changed
+#[no_mangle]
+pub extern "C" fn plat_file_chmod(path_ptr: *const c_char, mode: i32) -> i64 {
+    unsafe {
+        if path_ptr.is_null() {
+            let err_msg = alloc_c_string("file_chmod: path is null");
+            return create_result_enum_err_string(err_msg);
+        }
+
+        let path = match CStr::from_ptr(path_ptr).to_str() {
+            Ok(s) => s,
+            Err(_) => {
+                let err_msg = alloc_c_string("file_chmod: invalid path string");
+                return create_result_enum_err_string(err_msg);
+            }
+        };
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let perms = std::fs::Permissions::from_mode(mode as u32);
+            match std::fs::set_permissions(path, perms) {
+                Ok(_) => create_result_enum_ok_bool(true),
+                Err(e) => {
+                    let err_msg = alloc_c_string(&format!("file_chmod failed: {}", e));
+                    create_result_enum_err_string(err_msg)
+                }
+            }
+        }
+
+        #[cfg(not(unix))]
+        {
+            // On Windows, we can only set read-only attribute
+            let readonly = (mode & 0o200) == 0; // Check if write bit is unset
+            match std::fs::metadata(path) {
+                Ok(metadata) => {
+                    let mut perms = metadata.permissions();
+                    perms.set_readonly(readonly);
+                    match std::fs::set_permissions(path, perms) {
+                        Ok(_) => create_result_enum_ok_bool(true),
+                        Err(e) => {
+                            let err_msg = alloc_c_string(&format!("file_chmod failed: {}", e));
+                            create_result_enum_err_string(err_msg)
+                        }
+                    }
+                }
+                Err(e) => {
+                    let err_msg = alloc_c_string(&format!("file_chmod failed: {}", e));
+                    create_result_enum_err_string(err_msg)
+                }
+            }
+        }
+    }
+}
+
+/// Get file permissions (Unix mode bits)
+/// Returns Result<Int32, String>
+/// Note: On Windows, returns 0o644 if writable, 0o444 if read-only
+#[no_mangle]
+pub extern "C" fn plat_file_get_permissions(path_ptr: *const c_char) -> i64 {
+    unsafe {
+        if path_ptr.is_null() {
+            let err_msg = alloc_c_string("file_get_permissions: path is null");
+            return create_result_enum_err_string(err_msg);
+        }
+
+        let path = match CStr::from_ptr(path_ptr).to_str() {
+            Ok(s) => s,
+            Err(_) => {
+                let err_msg = alloc_c_string("file_get_permissions: invalid path string");
+                return create_result_enum_err_string(err_msg);
+            }
+        };
+
+        match std::fs::metadata(path) {
+            Ok(metadata) => {
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let mode = metadata.permissions().mode() as i32;
+                    create_result_enum_ok_i32(mode)
+                }
+
+                #[cfg(not(unix))]
+                {
+                    // On Windows, return simplified mode
+                    let mode = if metadata.permissions().readonly() {
+                        0o444 // Read-only for all
+                    } else {
+                        0o644 // Read-write for owner, read for others
+                    };
+                    create_result_enum_ok_i32(mode)
+                }
+            }
+            Err(e) => {
+                let err_msg = alloc_c_string(&format!("file_get_permissions failed: {}", e));
+                create_result_enum_err_string(err_msg)
+            }
+        }
+    }
+}
+
+/// Get file modified time (Unix epoch seconds)
+/// Returns Result<Int64, String>
+#[no_mangle]
+pub extern "C" fn plat_file_modified_time(path_ptr: *const c_char) -> i64 {
+    unsafe {
+        if path_ptr.is_null() {
+            let err_msg = alloc_c_string("file_modified_time: path is null");
+            return create_result_enum_err_string(err_msg);
+        }
+
+        let path = match CStr::from_ptr(path_ptr).to_str() {
+            Ok(s) => s,
+            Err(_) => {
+                let err_msg = alloc_c_string("file_modified_time: invalid path string");
+                return create_result_enum_err_string(err_msg);
+            }
+        };
+
+        match std::fs::metadata(path) {
+            Ok(metadata) => {
+                match metadata.modified() {
+                    Ok(time) => {
+                        match time.duration_since(std::time::UNIX_EPOCH) {
+                            Ok(duration) => {
+                                let secs = duration.as_secs() as i64;
+                                create_result_enum_ok_i64(secs)
+                            }
+                            Err(e) => {
+                                let err_msg = alloc_c_string(&format!("file_modified_time: time conversion failed: {}", e));
+                                create_result_enum_err_string(err_msg)
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        let err_msg = alloc_c_string(&format!("file_modified_time failed: {}", e));
+                        create_result_enum_err_string(err_msg)
+                    }
+                }
+            }
+            Err(e) => {
+                let err_msg = alloc_c_string(&format!("file_modified_time failed: {}", e));
+                create_result_enum_err_string(err_msg)
+            }
+        }
+    }
+}
+
+/// Get file created time (Unix epoch seconds)
+/// Returns Result<Int64, String>
+/// Note: On Unix systems, this may return the last status change time (ctime) instead of creation time
+#[no_mangle]
+pub extern "C" fn plat_file_created_time(path_ptr: *const c_char) -> i64 {
+    unsafe {
+        if path_ptr.is_null() {
+            let err_msg = alloc_c_string("file_created_time: path is null");
+            return create_result_enum_err_string(err_msg);
+        }
+
+        let path = match CStr::from_ptr(path_ptr).to_str() {
+            Ok(s) => s,
+            Err(_) => {
+                let err_msg = alloc_c_string("file_created_time: invalid path string");
+                return create_result_enum_err_string(err_msg);
+            }
+        };
+
+        match std::fs::metadata(path) {
+            Ok(metadata) => {
+                match metadata.created() {
+                    Ok(time) => {
+                        match time.duration_since(std::time::UNIX_EPOCH) {
+                            Ok(duration) => {
+                                let secs = duration.as_secs() as i64;
+                                create_result_enum_ok_i64(secs)
+                            }
+                            Err(e) => {
+                                let err_msg = alloc_c_string(&format!("file_created_time: time conversion failed: {}", e));
+                                create_result_enum_err_string(err_msg)
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        let err_msg = alloc_c_string(&format!("file_created_time failed: {}", e));
+                        create_result_enum_err_string(err_msg)
+                    }
+                }
+            }
+            Err(e) => {
+                let err_msg = alloc_c_string(&format!("file_created_time failed: {}", e));
+                create_result_enum_err_string(err_msg)
+            }
+        }
+    }
+}

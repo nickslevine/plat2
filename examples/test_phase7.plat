@@ -1,0 +1,73 @@
+fn main() -> Int32 {
+  print(value = "Testing file permissions and timestamps...");
+
+  let test_file: String = "test_perms.txt";
+  let content: String = "test permissions data";
+
+  let open_w: Result<Int32, String> = file_open(path = test_file, mode = "w");
+  let fd_w: Int32 = match open_w {
+    Result::Ok(f: Int32) -> f,
+    Result::Err(e: String) -> -1
+  };
+
+  if (fd_w < 0) {
+    print(value = "Failed to open file for writing");
+    return 1;
+  }
+
+  let write_result: Result<Int32, String> = file_write(fd = fd_w, data = content);
+  let bytes: Int32 = match write_result {
+    Result::Ok(n: Int32) -> n,
+    Result::Err(e: String) -> -1
+  };
+
+  print(value = "Wrote ${bytes} bytes");
+
+  let close_w: Result<Bool, String> = file_close(fd = fd_w);
+
+  let perms1: Result<Int32, String> = file_get_permissions(path = test_file);
+  let mode1: Int32 = match perms1 {
+    Result::Ok(m: Int32) -> m,
+    Result::Err(e: String) -> -1
+  };
+  print(value = "Initial permissions: ${mode1}");
+
+  let chmod1: Result<Bool, String> = file_chmod(path = test_file, mode = 292);
+  let success1: Bool = match chmod1 {
+    Result::Ok(s: Bool) -> s,
+    Result::Err(e: String) -> false
+  };
+  if (success1) {
+    print(value = "Changed permissions to 292 (0o444)");
+  } else {
+    print(value = "Failed to change permissions");
+  }
+
+  let perms2: Result<Int32, String> = file_get_permissions(path = test_file);
+  let mode2: Int32 = match perms2 {
+    Result::Ok(m: Int32) -> m,
+    Result::Err(e: String) -> -1
+  };
+  print(value = "New permissions: ${mode2}");
+
+  let mtime: Result<Int64, String> = file_modified_time(path = test_file);
+  let mtime_val: Int64 = match mtime {
+    Result::Ok(t: Int64) -> t,
+    Result::Err(e: String) -> -1i64
+  };
+  print(value = "Modified time: ${mtime_val}");
+
+  let ctime: Result<Int64, String> = file_created_time(path = test_file);
+  let ctime_val: Int64 = match ctime {
+    Result::Ok(t: Int64) -> t,
+    Result::Err(e: String) -> -1i64
+  };
+  print(value = "Created time: ${ctime_val}");
+
+  let chmod2: Result<Bool, String> = file_chmod(path = test_file, mode = 420);
+
+  let delete_r: Result<Bool, String> = file_delete(path = test_file);
+
+  print(value = "All file permissions tests completed!");
+  return 0;
+}

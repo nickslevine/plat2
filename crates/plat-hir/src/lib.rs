@@ -2326,6 +2326,108 @@ impl TypeChecker {
                     return Ok(HirType::Enum("Result".to_string(), vec![HirType::Bool, HirType::String]));
                 }
 
+                // Handle built-in file_chmod function
+                if function == "file_chmod" {
+                    // file_chmod(path: String, mode: Int32) -> Result<Bool, String>
+                    if args.len() != 2 {
+                        return Err(DiagnosticError::Type(
+                            "file_chmod requires exactly 2 arguments: 'path' and 'mode'".to_string()
+                        ));
+                    }
+
+                    let path_arg = args.iter().find(|arg| arg.name == "path")
+                        .ok_or_else(|| DiagnosticError::Type("file_chmod requires a 'path' parameter".to_string()))?;
+
+                    let mode_arg = args.iter().find(|arg| arg.name == "mode")
+                        .ok_or_else(|| DiagnosticError::Type("file_chmod requires a 'mode' parameter".to_string()))?;
+
+                    let path_type = self.check_expression(&path_arg.value)?;
+                    let mode_type = self.check_expression(&mode_arg.value)?;
+
+                    if path_type != HirType::String {
+                        return Err(DiagnosticError::Type(
+                            format!("file_chmod 'path' parameter must be String, got {:?}", path_type)
+                        ));
+                    }
+
+                    if mode_type != HirType::Int32 {
+                        return Err(DiagnosticError::Type(
+                            format!("file_chmod 'mode' parameter must be Int32, got {:?}", mode_type)
+                        ));
+                    }
+
+                    return Ok(HirType::Enum("Result".to_string(), vec![HirType::Bool, HirType::String]));
+                }
+
+                // Handle built-in file_get_permissions function
+                if function == "file_get_permissions" {
+                    // file_get_permissions(path: String) -> Result<Int32, String>
+                    if args.len() != 1 {
+                        return Err(DiagnosticError::Type(
+                            "file_get_permissions requires exactly 1 argument: 'path'".to_string()
+                        ));
+                    }
+
+                    let path_arg = args.iter().find(|arg| arg.name == "path")
+                        .ok_or_else(|| DiagnosticError::Type("file_get_permissions requires a 'path' parameter".to_string()))?;
+
+                    let path_type = self.check_expression(&path_arg.value)?;
+
+                    if path_type != HirType::String {
+                        return Err(DiagnosticError::Type(
+                            format!("file_get_permissions 'path' parameter must be String, got {:?}", path_type)
+                        ));
+                    }
+
+                    return Ok(HirType::Enum("Result".to_string(), vec![HirType::Int32, HirType::String]));
+                }
+
+                // Handle built-in file_modified_time function
+                if function == "file_modified_time" {
+                    // file_modified_time(path: String) -> Result<Int64, String>
+                    if args.len() != 1 {
+                        return Err(DiagnosticError::Type(
+                            "file_modified_time requires exactly 1 argument: 'path'".to_string()
+                        ));
+                    }
+
+                    let path_arg = args.iter().find(|arg| arg.name == "path")
+                        .ok_or_else(|| DiagnosticError::Type("file_modified_time requires a 'path' parameter".to_string()))?;
+
+                    let path_type = self.check_expression(&path_arg.value)?;
+
+                    if path_type != HirType::String {
+                        return Err(DiagnosticError::Type(
+                            format!("file_modified_time 'path' parameter must be String, got {:?}", path_type)
+                        ));
+                    }
+
+                    return Ok(HirType::Enum("Result".to_string(), vec![HirType::Int64, HirType::String]));
+                }
+
+                // Handle built-in file_created_time function
+                if function == "file_created_time" {
+                    // file_created_time(path: String) -> Result<Int64, String>
+                    if args.len() != 1 {
+                        return Err(DiagnosticError::Type(
+                            "file_created_time requires exactly 1 argument: 'path'".to_string()
+                        ));
+                    }
+
+                    let path_arg = args.iter().find(|arg| arg.name == "path")
+                        .ok_or_else(|| DiagnosticError::Type("file_created_time requires a 'path' parameter".to_string()))?;
+
+                    let path_type = self.check_expression(&path_arg.value)?;
+
+                    if path_type != HirType::String {
+                        return Err(DiagnosticError::Type(
+                            format!("file_created_time 'path' parameter must be String, got {:?}", path_type)
+                        ));
+                    }
+
+                    return Ok(HirType::Enum("Result".to_string(), vec![HirType::Int64, HirType::String]));
+                }
+
                 // Handle built-in channel_init function
                 if function == "channel_init" {
                     // channel_init<T>(capacity: Int32) -> Channel<T>

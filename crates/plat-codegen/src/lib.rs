@@ -3075,6 +3075,107 @@ impl CodeGenerator {
                     return Ok(builder.inst_results(call)[0]);
                 }
 
+                // Handle built-in file_chmod function
+                if function == "file_chmod" {
+                    // file_chmod(path: String, mode: Int32) -> Result<Bool, String>
+                    let path_arg = args.iter().find(|arg| arg.name == "path")
+                        .ok_or_else(|| CodegenError::UnsupportedFeature("file_chmod missing 'path' parameter".to_string()))?;
+
+                    let mode_arg = args.iter().find(|arg| arg.name == "mode")
+                        .ok_or_else(|| CodegenError::UnsupportedFeature("file_chmod missing 'mode' parameter".to_string()))?;
+
+                    let path_val = Self::generate_expression_helper(builder, &path_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                    let mode_val = Self::generate_expression_helper(builder, &mode_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+
+                    let func_sig = {
+                        let mut sig = module.make_signature();
+                        sig.call_conv = CallConv::SystemV;
+                        sig.params.push(AbiParam::new(I64)); // path (string pointer)
+                        sig.params.push(AbiParam::new(I32)); // mode
+                        sig.returns.push(AbiParam::new(I64)); // Result enum pointer
+                        sig
+                    };
+
+                    let func_id = module.declare_function("plat_file_chmod", Linkage::Import, &func_sig)
+                        .map_err(CodegenError::ModuleError)?;
+                    let func_ref = module.declare_func_in_func(func_id, builder.func);
+
+                    let call = builder.ins().call(func_ref, &[path_val, mode_val]);
+                    return Ok(builder.inst_results(call)[0]);
+                }
+
+                // Handle built-in file_get_permissions function
+                if function == "file_get_permissions" {
+                    // file_get_permissions(path: String) -> Result<Int32, String>
+                    let path_arg = args.iter().find(|arg| arg.name == "path")
+                        .ok_or_else(|| CodegenError::UnsupportedFeature("file_get_permissions missing 'path' parameter".to_string()))?;
+
+                    let path_val = Self::generate_expression_helper(builder, &path_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+
+                    let func_sig = {
+                        let mut sig = module.make_signature();
+                        sig.call_conv = CallConv::SystemV;
+                        sig.params.push(AbiParam::new(I64)); // path (string pointer)
+                        sig.returns.push(AbiParam::new(I64)); // Result enum pointer
+                        sig
+                    };
+
+                    let func_id = module.declare_function("plat_file_get_permissions", Linkage::Import, &func_sig)
+                        .map_err(CodegenError::ModuleError)?;
+                    let func_ref = module.declare_func_in_func(func_id, builder.func);
+
+                    let call = builder.ins().call(func_ref, &[path_val]);
+                    return Ok(builder.inst_results(call)[0]);
+                }
+
+                // Handle built-in file_modified_time function
+                if function == "file_modified_time" {
+                    // file_modified_time(path: String) -> Result<Int64, String>
+                    let path_arg = args.iter().find(|arg| arg.name == "path")
+                        .ok_or_else(|| CodegenError::UnsupportedFeature("file_modified_time missing 'path' parameter".to_string()))?;
+
+                    let path_val = Self::generate_expression_helper(builder, &path_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+
+                    let func_sig = {
+                        let mut sig = module.make_signature();
+                        sig.call_conv = CallConv::SystemV;
+                        sig.params.push(AbiParam::new(I64)); // path (string pointer)
+                        sig.returns.push(AbiParam::new(I64)); // Result enum pointer
+                        sig
+                    };
+
+                    let func_id = module.declare_function("plat_file_modified_time", Linkage::Import, &func_sig)
+                        .map_err(CodegenError::ModuleError)?;
+                    let func_ref = module.declare_func_in_func(func_id, builder.func);
+
+                    let call = builder.ins().call(func_ref, &[path_val]);
+                    return Ok(builder.inst_results(call)[0]);
+                }
+
+                // Handle built-in file_created_time function
+                if function == "file_created_time" {
+                    // file_created_time(path: String) -> Result<Int64, String>
+                    let path_arg = args.iter().find(|arg| arg.name == "path")
+                        .ok_or_else(|| CodegenError::UnsupportedFeature("file_created_time missing 'path' parameter".to_string()))?;
+
+                    let path_val = Self::generate_expression_helper(builder, &path_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+
+                    let func_sig = {
+                        let mut sig = module.make_signature();
+                        sig.call_conv = CallConv::SystemV;
+                        sig.params.push(AbiParam::new(I64)); // path (string pointer)
+                        sig.returns.push(AbiParam::new(I64)); // Result enum pointer
+                        sig
+                    };
+
+                    let func_id = module.declare_function("plat_file_created_time", Linkage::Import, &func_sig)
+                        .map_err(CodegenError::ModuleError)?;
+                    let func_ref = module.declare_func_in_func(func_id, builder.func);
+
+                    let call = builder.ins().call(func_ref, &[path_val]);
+                    return Ok(builder.inst_results(call)[0]);
+                }
+
                 // Handle built-in channel_init function
                 if function == "channel_init" {
                     // channel_init<T>(capacity: Int32) -> Channel<T>
