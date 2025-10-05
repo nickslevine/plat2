@@ -5,9 +5,9 @@ mod tests {
 
     fn type_check(input: &str) -> Result<(), plat_diags::DiagnosticError> {
         let parser = Parser::new(input)?;
-        let program = parser.parse()?;
+        let mut program = parser.parse()?;
         let type_checker = TypeChecker::new();
-        let result = type_checker.check_program(&program);
+        let result = type_checker.check_program(&mut program);
         if let Err(e) = &result {
             eprintln!("Type check error: {}", e);
         }
@@ -114,7 +114,7 @@ mod tests {
 
         let result = type_check(input);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("Undefined variable"));
+        assert!(result.unwrap_err().to_string().contains("Undefined symbol"));
     }
 
     #[test]
@@ -329,7 +329,7 @@ mod tests {
 
         let result = type_check(input);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("expects 2 arguments"));
+        assert!(result.unwrap_err().to_string().contains("expects at least 2 arguments"));
     }
 
     #[test]
