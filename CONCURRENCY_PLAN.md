@@ -198,14 +198,15 @@
 - ✅ Scope tracking implemented
 - ✅ Type inference for spawn blocks fixed
 - ✅ HIR support for Task<T>.await()
-- 🔴 **BLOCKED:** Codegen has CLIF verification errors (#1 - CRITICAL)
+- ✅ **FIXED:** CLIF verification errors resolved (#1)
+- ✅ **FIXED:** Tasks now execute in parallel on worker threads (#8)
+- ✅ **FIXED:** Task handle registry bug (#2 related)
 - ⚠️  Only i64 return types fully working (#3)
 - ⚠️  No variable capture in spawn closures yet (#2)
-- ⚠️  No actual parallelism yet (#8)
 
 **See "KNOWN ISSUES & BLOCKERS" section below for full details**
 
-**Commit:** `feat: Add scope tracking and Task.await() support for structured concurrency` ✅
+**Commit:** `fix: Fix CRITICAL bugs in concurrent task execution (#1, #8)` ✅
 
 ### 2.5 Testing
 
@@ -220,11 +221,11 @@
   - Test error propagation (panic in task)
 
 **Current Status:**
-- ⚠️ Test file created (test_concurrent_scope.plat)
-- 🔴 **BLOCKED by Issue #1:** CLIF verification errors prevent execution
-- Cannot proceed until codegen issues are resolved
+- ✅ Test file created (test_concurrent_scope.plat)
+- ✅ **UNBLOCKED:** All blocking issues resolved
+- ✅ Basic concurrent execution working (42, 100 test values pass)
 
-**Commit:** `test: Add tests for basic structured concurrency` (PENDING - BLOCKED)
+**Commit:** `test: Add tests for basic structured concurrency` ✅
 
 ---
 
@@ -232,19 +233,17 @@
 
 ### Critical Issues
 
-**1. Cranelift CLIF Verification Errors**
-- **Status:** 🔴 BLOCKING
-- **Location:** Spawn block code generation
-- **Description:** The generated Cranelift IR fails verification when compiling spawn blocks
-- **Error:** "Module error: Compilation error: Verifier errors"
-- **Impact:** Cannot execute any concurrent code with spawn blocks
-- **Root Cause:** Unknown - needs debugging of generated CLIF
-- **Reproduction:** Compile `test_concurrent_scope.plat`
-- **Next Steps:**
-  1. Enable Cranelift debug output to see verifier errors
-  2. Inspect generated CLIF for spawn closure functions
-  3. Check for missing basic blocks or incorrect control flow
-  4. Verify all variables are properly defined before use
+**1. Cranelift CLIF Verification Errors** ✅ RESOLVED
+- **Status:** ✅ FIXED
+- **Location:** Spawn block code generation (return statements)
+- **Description:** The generated Cranelift IR failed verification when compiling spawn blocks
+- **Error:** "result 0 has type i32, must match function signature of i64"
+- **Root Cause:** Return statements didn't convert i32 values to i64 for spawn closures
+- **Solution:** Added type conversion logic in `Statement::Return` handling
+  - Detects expected return type from function signature
+  - Automatically converts i32 → i64 using `sextend`
+  - Handles i64 → i32 using `ireduce`
+- **Commit:** `fix: Fix CRITICAL bugs in concurrent task execution (#1, #8)`
 
 ### Major Limitations
 
@@ -331,14 +330,20 @@
   ```
 - **Priority:** MEDIUM (should work but needs verification)
 
-**8. No Actual Parallelism Yet**
-- **Status:** ⚠️ LIMITATION
-- **Description:** Tasks execute sequentially, not in parallel
-- **Root Cause:** Worker threads exist but scope exit waits immediately
-- **Implementation Needed:**
-  - Tasks should execute on worker thread pool
-  - Scope exit should only wait, not execute
-- **Priority:** HIGH (defeats the purpose of concurrency)
+**8. No Actual Parallelism Yet** ✅ RESOLVED
+- **Status:** ✅ FIXED
+- **Description:** Tasks now execute in parallel on worker threads
+- **Root Causes Found & Fixed:**
+  1. **Worker thread disconnection:** `start_workers()` created NEW workers instead of using stored ones
+  2. **Task handle registry bug:** Duplicate `lazy_static` created separate HashMaps in spawn/await
+  3. **ID mismatch:** Used handle_id (1, 2...) instead of task_id (10000, 10001...)
+- **Solution:**
+  - Store workers from `Scheduler::new()` in runtime struct
+  - Use `std::mem::take()` to move workers into thread spawning
+  - Single shared TASK_HANDLES registry at module level
+  - Use task.id() consistently for storage and lookup
+- **Verification:** test_concurrent_scope.plat now returns 42 and 100 correctly
+- **Commit:** `fix: Fix CRITICAL bugs in concurrent task execution (#1, #8)`
 
 ---
 
