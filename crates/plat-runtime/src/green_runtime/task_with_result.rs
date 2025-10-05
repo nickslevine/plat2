@@ -1,6 +1,6 @@
 use std::sync::atomic::{AtomicU64, AtomicBool, Ordering};
 use std::sync::Arc;
-use parking_lot::Mutex;
+use parking_lot::{Mutex, Condvar};
 
 /// Global task ID counter (reuse from task.rs concept)
 static NEXT_TASK_ID: AtomicU64 = AtomicU64::new(10000); // Start from 10000 to avoid conflicts
@@ -35,6 +35,7 @@ pub struct TaskWithResult<T: Send + 'static> {
     closure: Option<Box<dyn FnOnce() -> T + Send + 'static>>,
     result: Arc<Mutex<Option<T>>>,
     completed: Arc<AtomicBool>,
+    condvar: Arc<Condvar>,
 }
 
 impl<T: Send + 'static> TaskWithResult<T> {
@@ -49,6 +50,7 @@ impl<T: Send + 'static> TaskWithResult<T> {
             closure: Some(Box::new(closure)),
             result: Arc::new(Mutex::new(None)),
             completed: Arc::new(AtomicBool::new(false)),
+            condvar: Arc::new(Condvar::new()),
         }
     }
 
@@ -78,6 +80,7 @@ impl<T: Send + 'static> TaskWithResult<T> {
             id: self.id,
             result: self.result.clone(),
             completed: self.completed.clone(),
+            condvar: self.condvar.clone(),
             _phantom: std::marker::PhantomData,
         }
     }
@@ -96,6 +99,9 @@ impl<T: Send + 'static> TaskWithResult<T> {
         // Mark as completed
         self.set_state(TaskState::Completed);
         self.completed.store(true, Ordering::SeqCst);
+
+        // Wake up all threads waiting on this task
+        self.condvar.notify_all();
     }
 
     /// Cancel the task
@@ -110,6 +116,7 @@ pub struct TaskHandle<T> {
     id: TaskId,
     result: Arc<Mutex<Option<T>>>,
     completed: Arc<AtomicBool>,
+    condvar: Arc<Condvar>,
     _phantom: std::marker::PhantomData<T>,
 }
 
@@ -124,18 +131,30 @@ impl<T: Send + 'static> TaskHandle<T> {
         self.completed.load(Ordering::SeqCst)
     }
 
+    /// Wait for the task to complete without retrieving the result
+    pub fn wait(&self) {
+        if self.is_completed() {
+            return;
+        }
+
+        let mut result_guard = self.result.lock();
+        while !self.is_completed() {
+            self.condvar.wait(&mut result_guard);
+        }
+    }
+
     /// Wait for the task to complete and get the result
     pub fn await_result(&self) -> Option<T>
     where
         T: Clone,
     {
-        // Busy-wait for completion (TODO: use condition variable)
+        // Wait for completion using condition variable
+        let mut result_guard = self.result.lock();
         while !self.is_completed() {
-            std::thread::yield_now();
+            self.condvar.wait(&mut result_guard);
         }
 
         // Extract the result
-        let result_guard = self.result.lock();
         result_guard.clone()
     }
 }

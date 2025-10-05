@@ -310,12 +310,16 @@
 - **Implementation Needed:** Add Result wrapper around task execution
 - **Priority:** MEDIUM (important for production)
 
-**6. Busy-Wait in task_await()**
-- **Status:** ⚠️ PERFORMANCE
-- **Description:** `plat_task_await_i64()` uses busy-waiting instead of parking thread
-- **Impact:** High CPU usage when waiting for tasks
-- **Better Approach:** Use condition variable or park/unpark
-- **Priority:** LOW (works but inefficient)
+**6. Busy-Wait in task_await()** ✅ RESOLVED
+- **Status:** ✅ FIXED
+- **Description:** `plat_task_await_i64()` now uses condition variables for efficient thread parking
+- **Solution:** Added `Condvar` to `TaskWithResult` and `TaskHandle`
+  - `TaskHandle::wait()` method for waiting without retrieving result
+  - `TaskHandle::await_result()` uses `condvar.wait()` instead of busy-wait
+  - `TaskWithResult::execute()` calls `condvar.notify_all()` on completion
+  - Scope cleanup uses `wait()` for efficient blocking
+- **Performance:** Eliminates high CPU usage when waiting for tasks
+- **Commit:** `fix: Replace busy-wait with condition variables in task_await()`
 
 **7. No Nested Scope Testing** ✅ VERIFIED
 - **Status:** ✅ WORKING

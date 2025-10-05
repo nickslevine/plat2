@@ -67,7 +67,7 @@ impl TaskScope {
         let handles = self.task_handles.lock();
 
         // We can't actually await the handles since they're type-erased
-        // Instead, we'll use the is_completed() method via downcasting
+        // Instead, we'll use the wait() method via downcasting
         // This is a bit ugly but necessary for the type-erased storage
 
         for handle_any in handles.iter() {
@@ -76,41 +76,31 @@ impl TaskScope {
 
             // Try i64
             if let Some(handle) = handle_any.downcast_ref::<TaskHandle<i64>>() {
-                while !handle.is_completed() {
-                    std::thread::yield_now();
-                }
+                handle.wait();
                 continue;
             }
 
             // Try i32
             if let Some(handle) = handle_any.downcast_ref::<TaskHandle<i32>>() {
-                while !handle.is_completed() {
-                    std::thread::yield_now();
-                }
+                handle.wait();
                 continue;
             }
 
             // Try f64
             if let Some(handle) = handle_any.downcast_ref::<TaskHandle<f64>>() {
-                while !handle.is_completed() {
-                    std::thread::yield_now();
-                }
+                handle.wait();
                 continue;
             }
 
             // Try bool
             if let Some(handle) = handle_any.downcast_ref::<TaskHandle<bool>>() {
-                while !handle.is_completed() {
-                    std::thread::yield_now();
-                }
+                handle.wait();
                 continue;
             }
 
             // Try String
             if let Some(handle) = handle_any.downcast_ref::<TaskHandle<String>>() {
-                while !handle.is_completed() {
-                    std::thread::yield_now();
-                }
+                handle.wait();
                 continue;
             }
         }
