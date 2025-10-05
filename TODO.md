@@ -1,8 +1,3 @@
-## Concurrency
-* concurrency
-* parallel loops
-* race combinator. 
-* blas
 
 ## stdlib
 * colored printing 
@@ -25,6 +20,7 @@
 * networking
   * rate limiting, backoff, etc. 
 * queue, async queue. 
+* parallel loops
 
 
 
@@ -66,6 +62,8 @@
 * js transpilation? 
 * get rid of int return codes. 
 * unify dot and :: syntax? 
+* dive into c api / ffi
+* blas
 
 
 ## GC
