@@ -153,33 +153,35 @@ Implement low-level file system primitives following the same pattern as TCP net
 ### Functions to Implement
 
 #### `dir_create(path: String) -> Result<Bool, String>`
-- [ ] Runtime FFI implementation in `fs.rs` (create single directory, parent must exist)
-- [ ] Type checking in `plat-hir/src/lib.rs`
-- [ ] Code generation in `plat-codegen/src/lib.rs`
-- [ ] Test in `examples/file_test.plat`
+- [x] Runtime FFI implementation in `fs.rs` (create single directory, parent must exist)
+- [x] Type checking in `plat-hir/src/lib.rs`
+- [x] Code generation in `plat-codegen/src/lib.rs`
+- [x] Test in `examples/file_test.plat`
 
 #### `dir_create_all(path: String) -> Result<Bool, String>`
-- [ ] Runtime FFI implementation in `fs.rs` (create directory with all parent directories)
-- [ ] Type checking in `plat-hir/src/lib.rs`
-- [ ] Code generation in `plat-codegen/src/lib.rs`
-- [ ] Test in `examples/file_test.plat`
+- [x] Runtime FFI implementation in `fs.rs` (create directory with all parent directories)
+- [x] Type checking in `plat-hir/src/lib.rs`
+- [x] Code generation in `plat-codegen/src/lib.rs`
+- [x] Test in `examples/file_test.plat`
 
 #### `dir_remove(path: String) -> Result<Bool, String>`
-- [ ] Runtime FFI implementation in `fs.rs` (remove empty directory only)
-- [ ] Type checking in `plat-hir/src/lib.rs`
-- [ ] Code generation in `plat-codegen/src/lib.rs`
-- [ ] Test in `examples/file_test.plat`
+- [x] Runtime FFI implementation in `fs.rs` (remove empty directory only)
+- [x] Type checking in `plat-hir/src/lib.rs`
+- [x] Code generation in `plat-codegen/src/lib.rs`
+- [x] Test in `examples/file_test.plat`
 
 #### `dir_list(path: String) -> Result<String, String>`
-- [ ] Runtime FFI implementation in `fs.rs` (return newline-separated list of file/directory names)
-- [ ] Type checking in `plat-hir/src/lib.rs`
-- [ ] Code generation in `plat-codegen/src/lib.rs`
-- [ ] Test in `examples/file_test.plat`
+- [x] Runtime FFI implementation in `fs.rs` (return newline-separated list of file/directory names)
+- [x] Type checking in `plat-hir/src/lib.rs`
+- [x] Code generation in `plat-codegen/src/lib.rs`
+- [x] Test in `examples/file_test.plat`
 
 ### Phase 4 Testing
-- [ ] Test directory creation (single and recursive)
-- [ ] Test directory removal (empty and non-empty error cases)
-- [ ] Test directory listing
+- [x] Test directory creation (single and recursive)
+- [x] Test directory removal (empty and non-empty error cases)
+- [x] Test directory listing
+
+**Phase 4 Status**: ✅ **COMPLETE** - All directory operation functions working correctly!
 
 ---
 

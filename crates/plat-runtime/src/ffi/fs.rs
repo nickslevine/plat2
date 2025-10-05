@@ -429,3 +429,135 @@ pub extern "C" fn plat_file_rename(old_path_ptr: *const c_char, new_path_ptr: *c
         }
     }
 }
+
+/// Create a directory (parent must exist)
+/// Returns Result<Bool, String>
+#[no_mangle]
+pub extern "C" fn plat_dir_create(path_ptr: *const c_char) -> i64 {
+    unsafe {
+        if path_ptr.is_null() {
+            let err_msg = alloc_c_string("dir_create: path is null");
+            return create_result_enum_err_string(err_msg);
+        }
+
+        let path = match CStr::from_ptr(path_ptr).to_str() {
+            Ok(s) => s,
+            Err(_) => {
+                let err_msg = alloc_c_string("dir_create: invalid path string");
+                return create_result_enum_err_string(err_msg);
+            }
+        };
+
+        match std::fs::create_dir(path) {
+            Ok(_) => create_result_enum_ok_bool(true),
+            Err(e) => {
+                let err_msg = alloc_c_string(&format!("dir_create failed: {}", e));
+                create_result_enum_err_string(err_msg)
+            }
+        }
+    }
+}
+
+/// Create a directory with all parent directories
+/// Returns Result<Bool, String>
+#[no_mangle]
+pub extern "C" fn plat_dir_create_all(path_ptr: *const c_char) -> i64 {
+    unsafe {
+        if path_ptr.is_null() {
+            let err_msg = alloc_c_string("dir_create_all: path is null");
+            return create_result_enum_err_string(err_msg);
+        }
+
+        let path = match CStr::from_ptr(path_ptr).to_str() {
+            Ok(s) => s,
+            Err(_) => {
+                let err_msg = alloc_c_string("dir_create_all: invalid path string");
+                return create_result_enum_err_string(err_msg);
+            }
+        };
+
+        match std::fs::create_dir_all(path) {
+            Ok(_) => create_result_enum_ok_bool(true),
+            Err(e) => {
+                let err_msg = alloc_c_string(&format!("dir_create_all failed: {}", e));
+                create_result_enum_err_string(err_msg)
+            }
+        }
+    }
+}
+
+/// Remove an empty directory
+/// Returns Result<Bool, String>
+#[no_mangle]
+pub extern "C" fn plat_dir_remove(path_ptr: *const c_char) -> i64 {
+    unsafe {
+        if path_ptr.is_null() {
+            let err_msg = alloc_c_string("dir_remove: path is null");
+            return create_result_enum_err_string(err_msg);
+        }
+
+        let path = match CStr::from_ptr(path_ptr).to_str() {
+            Ok(s) => s,
+            Err(_) => {
+                let err_msg = alloc_c_string("dir_remove: invalid path string");
+                return create_result_enum_err_string(err_msg);
+            }
+        };
+
+        match std::fs::remove_dir(path) {
+            Ok(_) => create_result_enum_ok_bool(true),
+            Err(e) => {
+                let err_msg = alloc_c_string(&format!("dir_remove failed: {}", e));
+                create_result_enum_err_string(err_msg)
+            }
+        }
+    }
+}
+
+/// List directory contents (newline-separated file/directory names)
+/// Returns Result<String, String>
+#[no_mangle]
+pub extern "C" fn plat_dir_list(path_ptr: *const c_char) -> i64 {
+    unsafe {
+        if path_ptr.is_null() {
+            let err_msg = alloc_c_string("dir_list: path is null");
+            return create_result_enum_err_string(err_msg);
+        }
+
+        let path = match CStr::from_ptr(path_ptr).to_str() {
+            Ok(s) => s,
+            Err(_) => {
+                let err_msg = alloc_c_string("dir_list: invalid path string");
+                return create_result_enum_err_string(err_msg);
+            }
+        };
+
+        match std::fs::read_dir(path) {
+            Ok(entries) => {
+                let mut names = Vec::new();
+
+                for entry in entries {
+                    match entry {
+                        Ok(e) => {
+                            if let Some(name) = e.file_name().to_str() {
+                                names.push(name.to_string());
+                            }
+                        }
+                        Err(e) => {
+                            let err_msg = alloc_c_string(&format!("dir_list: error reading entry: {}", e));
+                            return create_result_enum_err_string(err_msg);
+                        }
+                    }
+                }
+
+                let result = names.join("\n");
+                let c_str = alloc_c_string(&result);
+                create_result_enum_ok_string(c_str)
+            }
+            Err(e) => {
+                let err_msg = alloc_c_string(&format!("dir_list failed: {}", e));
+                create_result_enum_err_string(err_msg)
+            }
+        }
+    }
+}

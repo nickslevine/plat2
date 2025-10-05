@@ -2090,6 +2090,94 @@ impl TypeChecker {
                     return Ok(HirType::Enum("Result".to_string(), vec![HirType::Bool, HirType::String]));
                 }
 
+                // Handle built-in dir_create function
+                if function == "dir_create" {
+                    // dir_create(path: String) -> Result<Bool, String>
+                    if args.len() != 1 {
+                        return Err(DiagnosticError::Type(
+                            "dir_create requires exactly 1 argument: 'path'".to_string()
+                        ));
+                    }
+
+                    let path_arg = args.iter().find(|arg| arg.name == "path")
+                        .ok_or_else(|| DiagnosticError::Type("dir_create requires a 'path' parameter".to_string()))?;
+
+                    let path_type = self.check_expression(&path_arg.value)?;
+                    if path_type != HirType::String {
+                        return Err(DiagnosticError::Type(
+                            format!("dir_create 'path' parameter must be String, got {:?}", path_type)
+                        ));
+                    }
+
+                    return Ok(HirType::Enum("Result".to_string(), vec![HirType::Bool, HirType::String]));
+                }
+
+                // Handle built-in dir_create_all function
+                if function == "dir_create_all" {
+                    // dir_create_all(path: String) -> Result<Bool, String>
+                    if args.len() != 1 {
+                        return Err(DiagnosticError::Type(
+                            "dir_create_all requires exactly 1 argument: 'path'".to_string()
+                        ));
+                    }
+
+                    let path_arg = args.iter().find(|arg| arg.name == "path")
+                        .ok_or_else(|| DiagnosticError::Type("dir_create_all requires a 'path' parameter".to_string()))?;
+
+                    let path_type = self.check_expression(&path_arg.value)?;
+                    if path_type != HirType::String {
+                        return Err(DiagnosticError::Type(
+                            format!("dir_create_all 'path' parameter must be String, got {:?}", path_type)
+                        ));
+                    }
+
+                    return Ok(HirType::Enum("Result".to_string(), vec![HirType::Bool, HirType::String]));
+                }
+
+                // Handle built-in dir_remove function
+                if function == "dir_remove" {
+                    // dir_remove(path: String) -> Result<Bool, String>
+                    if args.len() != 1 {
+                        return Err(DiagnosticError::Type(
+                            "dir_remove requires exactly 1 argument: 'path'".to_string()
+                        ));
+                    }
+
+                    let path_arg = args.iter().find(|arg| arg.name == "path")
+                        .ok_or_else(|| DiagnosticError::Type("dir_remove requires a 'path' parameter".to_string()))?;
+
+                    let path_type = self.check_expression(&path_arg.value)?;
+                    if path_type != HirType::String {
+                        return Err(DiagnosticError::Type(
+                            format!("dir_remove 'path' parameter must be String, got {:?}", path_type)
+                        ));
+                    }
+
+                    return Ok(HirType::Enum("Result".to_string(), vec![HirType::Bool, HirType::String]));
+                }
+
+                // Handle built-in dir_list function
+                if function == "dir_list" {
+                    // dir_list(path: String) -> Result<String, String>
+                    if args.len() != 1 {
+                        return Err(DiagnosticError::Type(
+                            "dir_list requires exactly 1 argument: 'path'".to_string()
+                        ));
+                    }
+
+                    let path_arg = args.iter().find(|arg| arg.name == "path")
+                        .ok_or_else(|| DiagnosticError::Type("dir_list requires a 'path' parameter".to_string()))?;
+
+                    let path_type = self.check_expression(&path_arg.value)?;
+                    if path_type != HirType::String {
+                        return Err(DiagnosticError::Type(
+                            format!("dir_list 'path' parameter must be String, got {:?}", path_type)
+                        ));
+                    }
+
+                    return Ok(HirType::Enum("Result".to_string(), vec![HirType::String, HirType::String]));
+                }
+
                 // Handle built-in channel_init function
                 if function == "channel_init" {
                     // channel_init<T>(capacity: Int32) -> Channel<T>
