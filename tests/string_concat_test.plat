@@ -1,0 +1,35 @@
+test string_concatenation {
+  fn test_basic_concat() {
+    let s1: String = "Hello, ";
+    let s2: String = "World!";
+    let s3: String = s1 + s2;
+    assert(condition = s3 == "Hello, World!", message = "Basic string concatenation should work");
+  }
+
+  fn test_multiple_concat() {
+    let a: String = "A";
+    let b: String = "B";
+    let c: String = "C";
+    let result: String = a + b + c;
+    assert(condition = result == "ABC", message = "Multiple concatenations should work");
+  }
+
+  fn test_concat_with_literals() {
+    let name: String = "World";
+    let greeting: String = "Hello, " + name;
+    assert(condition = greeting == "Hello, World", message = "Concatenation with literals should work");
+  }
+
+  fn test_empty_string_concat() {
+    let empty: String = "";
+    let text: String = "Hello";
+    let result1: String = empty + text;
+    let result2: String = text + empty;
+    assert(condition = result1 == "Hello", message = "Empty string + text should work");
+    assert(condition = result2 == "Hello", message = "Text + empty string should work");
+  }
+}
+
+fn main() -> Int32 {
+  return 0;
+}

@@ -2123,13 +2123,31 @@ impl CodeGenerator {
                         let left_val = Self::generate_expression_helper(builder, left, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
                         let right_val = Self::generate_expression_helper(builder, right, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
 
-                        // Determine if we're working with floats
+                        // Determine if we're working with floats or strings
                         let left_type = Self::infer_expression_type(left, variable_types);
                         let is_float = matches!(left_type, VariableType::Float8 | VariableType::Float16 | VariableType::Float32 | VariableType::Float64);
+                        let is_string = matches!(left_type, VariableType::String);
 
                         match op {
                             BinaryOp::Add => {
-                                if is_float {
+                                if is_string {
+                                    // String concatenation
+                                    let func_sig = {
+                                        let mut sig = module.make_signature();
+                                        sig.call_conv = CallConv::SystemV;
+                                        sig.params.push(AbiParam::new(I64)); // string1 pointer
+                                        sig.params.push(AbiParam::new(I64)); // string2 pointer
+                                        sig.returns.push(AbiParam::new(I64)); // result string pointer
+                                        sig
+                                    };
+
+                                    let func_id = module.declare_function("plat_string_concat", Linkage::Import, &func_sig)
+                                        .map_err(CodegenError::ModuleError)?;
+                                    let func_ref = module.declare_func_in_func(func_id, builder.func);
+
+                                    let call = builder.ins().call(func_ref, &[left_val, right_val]);
+                                    Ok(builder.inst_results(call)[0])
+                                } else if is_float {
                                     Ok(builder.ins().fadd(left_val, right_val))
                                 } else {
                                     Ok(builder.ins().iadd(left_val, right_val))
@@ -2158,7 +2176,24 @@ impl CodeGenerator {
                             }
                             BinaryOp::Modulo => Ok(builder.ins().srem(left_val, right_val)),
                             BinaryOp::Equal => {
-                                if is_float {
+                                if is_string {
+                                    // String equality comparison
+                                    let func_sig = {
+                                        let mut sig = module.make_signature();
+                                        sig.call_conv = CallConv::SystemV;
+                                        sig.params.push(AbiParam::new(I64)); // string1 pointer
+                                        sig.params.push(AbiParam::new(I64)); // string2 pointer
+                                        sig.returns.push(AbiParam::new(I32)); // bool result
+                                        sig
+                                    };
+
+                                    let func_id = module.declare_function("plat_string_equals", Linkage::Import, &func_sig)
+                                        .map_err(CodegenError::ModuleError)?;
+                                    let func_ref = module.declare_func_in_func(func_id, builder.func);
+
+                                    let call = builder.ins().call(func_ref, &[left_val, right_val]);
+                                    Ok(builder.inst_results(call)[0])
+                                } else if is_float {
                                     let cmp = builder.ins().fcmp(FloatCC::Equal, left_val, right_val);
                                     Ok(builder.ins().uextend(I32, cmp))
                                 } else {
@@ -2167,7 +2202,28 @@ impl CodeGenerator {
                                 }
                             }
                             BinaryOp::NotEqual => {
-                                if is_float {
+                                if is_string {
+                                    // String inequality comparison
+                                    let func_sig = {
+                                        let mut sig = module.make_signature();
+                                        sig.call_conv = CallConv::SystemV;
+                                        sig.params.push(AbiParam::new(I64)); // string1 pointer
+                                        sig.params.push(AbiParam::new(I64)); // string2 pointer
+                                        sig.returns.push(AbiParam::new(I32)); // bool result
+                                        sig
+                                    };
+
+                                    let func_id = module.declare_function("plat_string_equals", Linkage::Import, &func_sig)
+                                        .map_err(CodegenError::ModuleError)?;
+                                    let func_ref = module.declare_func_in_func(func_id, builder.func);
+
+                                    let call = builder.ins().call(func_ref, &[left_val, right_val]);
+                                    let equals_result = builder.inst_results(call)[0];
+                                    // Invert the result for not-equal
+                                    let zero = builder.ins().iconst(I32, 0);
+                                    let not_equal = builder.ins().icmp(IntCC::Equal, equals_result, zero);
+                                    Ok(builder.ins().uextend(I32, not_equal))
+                                } else if is_float {
                                     let cmp = builder.ins().fcmp(FloatCC::NotEqual, left_val, right_val);
                                     Ok(builder.ins().uextend(I32, cmp))
                                 } else {

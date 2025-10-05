@@ -52,6 +52,31 @@ pub extern "C" fn plat_string_concat(str1_ptr: *const c_char, str2_ptr: *const c
     }
 }
 
+/// Check if two strings are equal
+#[no_mangle]
+pub extern "C" fn plat_string_equals(str1_ptr: *const c_char, str2_ptr: *const c_char) -> bool {
+    if str1_ptr.is_null() && str2_ptr.is_null() {
+        return true;
+    }
+    if str1_ptr.is_null() || str2_ptr.is_null() {
+        return false;
+    }
+
+    unsafe {
+        let str1 = match CStr::from_ptr(str1_ptr).to_str() {
+            Ok(s) => s,
+            Err(_) => return false,
+        };
+
+        let str2 = match CStr::from_ptr(str2_ptr).to_str() {
+            Ok(s) => s,
+            Err(_) => return false,
+        };
+
+        str1 == str2
+    }
+}
+
 /// Check if string contains a substring
 #[no_mangle]
 pub extern "C" fn plat_string_contains(str_ptr: *const c_char, substr_ptr: *const c_char) -> bool {

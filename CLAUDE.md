@@ -262,9 +262,6 @@ plat2/
   - Variable capture in spawn closures (automatic context passing)
   - Thread-safe task handles with condition variables (no busy-wait)
 
-**⚠️ Known Issues:**
-- **String concatenation bug**: String concatenation with the `+` operator produces invalid UTF-8 output in some cases (e.g., `"Hello, " + "World!"` outputs garbled text). This is a general codegen issue unrelated to the Task system. Simple string returns and interpolation work correctly.
-
 **📋 TODO (Stretch Goals):**
 - [ ] Generic constraints (`T: Display`)
 - [ ] Complete `?` operator implementation with proper early returns
