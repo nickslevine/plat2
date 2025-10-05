@@ -265,23 +265,29 @@
   4. Update closure calling convention
 - **Priority:** HIGH (required for real-world use)
 
-**3. Limited Type Support for Task Return Values**
-- **Status:** ⚠️ LIMITATION
-- **Description:** Only `Task<Int32>` and `Task<Int64>` fully implemented
-- **Working Types:**
-  - ✅ Int32 → i32 (via ireduce)
-  - ✅ Int64 → i64 (native)
+**3. Limited Type Support for Task Return Values** 🔄 PARTIAL
+- **Status:** 🔄 RUNTIME COMPLETE, CODEGEN INCOMPLETE
+- **Description:** Runtime support added for multiple types, codegen integration pending
+- **Runtime Support (Complete):**
+  - ✅ Int32 → i32 (plat_spawn_task_i32, plat_task_await_i32)
+  - ✅ Int64 → i64 (plat_spawn_task_i64, plat_task_await_i64)
+  - ✅ Bool → bool (plat_spawn_task_bool, plat_task_await_bool)
+  - ✅ Float32 → f32 (plat_spawn_task_f32, plat_task_await_f32)
+  - ✅ Float64 → f64 (plat_spawn_task_f64, plat_task_await_f64)
+- **Codegen Integration:**
+  - ⚠️ Currently hardcoded to use i64 functions only
+  - ⚠️ Needs type information from HIR to select correct spawn/await function
+  - ⚠️ Closure return type inference incomplete
 - **Not Yet Implemented:**
-  - ❌ Bool, Float32, Float64
   - ❌ String (heap-allocated types)
   - ❌ Custom classes
   - ❌ Collections (List, Dict, Set)
   - ❌ Enums (Option, Result)
 - **Implementation Needed:**
-  1. Generic `plat_spawn_task_T()` and `plat_task_await_T()` functions
-  2. Type-specific code generation based on return type
-  3. Proper handling of heap-allocated return values
-- **Priority:** MEDIUM (can work around for MVP)
+  1. Pass HIR type information to codegen for Task<T> types
+  2. Select appropriate spawn/await function based on T
+  3. Handle closure signature generation for different return types
+- **Priority:** MEDIUM (basic types work, advanced types can wait)
 
 **4. Parser Requires Explicit Return Statements**
 - **Status:** ⚠️ LIMITATION

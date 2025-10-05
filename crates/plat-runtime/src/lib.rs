@@ -116,6 +116,154 @@ pub extern "C" fn plat_task_await_i64(handle_id: u64) -> i64 {
     0
 }
 
+/// Spawn a task that returns an i32 value
+#[no_mangle]
+pub extern "C" fn plat_spawn_task_i32(func: extern "C" fn() -> i32) -> u64 {
+    use green_runtime::{GreenThreadRuntime, task_with_result::TaskWithResult, get_scope_registry};
+    use std::sync::Arc;
+
+    let task = TaskWithResult::new(move || func());
+    let handle = task.handle();
+    let task_id = task.id().as_u64();
+
+    let scope_registry = get_scope_registry();
+    scope_registry.register_task(handle.clone());
+
+    let runtime = GreenThreadRuntime::get();
+    let mut guard = runtime.lock();
+    if let Some(rt) = guard.as_mut() {
+        rt.spawn_with_result(task);
+    }
+
+    TASK_HANDLES.lock().unwrap().insert(task_id, Arc::new(handle));
+    task_id
+}
+
+/// Await a task and get its i32 result
+#[no_mangle]
+pub extern "C" fn plat_task_await_i32(handle_id: u64) -> i32 {
+    use green_runtime::task_with_result::TaskHandle;
+
+    let handles = TASK_HANDLES.lock().unwrap();
+    if let Some(handle_any) = handles.get(&handle_id) {
+        if let Some(handle) = handle_any.downcast_ref::<TaskHandle<i32>>() {
+            return handle.await_result().unwrap_or(0);
+        }
+    }
+    0
+}
+
+/// Spawn a task that returns a bool value
+#[no_mangle]
+pub extern "C" fn plat_spawn_task_bool(func: extern "C" fn() -> bool) -> u64 {
+    use green_runtime::{GreenThreadRuntime, task_with_result::TaskWithResult, get_scope_registry};
+    use std::sync::Arc;
+
+    let task = TaskWithResult::new(move || func());
+    let handle = task.handle();
+    let task_id = task.id().as_u64();
+
+    let scope_registry = get_scope_registry();
+    scope_registry.register_task(handle.clone());
+
+    let runtime = GreenThreadRuntime::get();
+    let mut guard = runtime.lock();
+    if let Some(rt) = guard.as_mut() {
+        rt.spawn_with_result(task);
+    }
+
+    TASK_HANDLES.lock().unwrap().insert(task_id, Arc::new(handle));
+    task_id
+}
+
+/// Await a task and get its bool result
+#[no_mangle]
+pub extern "C" fn plat_task_await_bool(handle_id: u64) -> bool {
+    use green_runtime::task_with_result::TaskHandle;
+
+    let handles = TASK_HANDLES.lock().unwrap();
+    if let Some(handle_any) = handles.get(&handle_id) {
+        if let Some(handle) = handle_any.downcast_ref::<TaskHandle<bool>>() {
+            return handle.await_result().unwrap_or(false);
+        }
+    }
+    false
+}
+
+/// Spawn a task that returns an f32 value
+#[no_mangle]
+pub extern "C" fn plat_spawn_task_f32(func: extern "C" fn() -> f32) -> u64 {
+    use green_runtime::{GreenThreadRuntime, task_with_result::TaskWithResult, get_scope_registry};
+    use std::sync::Arc;
+
+    let task = TaskWithResult::new(move || func());
+    let handle = task.handle();
+    let task_id = task.id().as_u64();
+
+    let scope_registry = get_scope_registry();
+    scope_registry.register_task(handle.clone());
+
+    let runtime = GreenThreadRuntime::get();
+    let mut guard = runtime.lock();
+    if let Some(rt) = guard.as_mut() {
+        rt.spawn_with_result(task);
+    }
+
+    TASK_HANDLES.lock().unwrap().insert(task_id, Arc::new(handle));
+    task_id
+}
+
+/// Await a task and get its f32 result
+#[no_mangle]
+pub extern "C" fn plat_task_await_f32(handle_id: u64) -> f32 {
+    use green_runtime::task_with_result::TaskHandle;
+
+    let handles = TASK_HANDLES.lock().unwrap();
+    if let Some(handle_any) = handles.get(&handle_id) {
+        if let Some(handle) = handle_any.downcast_ref::<TaskHandle<f32>>() {
+            return handle.await_result().unwrap_or(0.0);
+        }
+    }
+    0.0
+}
+
+/// Spawn a task that returns an f64 value
+#[no_mangle]
+pub extern "C" fn plat_spawn_task_f64(func: extern "C" fn() -> f64) -> u64 {
+    use green_runtime::{GreenThreadRuntime, task_with_result::TaskWithResult, get_scope_registry};
+    use std::sync::Arc;
+
+    let task = TaskWithResult::new(move || func());
+    let handle = task.handle();
+    let task_id = task.id().as_u64();
+
+    let scope_registry = get_scope_registry();
+    scope_registry.register_task(handle.clone());
+
+    let runtime = GreenThreadRuntime::get();
+    let mut guard = runtime.lock();
+    if let Some(rt) = guard.as_mut() {
+        rt.spawn_with_result(task);
+    }
+
+    TASK_HANDLES.lock().unwrap().insert(task_id, Arc::new(handle));
+    task_id
+}
+
+/// Await a task and get its f64 result
+#[no_mangle]
+pub extern "C" fn plat_task_await_f64(handle_id: u64) -> f64 {
+    use green_runtime::task_with_result::TaskHandle;
+
+    let handles = TASK_HANDLES.lock().unwrap();
+    if let Some(handle_any) = handles.get(&handle_id) {
+        if let Some(handle) = handle_any.downcast_ref::<TaskHandle<f64>>() {
+            return handle.await_result().unwrap_or(0.0);
+        }
+    }
+    0.0
+}
+
 // ============================================================================
 // Scope Management for Structured Concurrency
 // ============================================================================

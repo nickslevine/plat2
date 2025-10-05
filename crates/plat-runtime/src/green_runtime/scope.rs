@@ -92,6 +92,12 @@ impl TaskScope {
                 continue;
             }
 
+            // Try f32
+            if let Some(handle) = handle_any.downcast_ref::<TaskHandle<f32>>() {
+                handle.wait();
+                continue;
+            }
+
             // Try bool
             if let Some(handle) = handle_any.downcast_ref::<TaskHandle<bool>>() {
                 handle.wait();
