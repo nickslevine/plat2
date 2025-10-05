@@ -1,0 +1,20 @@
+fn main() -> Int32 {
+    print(value = "File test");
+    let r: Result<Int32, String> = file_open(path = "test.txt", mode = "w");
+    let fd: Int32 = match r {
+        Result::Ok(f: Int32) -> f,
+        Result::Err(e: String) -> {
+            print(value = "Error: ${e}");
+            return 1;
+        }
+    };
+    print(value = "Opened fd: ${fd}");
+    let w: Result<Int32, String> = file_write(fd = fd, data = "Hello!");
+    match w {
+        Result::Ok(b: Int32) -> print(value = "Wrote ${b} bytes"),
+        Result::Err(e: String) -> print(value = "Error")
+    };
+    let c: Result<Bool, String> = file_close(fd = fd);
+    print(value = "Done");
+    return 0;
+}

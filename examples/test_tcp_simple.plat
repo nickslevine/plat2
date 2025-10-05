@@ -1,0 +1,10 @@
+fn main() -> Int32 {
+    let r: Result<Int32, String> = tcp_listen(host = "127.0.0.1", port = 9999);
+    let fd: Int32 = match r {
+        Result::Ok(f: Int32) -> f,
+        Result::Err(e: String) -> 0
+    };
+    print(value = "TCP FD: ${fd}");
+    let c: Result<Bool, String> = tcp_close(socket = fd);
+    return 0;
+}

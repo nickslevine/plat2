@@ -1,0 +1,298 @@
+fn main() -> Int32 {
+    print(value = "=== File System Test Suite ===");
+    print(value = "");
+
+    // Test 1: Write mode (create/truncate)
+    print(value = "Test 1: Write mode (w)");
+    let write_result: Result<Int32, String> = file_open(path = "test_output.txt", mode = "w");
+
+    let fd: Int32 = match write_result {
+        Result::Ok(f: Int32) -> f,
+        Result::Err(e: String) -> {
+            print(value = "ERROR: Failed to open file for writing: ${e}");
+            return 1;
+        }
+    };
+
+    print(value = "  File opened successfully, fd: ${fd}");
+
+    // Write some data
+    let write_data: String = "Hello, Plat File System!";
+    let bytes_result: Result<Int32, String> = file_write(fd = fd, data = write_data);
+
+    match bytes_result {
+        Result::Ok(bytes: Int32) -> print(value = "  Wrote ${bytes} bytes"),
+        Result::Err(e: String) -> {
+            print(value = "ERROR: Write failed: ${e}");
+            return 1;
+        }
+    };
+
+    // Close the file
+    let close_result: Result<Bool, String> = file_close(fd = fd);
+    match close_result {
+        Result::Ok(success: Bool) -> print(value = "  File closed successfully"),
+        Result::Err(e: String) -> {
+            print(value = "ERROR: Close failed: ${e}");
+            return 1;
+        }
+    };
+
+    print(value = "");
+
+    // Test 2: Read mode
+    print(value = "Test 2: Read mode (r)");
+    let read_result: Result<Int32, String> = file_open(path = "test_output.txt", mode = "r");
+
+    let read_fd: Int32 = match read_result {
+        Result::Ok(f: Int32) -> f,
+        Result::Err(e: String) -> {
+            print(value = "ERROR: Failed to open file for reading: ${e}");
+            return 1;
+        }
+    };
+
+    print(value = "  File opened for reading, fd: ${read_fd}");
+
+    // Read the data back
+    let data_result: Result<String, String> = file_read(fd = read_fd, max_bytes = 1024);
+
+    match data_result {
+        Result::Ok(content: String) -> print(value = "  Read content: ${content}"),
+        Result::Err(e: String) -> {
+            print(value = "ERROR: Read failed: ${e}");
+            return 1;
+        }
+    };
+
+    // Close the read file
+    let close_result2: Result<Bool, String> = file_close(fd = read_fd);
+    match close_result2 {
+        Result::Ok(success: Bool) -> print(value = "  File closed successfully"),
+        Result::Err(e: String) -> {
+            print(value = "ERROR: Close failed: ${e}");
+            return 1;
+        }
+    };
+
+    print(value = "");
+
+    // Test 3: Append mode
+    print(value = "Test 3: Append mode (a)");
+    let append_result: Result<Int32, String> = file_open(path = "test_output.txt", mode = "a");
+
+    let append_fd: Int32 = match append_result {
+        Result::Ok(f: Int32) -> f,
+        Result::Err(e: String) -> {
+            print(value = "ERROR: Failed to open file for append: ${e}");
+            return 1;
+        }
+    };
+
+    print(value = "  File opened for append, fd: ${append_fd}");
+
+    // Append some data
+    let append_data: String = "\nAppended line!";
+    let append_bytes_result: Result<Int32, String> = file_write(fd = append_fd, data = append_data);
+
+    match append_bytes_result {
+        Result::Ok(bytes: Int32) -> print(value = "  Appended ${bytes} bytes"),
+        Result::Err(e: String) -> {
+            print(value = "ERROR: Append write failed: ${e}");
+            return 1;
+        }
+    };
+
+    // Close append file
+    let close_result3: Result<Bool, String> = file_close(fd = append_fd);
+    match close_result3 {
+        Result::Ok(success: Bool) -> print(value = "  File closed successfully"),
+        Result::Err(e: String) -> {
+            print(value = "ERROR: Close failed: ${e}");
+            return 1;
+        }
+    };
+
+    print(value = "");
+
+    // Test 4: Read appended content
+    print(value = "Test 4: Read appended content");
+    let read2_result: Result<Int32, String> = file_open(path = "test_output.txt", mode = "r");
+
+    let read2_fd: Int32 = match read2_result {
+        Result::Ok(f: Int32) -> f,
+        Result::Err(e: String) -> {
+            print(value = "ERROR: Failed to open file for reading: ${e}");
+            return 1;
+        }
+    };
+
+    let full_content_result: Result<String, String> = file_read(fd = read2_fd, max_bytes = 1024);
+
+    match full_content_result {
+        Result::Ok(content: String) -> print(value = "  Full content: ${content}"),
+        Result::Err(e: String) -> {
+            print(value = "ERROR: Read failed: ${e}");
+            return 1;
+        }
+    };
+
+    let close_result4: Result<Bool, String> = file_close(fd = read2_fd);
+    match close_result4 {
+        Result::Ok(success: Bool) -> print(value = "  File closed successfully"),
+        Result::Err(e: String) -> {
+            print(value = "ERROR: Close failed: ${e}");
+            return 1;
+        }
+    };
+
+    print(value = "");
+
+    // Test 5: Read+Write mode (r+)
+    print(value = "Test 5: Read+Write mode (r+)");
+    let rw_result: Result<Int32, String> = file_open(path = "test_output.txt", mode = "r+");
+
+    let rw_fd: Int32 = match rw_result {
+        Result::Ok(f: Int32) -> f,
+        Result::Err(e: String) -> {
+            print(value = "ERROR: Failed to open file in r+ mode: ${e}");
+            return 1;
+        }
+    };
+
+    print(value = "  File opened in r+ mode, fd: ${rw_fd}");
+
+    // Read first
+    let rw_read_result: Result<String, String> = file_read(fd = rw_fd, max_bytes = 100);
+    match rw_read_result {
+        Result::Ok(content: String) -> print(value = "  Initial content: ${content}"),
+        Result::Err(e: String) -> {
+            print(value = "ERROR: Read in r+ mode failed: ${e}");
+            return 1;
+        }
+    };
+
+    let close_result5: Result<Bool, String> = file_close(fd = rw_fd);
+    match close_result5 {
+        Result::Ok(success: Bool) -> print(value = "  File closed successfully"),
+        Result::Err(e: String) -> {
+            print(value = "ERROR: Close failed: ${e}");
+            return 1;
+        }
+    };
+
+    print(value = "");
+
+    // Test 6: Error handling - file not found
+    print(value = "Test 6: Error handling (file not found)");
+    let error_result: Result<Int32, String> = file_open(path = "nonexistent_file.txt", mode = "r");
+
+    match error_result {
+        Result::Ok(f: Int32) -> {
+            print(value = "ERROR: Should have failed to open nonexistent file!");
+            return 1;
+        },
+        Result::Err(e: String) -> print(value = "  Expected error: ${e}")
+    };
+
+    print(value = "");
+
+    // Test 7: Invalid mode
+    print(value = "Test 7: Error handling (invalid mode)");
+    let invalid_mode_result: Result<Int32, String> = file_open(path = "test_output.txt", mode = "x");
+
+    match invalid_mode_result {
+        Result::Ok(f: Int32) -> {
+            print(value = "ERROR: Should have failed with invalid mode!");
+            return 1;
+        },
+        Result::Err(e: String) -> print(value = "  Expected error: ${e}")
+    };
+
+    print(value = "");
+
+    // Test 8: Invalid file descriptor
+    print(value = "Test 8: Error handling (invalid fd)");
+    let invalid_fd: Int32 = 9999;
+    let invalid_close: Result<Bool, String> = file_close(fd = invalid_fd);
+
+    match invalid_close {
+        Result::Ok(success: Bool) -> {
+            print(value = "ERROR: Should have failed to close invalid fd!");
+            return 1;
+        },
+        Result::Err(e: String) -> print(value = "  Expected error: ${e}")
+    };
+
+    print(value = "");
+
+    // Test 9: Write+truncate mode (w+)
+    print(value = "Test 9: Write+truncate mode (w+)");
+    let wplus_result: Result<Int32, String> = file_open(path = "test_wplus.txt", mode = "w+");
+
+    let wplus_fd: Int32 = match wplus_result {
+        Result::Ok(f: Int32) -> f,
+        Result::Err(e: String) -> {
+            print(value = "ERROR: Failed to open file in w+ mode: ${e}");
+            return 1;
+        }
+    };
+
+    print(value = "  File opened in w+ mode, fd: ${wplus_fd}");
+
+    let wplus_write: Result<Int32, String> = file_write(fd = wplus_fd, data = "w+ mode test");
+    match wplus_write {
+        Result::Ok(bytes: Int32) -> print(value = "  Wrote ${bytes} bytes"),
+        Result::Err(e: String) -> {
+            print(value = "ERROR: Write in w+ mode failed: ${e}");
+            return 1;
+        }
+    };
+
+    let close_result6: Result<Bool, String> = file_close(fd = wplus_fd);
+    match close_result6 {
+        Result::Ok(success: Bool) -> print(value = "  File closed successfully"),
+        Result::Err(e: String) -> {
+            print(value = "ERROR: Close failed: ${e}");
+            return 1;
+        }
+    };
+
+    print(value = "");
+
+    // Test 10: Append+read mode (a+)
+    print(value = "Test 10: Append+read mode (a+)");
+    let aplus_result: Result<Int32, String> = file_open(path = "test_aplus.txt", mode = "a+");
+
+    let aplus_fd: Int32 = match aplus_result {
+        Result::Ok(f: Int32) -> f,
+        Result::Err(e: String) -> {
+            print(value = "ERROR: Failed to open file in a+ mode: ${e}");
+            return 1;
+        }
+    };
+
+    print(value = "  File opened in a+ mode, fd: ${aplus_fd}");
+
+    let aplus_write: Result<Int32, String> = file_write(fd = aplus_fd, data = "a+ mode test");
+    match aplus_write {
+        Result::Ok(bytes: Int32) -> print(value = "  Appended ${bytes} bytes"),
+        Result::Err(e: String) -> {
+            print(value = "ERROR: Write in a+ mode failed: ${e}");
+            return 1;
+        }
+    };
+
+    let close_result7: Result<Bool, String> = file_close(fd = aplus_fd);
+    match close_result7 {
+        Result::Ok(success: Bool) -> print(value = "  File closed successfully"),
+        Result::Err(e: String) -> {
+            print(value = "ERROR: Close failed: ${e}");
+            return 1;
+        }
+    };
+
+    print(value = "");
+    print(value = "=== All tests passed! ===");
+    return 0;
+}

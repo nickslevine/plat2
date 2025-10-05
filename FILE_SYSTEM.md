@@ -80,9 +80,12 @@ Implement low-level file system primitives following the same pattern as TCP net
 - [x] Export fs module in `crates/plat-runtime/src/ffi/mod.rs`
 - [x] Create test files for basic file operations
 - [x] Verify compilation and type checking works correctly
-- [x] **BUG FIX**: Fixed Result enum extraction from FFI functions
-- [ ] Test all file modes (r, w, a, r+, w+, a+) - **NOW UNBLOCKED**
-- [ ] Test error conditions (file not found, permission denied) - **NOW UNBLOCKED**
+- [x] **BUG FIX #1**: Fixed Result enum extraction from FFI functions (runtime format detection)
+- [x] **BUG FIX #2**: Fixed String extraction from Result enums in match expressions (was hardcoded to Int32)
+- [x] Test all file modes (r, w, a, r+, w+, a+) - **PASSING**
+- [x] Test error conditions (file not found, permission denied) - **PASSING**
+
+**Phase 1 Status**: ✅ **COMPLETE** - All core file I/O functions working correctly!
 
 ---
 

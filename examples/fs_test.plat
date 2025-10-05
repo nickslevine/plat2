@@ -1,0 +1,14 @@
+fn main() -> Int32 {
+    let write_result: Result<Int32, String> = file_open(path = "out.txt", mode = "w");
+    let fd: Int32 = match write_result {
+        Result::Ok(f: Int32) -> f,
+        Result::Err(e: String) -> {
+            print(value = "Error");
+            return 1;
+        }
+    };
+    let bytes: Result<Int32, String> = file_write(fd = fd, data = "Hello!");
+    let c: Result<Bool, String> = file_close(fd = fd);
+    print(value = "Done");
+    return 0;
+}

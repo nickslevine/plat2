@@ -1,0 +1,24 @@
+fn main() -> Int32 {
+    let s: String = "42";
+    let r: Result<Int32, String> = s.parse_int();
+
+    // Test if match is even working
+    let success: Bool = match r {
+        Result::Ok(val: Int32) -> true,
+        Result::Err(e: String) -> false
+    };
+
+    if (success) {
+        print(value = "Match detected Ok variant");
+    } else {
+        print(value = "Match detected Err variant");
+    }
+
+    let n: Int32 = match r {
+        Result::Ok(val: Int32) -> val,
+        Result::Err(e: String) -> 0
+    };
+
+    print(value = "Value extracted: ${n}");
+    return n;
+}

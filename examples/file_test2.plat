@@ -1,0 +1,67 @@
+fn main() -> Int32 {
+    print(value = "=== File System Test ===");
+
+    let write_result: Result<Int32, String> = file_open(path = "test.txt", mode = "w");
+
+    let fd: Int32 = match write_result {
+        Result::Ok(f: Int32) -> f,
+        Result::Err(e: String) -> {
+            print(value = "Failed to open: ${e}");
+            return 1;
+        }
+    };
+
+    print(value = "File opened, fd: ${fd}");
+
+    let write_bytes: Result<Int32, String> = file_write(fd = fd, data = "Hello from Plat!");
+
+    match write_bytes {
+        Result::Ok(bytes: Int32) -> print(value = "Wrote ${bytes} bytes"),
+        Result::Err(e: String) -> {
+            print(value = "Write failed: ${e}");
+            return 1;
+        }
+    };
+
+    let close_result: Result<Bool, String> = file_close(fd = fd);
+
+    match close_result {
+        Result::Ok(success: Bool) -> print(value = "File closed"),
+        Result::Err(e: String) -> {
+            print(value = "Close failed: ${e}");
+            return 1;
+        }
+    };
+
+    let read_result: Result<Int32, String> = file_open(path = "test.txt", mode = "r");
+
+    let read_fd: Int32 = match read_result {
+        Result::Ok(f: Int32) -> f,
+        Result::Err(e: String) -> {
+            print(value = "Failed to open for reading: ${e}");
+            return 1;
+        }
+    };
+
+    let data_result: Result<String, String> = file_read(fd = read_fd, max_bytes = 1024);
+
+    match data_result {
+        Result::Ok(content: String) -> print(value = "Read: ${content}"),
+        Result::Err(e: String) -> {
+            print(value = "Read failed: ${e}");
+            return 1;
+        }
+    };
+
+    let close_result2: Result<Bool, String> = file_close(fd = read_fd);
+
+    match close_result2 {
+        Result::Ok(success: Bool) -> print(value = "Test passed!"),
+        Result::Err(e: String) -> {
+            print(value = "Close failed: ${e}");
+            return 1;
+        }
+    };
+
+    return 0;
+}

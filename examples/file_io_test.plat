@@ -1,0 +1,74 @@
+fn main() -> Int32 {
+  print(value = "=== File System Test ===");
+
+  let write_result: Result<Int32, String> = file_open(path = "test.txt", mode = "w");
+
+  let write_fd: Int32 = match write_result {
+    Result::Ok(fd: Int32) -> fd,
+    Result::Err(err: String) -> {
+      print(value = "Failed to open for write: ${err}");
+      return 1;
+    }
+  };
+
+  print(value = "File opened for writing, fd: ${write_fd}");
+
+  let test_data: String = "Hello from Plat file system!";
+  let write_bytes_result: Result<Int32, String> = file_write(fd = write_fd, data = test_data);
+
+  let bytes_written: Int32 = match write_bytes_result {
+    Result::Ok(n: Int32) -> n,
+    Result::Err(err: String) -> {
+      print(value = "Failed to write: ${err}");
+      let close_result: Result<Bool, String> = file_close(fd = write_fd);
+      return 1;
+    }
+  };
+
+  print(value = "Wrote ${bytes_written} bytes to file");
+
+  let close_write: Result<Bool, String> = file_close(fd = write_fd);
+
+  match close_write {
+    Result::Ok(success: Bool) -> print(value = "Write file closed"),
+    Result::Err(err: String) -> {
+      print(value = "Failed to close write file: ${err}");
+      return 1;
+    }
+  };
+
+  let read_result: Result<Int32, String> = file_open(path = "test.txt", mode = "r");
+
+  let read_fd: Int32 = match read_result {
+    Result::Ok(fd: Int32) -> fd,
+    Result::Err(err: String) -> {
+      print(value = "Failed to open for read: ${err}");
+      return 1;
+    }
+  };
+
+  print(value = "File opened for reading, fd: ${read_fd}");
+
+  let read_data_result: Result<String, String> = file_read(fd = read_fd, max_bytes = 1024);
+
+  let content: String = match read_data_result {
+    Result::Ok(data: String) -> data,
+    Result::Err(err: String) -> {
+      print(value = "Failed to read: ${err}");
+      let close_result: Result<Bool, String> = file_close(fd = read_fd);
+      return 1;
+    }
+  };
+
+  print(value = "Read from file: ${content}");
+
+  let close_read: Result<Bool, String> = file_close(fd = read_fd);
+
+  match close_read {
+    Result::Ok(success: Bool) -> print(value = "Read file closed"),
+    Result::Err(err: String) -> print(value = "Failed to close read file: ${err}")
+  };
+
+  print(value = "=== All tests passed! ===");
+  return 0;
+}

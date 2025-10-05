@@ -1,0 +1,21 @@
+fn test1() -> Int32 {
+  print(value = "test1");
+  return 0;
+}
+
+fn test2() -> Int32 {
+  print(value = "test2");
+  return 0;
+}
+
+fn test3() -> Int32 {
+  print(value = "test3");
+  return 0;
+}
+
+fn main() -> Int32 {
+  let x: Int32 = test1();
+  let y: Int32 = test2();
+  let z: Int32 = test3();
+  return 0;
+}

@@ -1,0 +1,16 @@
+enum MyEnum {
+    Value(Int32)
+}
+
+fn get_enum() -> MyEnum {
+    return MyEnum::Value(field0 = 99);
+}
+
+fn main() -> Int32 {
+    let e: MyEnum = get_enum();
+    let n: Int32 = match e {
+        MyEnum::Value(x: Int32) -> x
+    };
+    print(value = "Got: ${n}");
+    return 0;
+}

@@ -3,6 +3,7 @@
 
 use plat_ast::{self as ast, BinaryOp, Block, Expression, IntType, Literal, MatchArm, Pattern, Program, Statement, UnaryOp, FloatType};
 use plat_ast::Type as AstType;
+use plat_hir::HirType;
 use cranelift_codegen::ir::types::*;
 use std::os::raw::c_char;
 use cranelift_codegen::ir::{
@@ -4483,13 +4484,24 @@ impl CodeGenerator {
 
                     // Handle pattern bindings for this arm
                     if let Pattern::EnumVariant { bindings, .. } = &arm.pattern {
-                        for (binding_idx, (binding_name, _binding_type)) in bindings.iter().enumerate() {
+                        for (binding_idx, (binding_name, binding_type)) in bindings.iter().enumerate() {
                             if !binding_name.is_empty() {
+                                // Determine the Cranelift type and VariableType based on the AST type
+                                let (var_type, cranelift_type, is_string) = match binding_type {
+                                    AstType::String => (VariableType::String, I64, true),
+                                    AstType::Int32 => (VariableType::Int32, I32, false),
+                                    AstType::Int64 => (VariableType::Int64, I64, false),
+                                    AstType::Bool => (VariableType::Bool, I32, false),
+                                    AstType::Float32 => (VariableType::Float32, F32, false),
+                                    AstType::Float64 => (VariableType::Float64, F64, false),
+                                    _ => (VariableType::Int32, I32, false), // Fallback for other types
+                                };
+
                                 // Use runtime detection to handle both packed and heap formats
                                 // This is needed because FFI functions return heap pointers,
                                 // while Plat functions return packed values
-                                let (field_val, var_type, cranelift_type) = if bindings.len() == 1 {
-                                    // Single field: detect format at runtime
+                                let field_val = if bindings.len() == 1 && !is_string {
+                                    // Single non-string field: detect format at runtime
                                     let min_addr = builder.ins().iconst(I64, 0x1000);
                                     let max_pointer = builder.ins().iconst(I64, 0x7FFFFFFFFFFF);
 
@@ -4501,33 +4513,41 @@ impl CodeGenerator {
                                     let packed_extract = builder.create_block();
                                     let heap_extract = builder.create_block();
                                     let extract_done = builder.create_block();
-                                    builder.append_block_param(extract_done, I32);
+                                    builder.append_block_param(extract_done, cranelift_type);
 
                                     builder.ins().brif(use_heap, heap_extract, &[], packed_extract, &[]);
 
-                                    // Packed format: value in low 32 bits
+                                    // Packed format: value in low 32 bits (for primitives)
                                     builder.switch_to_block(packed_extract);
                                     builder.seal_block(packed_extract);
-                                    let packed_val = builder.ins().ireduce(I32, value_val);
+                                    let packed_val = if cranelift_type == I32 {
+                                        builder.ins().ireduce(I32, value_val)
+                                    } else {
+                                        value_val // Already I64 or other type
+                                    };
                                     builder.ins().jump(extract_done, &[packed_val]);
 
-                                    // Heap format: load from offset 4 (after discriminant)
+                                    // Heap format: load from offset (4 or 8 depending on type)
                                     builder.switch_to_block(heap_extract);
                                     builder.seal_block(heap_extract);
-                                    let heap_val = builder.ins().load(I32, MemFlags::new(), value_val, 4);
+                                    let offset = if is_string { 8 } else { 4 };
+                                    let heap_val = builder.ins().load(cranelift_type, MemFlags::new(), value_val, offset);
                                     builder.ins().jump(extract_done, &[heap_val]);
 
                                     // Done block
                                     builder.switch_to_block(extract_done);
                                     builder.seal_block(extract_done);
-                                    let extracted = builder.block_params(extract_done)[0];
-
-                                    (extracted, VariableType::Int32, I32)
+                                    builder.block_params(extract_done)[0]
                                 } else {
-                                    // Multi-field: always use heap format
-                                    let offset = 4 + (binding_idx * 4) as i32; // 4-byte alignment for i32
-                                    let loaded = builder.ins().load(I32, MemFlags::new(), value_val, offset);
-                                    (loaded, VariableType::Int32, I32)
+                                    // Multi-field or string: always use heap format
+                                    // Strings are 8 bytes (I64 pointer), primitives are 4 bytes
+                                    let field_size = if is_string { 8 } else { 4 };
+                                    let offset = if is_string {
+                                        8 + (binding_idx * field_size) as i32 // Strings start at offset 8
+                                    } else {
+                                        4 + (binding_idx * field_size) as i32 // Primitives start at offset 4
+                                    };
+                                    builder.ins().load(cranelift_type, MemFlags::new(), value_val, offset)
                                 };
 
                                 let var = Variable::from_u32(*variable_counter);

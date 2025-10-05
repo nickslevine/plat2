@@ -1,0 +1,6 @@
+fn main() -> Int32 {
+    print(value = "Testing file open...");
+    let result: Result<Int32, String> = file_open(path = "test.txt", mode = "w");
+    print(value = "Done");
+    return 0;
+}

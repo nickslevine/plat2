@@ -1,0 +1,9 @@
+fn main() -> Int32 {
+  let x: Int32 = 1;
+  let y: Int32 = 2;
+  let z: Int32 = 3;
+  let a: Int32 = 4;
+  let b: Int32 = 5;
+  print(value = "Test");
+  return 0;
+}

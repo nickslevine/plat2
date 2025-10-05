@@ -1,0 +1,49 @@
+fn main() -> Int32 {
+    print(value = "Test: Write and read file");
+
+    let fd_result: Result<Int32, String> = file_open(path = "test.txt", mode = "w");
+    let fd: Int32 = match fd_result {
+        Result::Ok(f: Int32) -> f,
+        Result::Err(e: String) -> 0
+    };
+
+    let write_result: Result<Int32, String> = file_write(fd = fd, data = "Hello, World!");
+    let bytes_written: Int32 = match write_result {
+        Result::Ok(n: Int32) -> n,
+        Result::Err(e: String) -> 0
+    };
+
+    print(value = "Wrote bytes");
+
+    let close_result: Result<Bool, String> = file_close(fd = fd);
+    let closed: Bool = match close_result {
+        Result::Ok(success: Bool) -> success,
+        Result::Err(e: String) -> false
+    };
+
+    print(value = "File closed");
+
+    let fd2_result: Result<Int32, String> = file_open(path = "test.txt", mode = "r");
+    let fd2: Int32 = match fd2_result {
+        Result::Ok(f: Int32) -> f,
+        Result::Err(e: String) -> 0
+    };
+
+    let read_result: Result<String, String> = file_read(fd = fd2, max_bytes = 1024);
+    let content: String = match read_result {
+        Result::Ok(data: String) -> data,
+        Result::Err(e: String) -> ""
+    };
+
+    print(value = "Read content:");
+    print(value = content);
+
+    let close2_result: Result<Bool, String> = file_close(fd = fd2);
+    let closed2: Bool = match close2_result {
+        Result::Ok(success: Bool) -> success,
+        Result::Err(e: String) -> false
+    };
+
+    print(value = "Test passed!");
+    return 0;
+}

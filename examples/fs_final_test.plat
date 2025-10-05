@@ -1,0 +1,28 @@
+fn main() -> Int32 {
+    let r: Result<Int32, String> = file_open(path = "output.txt", mode = "w");
+    let fd: Int32 = match r {
+        Result::Ok(f: Int32) -> f,
+        Result::Err(e: String) -> 0
+    };
+    print(value = "Got FD: ${fd}");
+    let wr: Result<Int32, String> = file_write(fd = fd, data = "Testing file I/O!");
+    let bytes: Int32 = match wr {
+        Result::Ok(n: Int32) -> n,
+        Result::Err(e: String) -> 0
+    };
+    print(value = "Wrote ${bytes} bytes");
+    let cl: Result<Bool, String> = file_close(fd = fd);
+    let rd: Result<Int32, String> = file_open(path = "output.txt", mode = "r");
+    let rfd: Int32 = match rd {
+        Result::Ok(f: Int32) -> f,
+        Result::Err(e: String) -> 0
+    };
+    let data: Result<String, String> = file_read(fd = rfd, max_bytes = 100);
+    let content: String = match data {
+        Result::Ok(s: String) -> s,
+        Result::Err(e: String) -> ""
+    };
+    print(value = "Read: ${content}");
+    let cl2: Result<Bool, String> = file_close(fd = rfd);
+    return 0;
+}
