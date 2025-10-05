@@ -36,6 +36,7 @@ pub enum VariableType {
     Class(String), // class name
     Enum(String), // enum name
     Task(Box<VariableType>), // Task<T> with inner type
+    Channel(Box<VariableType>), // Channel<T> with element type
 }
 
 /// Metadata about a class field
@@ -413,6 +414,7 @@ impl CodeGenerator {
             VariableType::Class(_) => I64,  // Class instances are pointers
             VariableType::Enum(_) => I64,   // Enums are 64-bit values (discriminant + data)
             VariableType::Task(_) => I64,   // Task handles are 64-bit IDs
+            VariableType::Channel(_) => I64, // Channel IDs are 64-bit
         }
     }
 
@@ -2506,6 +2508,34 @@ impl CodeGenerator {
                     return Ok(builder.inst_results(call)[0]);
                 }
 
+                // Handle built-in channel_init function
+                if function == "channel_init" {
+                    // channel_init<T>(capacity: Int32) -> Channel<T>
+                    let capacity_arg = args.iter().find(|arg| arg.name == "capacity")
+                        .ok_or_else(|| CodegenError::UnsupportedFeature("channel_init missing 'capacity' parameter".to_string()))?;
+
+                    let capacity_val = Self::generate_expression_helper(builder, &capacity_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+
+                    // TODO: Infer the channel element type from context
+                    // For now, default to Int32
+                    let channel_func_name = "plat_channel_new_i32";
+
+                    let func_sig = {
+                        let mut sig = module.make_signature();
+                        sig.call_conv = CallConv::SystemV;
+                        sig.params.push(AbiParam::new(I32)); // capacity
+                        sig.returns.push(AbiParam::new(I64)); // channel ID
+                        sig
+                    };
+
+                    let func_id = module.declare_function(channel_func_name, Linkage::Import, &func_sig)
+                        .map_err(CodegenError::ModuleError)?;
+                    let func_ref = module.declare_func_in_func(func_id, builder.func);
+
+                    let call = builder.ins().call(func_ref, &[capacity_val]);
+                    return Ok(builder.inst_results(call)[0]);
+                }
+
                 // Check if this is actually a class constructor with no arguments (e.g., Empty())
                 // This happens when a class has no fields and uses a default init
                 if args.is_empty() && class_metadata.contains_key(function) {
@@ -3774,6 +3804,153 @@ impl CodeGenerator {
                             }
                             _ => Err(CodegenError::UnsupportedFeature(format!("Set method '{}' not implemented", method)))
                         }
+                    }
+                    // Channel methods
+                    "send" => {
+                        // Channel<T>.send(value) method
+                        if args.len() != 1 {
+                            return Err(CodegenError::UnsupportedFeature("send() method takes exactly one argument".to_string()));
+                        }
+
+                        // Determine the channel element type from the object
+                        let channel_element_type = if let Expression::Identifier { name, .. } = object.as_ref() {
+                            if let Some(VariableType::Channel(inner)) = variable_types.get(name) {
+                                (**inner).clone()
+                            } else {
+                                VariableType::Int32 // Fallback
+                            }
+                        } else {
+                            VariableType::Int32 // Fallback
+                        };
+
+                        // Generate the channel ID and value
+                        let channel_id = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                        let value = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+
+                        // Determine which send function to call based on element type
+                        let send_func_name = match channel_element_type {
+                            VariableType::Bool => "plat_channel_send_bool",
+                            VariableType::Int32 => "plat_channel_send_i32",
+                            VariableType::Int64 => "plat_channel_send_i64",
+                            VariableType::Float32 => "plat_channel_send_f32",
+                            VariableType::Float64 => "plat_channel_send_f64",
+                            _ => "plat_channel_send_i32", // Fallback
+                        };
+
+                        // Get Cranelift type for the value parameter
+                        let value_type = Self::variable_type_to_cranelift_type(&channel_element_type);
+
+                        // Declare and call the send function
+                        let mut send_sig = module.make_signature();
+                        send_sig.call_conv = CallConv::SystemV;
+                        send_sig.params.push(AbiParam::new(I64)); // Channel ID
+                        send_sig.params.push(AbiParam::new(value_type)); // Value
+                        send_sig.returns.push(AbiParam::new(I32)); // Success flag
+
+                        let send_func_id = module.declare_function(send_func_name, Linkage::Import, &send_sig)
+                            .map_err(CodegenError::ModuleError)?;
+                        let send_func_ref = module.declare_func_in_func(send_func_id, builder.func);
+
+                        let call = builder.ins().call(send_func_ref, &[channel_id, value]);
+                        Ok(builder.inst_results(call)[0]) // Returns Unit (we ignore the success flag for now)
+                    }
+                    "recv" => {
+                        // Channel<T>.recv() method
+                        if !args.is_empty() {
+                            return Err(CodegenError::UnsupportedFeature("recv() method takes no arguments".to_string()));
+                        }
+
+                        // Determine the channel element type from the object
+                        let channel_element_type = if let Expression::Identifier { name, .. } = object.as_ref() {
+                            if let Some(VariableType::Channel(inner)) = variable_types.get(name) {
+                                (**inner).clone()
+                            } else {
+                                VariableType::Int32 // Fallback
+                            }
+                        } else {
+                            VariableType::Int32 // Fallback
+                        };
+
+                        // Generate the channel ID
+                        let channel_id = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+
+                        // Determine which recv function to call based on element type
+                        let (recv_func_name, use_out_param) = match channel_element_type {
+                            VariableType::Bool => ("plat_channel_recv_bool", false),
+                            VariableType::Int32 => ("plat_channel_recv_i32", false),
+                            VariableType::Int64 => ("plat_channel_recv_i64", true),
+                            VariableType::Float32 => ("plat_channel_recv_f32", true),
+                            VariableType::Float64 => ("plat_channel_recv_f64", true),
+                            _ => ("plat_channel_recv_i32", false), // Fallback
+                        };
+
+                        if use_out_param {
+                            // For i64, f32, f64: allocate stack slot and pass pointer
+                            let value_type = Self::variable_type_to_cranelift_type(&channel_element_type);
+                            let stack_slot = builder.create_sized_stack_slot(StackSlotData::new(
+                                StackSlotKind::ExplicitSlot,
+                                8,
+                                8, // 8-byte alignment
+                            ));
+                            let stack_addr = builder.ins().stack_addr(I64, stack_slot, 0);
+
+                            // Declare and call recv function with out parameter
+                            let mut recv_sig = module.make_signature();
+                            recv_sig.call_conv = CallConv::SystemV;
+                            recv_sig.params.push(AbiParam::new(I64)); // Channel ID
+                            recv_sig.params.push(AbiParam::new(I64)); // Out parameter pointer
+                            recv_sig.returns.push(AbiParam::new(I32)); // Success/None flag
+
+                            let recv_func_id = module.declare_function(recv_func_name, Linkage::Import, &recv_sig)
+                                .map_err(CodegenError::ModuleError)?;
+                            let recv_func_ref = module.declare_func_in_func(recv_func_id, builder.func);
+
+                            let call = builder.ins().call(recv_func_ref, &[channel_id, stack_addr]);
+                            let success = builder.inst_results(call)[0];
+
+                            // Load the value from stack
+                            let value = builder.ins().stack_load(value_type, stack_slot, 0);
+
+                            // Return Option<T> - for now just return the packed result
+                            // TODO: Properly construct Option enum
+                            Ok(value)
+                        } else {
+                            // For bool and i32: result is directly returned
+                            let mut recv_sig = module.make_signature();
+                            recv_sig.call_conv = CallConv::SystemV;
+                            recv_sig.params.push(AbiParam::new(I64)); // Channel ID
+                            recv_sig.returns.push(AbiParam::new(I64)); // Packed result
+
+                            let recv_func_id = module.declare_function(recv_func_name, Linkage::Import, &recv_sig)
+                                .map_err(CodegenError::ModuleError)?;
+                            let recv_func_ref = module.declare_func_in_func(recv_func_id, builder.func);
+
+                            let call = builder.ins().call(recv_func_ref, &[channel_id]);
+                            Ok(builder.inst_results(call)[0])
+                        }
+                    }
+                    "close" => {
+                        // Channel<T>.close() method
+                        if !args.is_empty() {
+                            return Err(CodegenError::UnsupportedFeature("close() method takes no arguments".to_string()));
+                        }
+
+                        // Generate the channel ID
+                        let channel_id = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+
+                        // Declare and call the close function
+                        let mut close_sig = module.make_signature();
+                        close_sig.call_conv = CallConv::SystemV;
+                        close_sig.params.push(AbiParam::new(I64)); // Channel ID
+
+                        let close_func_id = module.declare_function("plat_channel_close", Linkage::Import, &close_sig)
+                            .map_err(CodegenError::ModuleError)?;
+                        let close_func_ref = module.declare_func_in_func(close_func_id, builder.func);
+
+                        builder.ins().call(close_func_ref, &[channel_id]);
+
+                        // Return Unit (0)
+                        Ok(builder.ins().iconst(I32, 0))
                     }
                     "await" => {
                         // Task.await() method
@@ -5224,6 +5401,21 @@ impl CodeGenerator {
                                 }
                                 Some(VariableType::Task(_)) => {
                                     // Task variable (task handle), convert to string as i64
+                                    let convert_sig = {
+                                        let mut sig = module.make_signature();
+                                        sig.call_conv = CallConv::SystemV;
+                                        sig.params.push(AbiParam::new(I64));
+                                        sig.returns.push(AbiParam::new(I64));
+                                        sig
+                                    };
+                                    let convert_id = module.declare_function("plat_i64_to_string", Linkage::Import, &convert_sig)
+                                        .map_err(CodegenError::ModuleError)?;
+                                    let convert_ref = module.declare_func_in_func(convert_id, builder.func);
+                                    let call = builder.ins().call(convert_ref, &[expr_val]);
+                                    builder.inst_results(call)[0]
+                                }
+                                Some(VariableType::Channel(_)) => {
+                                    // Channel variable (channel ID), convert to string as i64
                                     let convert_sig = {
                                         let mut sig = module.make_signature();
                                         sig.call_conv = CallConv::SystemV;

@@ -10,6 +10,9 @@ pub mod ffi;
 // Concurrency runtime (green threads)
 pub mod green_runtime;
 
+// Channel implementation
+pub mod channel;
+
 // Re-export public types
 pub use types::{
     PlatValue, PlatString, PlatArray, PlatDict, PlatSet, PlatClass,
@@ -436,4 +439,283 @@ pub extern "C" fn plat_scope_exit(scope_id: u64) {
     // Let's add a from_u64 method to ScopeId
 
     registry.exit_scope(green_runtime::scope::ScopeId::from_u64(scope_id));
+}
+
+// ============================================================================
+// Channel C FFI
+// ============================================================================
+
+/// Create a new bounded channel with the given capacity
+/// Returns the channel ID
+#[no_mangle]
+pub extern "C" fn plat_channel_new_i32(capacity: i32) -> u64 {
+    use channel::Channel;
+
+    let ch = if capacity > 0 {
+        Channel::<i32>::new_bounded(capacity as usize)
+    } else {
+        Channel::<i32>::new_unbounded()
+    };
+
+    ch.id
+}
+
+/// Create a new bounded Int64 channel
+#[no_mangle]
+pub extern "C" fn plat_channel_new_i64(capacity: i32) -> u64 {
+    use channel::Channel;
+
+    let ch = if capacity > 0 {
+        Channel::<i64>::new_bounded(capacity as usize)
+    } else {
+        Channel::<i64>::new_unbounded()
+    };
+
+    ch.id
+}
+
+/// Create a new bounded Bool channel
+#[no_mangle]
+pub extern "C" fn plat_channel_new_bool(capacity: i32) -> u64 {
+    use channel::Channel;
+
+    let ch = if capacity > 0 {
+        Channel::<bool>::new_bounded(capacity as usize)
+    } else {
+        Channel::<bool>::new_unbounded()
+    };
+
+    ch.id
+}
+
+/// Create a new bounded Float32 channel
+#[no_mangle]
+pub extern "C" fn plat_channel_new_f32(capacity: i32) -> u64 {
+    use channel::Channel;
+
+    let ch = if capacity > 0 {
+        Channel::<f32>::new_bounded(capacity as usize)
+    } else {
+        Channel::<f32>::new_unbounded()
+    };
+
+    ch.id
+}
+
+/// Create a new bounded Float64 channel
+#[no_mangle]
+pub extern "C" fn plat_channel_new_f64(capacity: i32) -> u64 {
+    use channel::Channel;
+
+    let ch = if capacity > 0 {
+        Channel::<f64>::new_bounded(capacity as usize)
+    } else {
+        Channel::<f64>::new_unbounded()
+    };
+
+    ch.id
+}
+
+/// Send an i32 value to a channel
+/// Returns 1 on success, 0 on failure
+#[no_mangle]
+pub extern "C" fn plat_channel_send_i32(channel_id: u64, value: i32) -> i32 {
+    use channel::get_channel;
+
+    if let Some(ch) = get_channel::<i32>(channel_id) {
+        match ch.send(value) {
+            Ok(_) => 1,
+            Err(_) => 0,
+        }
+    } else {
+        0
+    }
+}
+
+/// Send an i64 value to a channel
+#[no_mangle]
+pub extern "C" fn plat_channel_send_i64(channel_id: u64, value: i64) -> i32 {
+    use channel::get_channel;
+
+    if let Some(ch) = get_channel::<i64>(channel_id) {
+        match ch.send(value) {
+            Ok(_) => 1,
+            Err(_) => 0,
+        }
+    } else {
+        0
+    }
+}
+
+/// Send a bool value to a channel
+#[no_mangle]
+pub extern "C" fn plat_channel_send_bool(channel_id: u64, value: bool) -> i32 {
+    use channel::get_channel;
+
+    if let Some(ch) = get_channel::<bool>(channel_id) {
+        match ch.send(value) {
+            Ok(_) => 1,
+            Err(_) => 0,
+        }
+    } else {
+        0
+    }
+}
+
+/// Send an f32 value to a channel
+#[no_mangle]
+pub extern "C" fn plat_channel_send_f32(channel_id: u64, value: f32) -> i32 {
+    use channel::get_channel;
+
+    if let Some(ch) = get_channel::<f32>(channel_id) {
+        match ch.send(value) {
+            Ok(_) => 1,
+            Err(_) => 0,
+        }
+    } else {
+        0
+    }
+}
+
+/// Send an f64 value to a channel
+#[no_mangle]
+pub extern "C" fn plat_channel_send_f64(channel_id: u64, value: f64) -> i32 {
+    use channel::get_channel;
+
+    if let Some(ch) = get_channel::<f64>(channel_id) {
+        match ch.send(value) {
+            Ok(_) => 1,
+            Err(_) => 0,
+        }
+    } else {
+        0
+    }
+}
+
+/// Receive an i32 value from a channel (blocking)
+/// Returns a pair: (success: i32, value: i32)
+/// success = 1 if value received, 0 if channel closed
+/// Result is encoded: high 32 bits = success, low 32 bits = value
+#[no_mangle]
+pub extern "C" fn plat_channel_recv_i32(channel_id: u64) -> i64 {
+    use channel::get_channel;
+
+    if let Some(ch) = get_channel::<i32>(channel_id) {
+        if let Some(value) = ch.recv() {
+            // Pack success (1) and value into i64
+            let success: i64 = 1;
+            let val: i64 = value as i64;
+            (success << 32) | (val & 0xFFFFFFFF)
+        } else {
+            0 // Channel closed
+        }
+    } else {
+        0 // Invalid channel
+    }
+}
+
+/// Receive an i64 value from a channel (blocking)
+/// We can't pack i64 value, so we'll use a different approach
+/// Returns 0 on failure/closed, non-zero on success
+/// The actual value needs to be stored somewhere accessible
+/// For now, we'll use a simpler approach with out parameters
+/// This is a limitation - we'll need to improve this
+#[no_mangle]
+pub extern "C" fn plat_channel_recv_i64(channel_id: u64, out_value: *mut i64) -> i32 {
+    use channel::get_channel;
+
+    if out_value.is_null() {
+        return 0;
+    }
+
+    if let Some(ch) = get_channel::<i64>(channel_id) {
+        if let Some(value) = ch.recv() {
+            unsafe {
+                *out_value = value;
+            }
+            1 // Success
+        } else {
+            0 // Channel closed
+        }
+    } else {
+        0 // Invalid channel
+    }
+}
+
+/// Receive a bool value from a channel
+#[no_mangle]
+pub extern "C" fn plat_channel_recv_bool(channel_id: u64) -> i32 {
+    use channel::get_channel;
+
+    if let Some(ch) = get_channel::<bool>(channel_id) {
+        if let Some(value) = ch.recv() {
+            if value { 2 } else { 1 } // 2 = Some(true), 1 = Some(false)
+        } else {
+            0 // None (channel closed)
+        }
+    } else {
+        0 // Invalid channel
+    }
+}
+
+/// Receive an f32 value from a channel
+#[no_mangle]
+pub extern "C" fn plat_channel_recv_f32(channel_id: u64, out_value: *mut f32) -> i32 {
+    use channel::get_channel;
+
+    if out_value.is_null() {
+        return 0;
+    }
+
+    if let Some(ch) = get_channel::<f32>(channel_id) {
+        if let Some(value) = ch.recv() {
+            unsafe {
+                *out_value = value;
+            }
+            1 // Success
+        } else {
+            0 // Channel closed
+        }
+    } else {
+        0 // Invalid channel
+    }
+}
+
+/// Receive an f64 value from a channel
+#[no_mangle]
+pub extern "C" fn plat_channel_recv_f64(channel_id: u64, out_value: *mut f64) -> i32 {
+    use channel::get_channel;
+
+    if let Some(ch) = get_channel::<f64>(channel_id) {
+        if let Some(value) = ch.recv() {
+            unsafe {
+                *out_value = value;
+            }
+            1 // Success
+        } else {
+            0 // Channel closed
+        }
+    } else {
+        0 // Invalid channel
+    }
+}
+
+/// Close a channel
+#[no_mangle]
+pub extern "C" fn plat_channel_close(channel_id: u64) {
+    use channel::get_channel;
+
+    // Try to get the channel for different types and close it
+    // This is a bit awkward - we might want to store type info in the registry
+    if let Some(mut ch) = get_channel::<i32>(channel_id) {
+        ch.close();
+    } else if let Some(mut ch) = get_channel::<i64>(channel_id) {
+        ch.close();
+    } else if let Some(mut ch) = get_channel::<bool>(channel_id) {
+        ch.close();
+    } else if let Some(mut ch) = get_channel::<f32>(channel_id) {
+        ch.close();
+    } else if let Some(mut ch) = get_channel::<f64>(channel_id) {
+        ch.close();
+    }
 }

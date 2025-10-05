@@ -173,6 +173,7 @@ pub enum HirType {
     TypeParameter(String), // For generic type parameters like T, U, etc.
     Newtype(String), // Distinct type wrapping another type
     Task(Box<HirType>), // Task<T> for concurrent spawn expressions
+    Channel(Box<HirType>), // Channel<T> for message passing between tasks
     Unit, // For functions that don't return anything
 }
 
@@ -1848,6 +1849,30 @@ impl TypeChecker {
                     return Ok(HirType::Enum("Result".to_string(), vec![HirType::Bool, HirType::String]));
                 }
 
+                // Handle built-in channel_init function
+                if function == "channel_init" {
+                    // channel_init<T>(capacity: Int32) -> Channel<T>
+                    if args.len() != 1 {
+                        return Err(DiagnosticError::Type(
+                            "channel_init requires exactly 1 argument: 'capacity'".to_string()
+                        ));
+                    }
+
+                    let capacity_arg = args.iter().find(|arg| arg.name == "capacity")
+                        .ok_or_else(|| DiagnosticError::Type("channel_init requires a 'capacity' parameter".to_string()))?;
+
+                    let capacity_type = self.check_expression(&capacity_arg.value)?;
+                    if capacity_type != HirType::Int32 {
+                        return Err(DiagnosticError::Type(
+                            format!("channel_init 'capacity' parameter must be Int32, got {:?}", capacity_type)
+                        ));
+                    }
+
+                    // TODO: Infer element type from context (for now default to Int32)
+                    // Return Channel<Int32>
+                    return Ok(HirType::Channel(Box::new(HirType::Int32)));
+                }
+
                 // Try to resolve the function name (handles both local and qualified names)
                 let resolved_name = self.module_table.resolve(function)
                     .unwrap_or_else(|| function.clone());
@@ -2786,6 +2811,39 @@ impl TypeChecker {
                         // await() returns the inner type T from Task<T>
                         Ok((**inner_type).clone())
                     }
+                    // Channel methods
+                    (HirType::Channel(element_type), "send") => {
+                        if args.len() != 1 {
+                            return Err(DiagnosticError::Type(
+                                "send() method takes exactly one argument".to_string()
+                            ));
+                        }
+                        // Check that argument type matches channel element type
+                        let arg_type = self.check_expression(&args[0].value)?;
+                        if arg_type != **element_type {
+                            return Err(DiagnosticError::Type(
+                                format!("send() expects type {:?}, got {:?}", element_type, arg_type)
+                            ));
+                        }
+                        Ok(HirType::Unit)
+                    }
+                    (HirType::Channel(element_type), "recv") => {
+                        if !args.is_empty() {
+                            return Err(DiagnosticError::Type(
+                                "recv() method takes no arguments".to_string()
+                            ));
+                        }
+                        // recv() returns Option<T> where T is the channel element type
+                        Ok(HirType::Enum("Option".to_string(), vec![(**element_type).clone()]))
+                    }
+                    (HirType::Channel(_), "close") => {
+                        if !args.is_empty() {
+                            return Err(DiagnosticError::Type(
+                                "close() method takes no arguments".to_string()
+                            ));
+                        }
+                        Ok(HirType::Unit)
+                    }
                     _ => Err(DiagnosticError::Type(
                         format!("Type {:?} has no method '{}'", object_type, method)
                     ))
@@ -3628,6 +3686,17 @@ impl TypeChecker {
                     return Ok(HirType::Task(Box::new(inner_type)));
                 }
 
+                // Check for built-in Channel type
+                if name == "Channel" {
+                    if type_params.len() != 1 {
+                        return Err(DiagnosticError::Type(
+                            "Channel requires exactly one type parameter".to_string()
+                        ));
+                    }
+                    let inner_type = self.ast_type_to_hir_type(&type_params[0])?;
+                    return Ok(HirType::Channel(Box::new(inner_type)));
+                }
+
                 // Check if this is a newtype first (distinct from type aliases)
                 if self.newtypes.contains_key(name) {
                     // Newtypes shouldn't have type parameters
@@ -4091,6 +4160,9 @@ impl TypeSubstitutable for HirType {
             }
             HirType::Task(inner_type) => {
                 HirType::Task(Box::new(inner_type.substitute_types(substitution)))
+            }
+            HirType::Channel(inner_type) => {
+                HirType::Channel(Box::new(inner_type.substitute_types(substitution)))
             }
             // Primitive types and newtypes don't need substitution
             HirType::Bool | HirType::Int8 | HirType::Int16 | HirType::Int32 | HirType::Int64 | HirType::Float8 | HirType::Float16 | HirType::Float32 | HirType::Float64 | HirType::String | HirType::Unit | HirType::Newtype(_) => {
