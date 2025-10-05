@@ -82,7 +82,8 @@
   - `plat test -f database.* -f auth.*` - Multiple filters (runs tests matching any filter)
   - `plat test -f "*.test_insert"` - Match test name across all blocks
   - Three-level filtering: `module.test_block.test_function`
-- **Fail-Fast**: Assertion failures immediately stop the test and report the failure
+- **Continuous Testing**: All selected tests run to completion, even if some assertions fail
+- **Statistics Reporting**: Final summary shows total tests, passed count, and failed count
 
 ### Benchmarking
 - **Bench Blocks**: `bench bench_block_name { ... }` groups related benchmarks (snake_case identifier required)

@@ -805,12 +805,14 @@ fn generate_test_main_with_hooks(test_blocks: &[TestBlockInfo]) -> String {
     }
 
     output.push_str("  var passed: Int32 = 0;\n");
+    output.push_str("  var failed: Int32 = 0;\n");
     output.push_str("\n");
 
     let mut test_idx = 0;
     for test_block in test_blocks {
         for test_func_name in &test_block.test_functions {
-            output.push_str(&format!("  print(value = \"✓ {}::{}\");\n", test_block.block_name, test_func_name));
+            // Reset test failure flag before each test
+            output.push_str("  __test_reset();\n");
 
             // Call before_each if it exists
             if test_block.has_before_each {
@@ -839,14 +841,25 @@ fn generate_test_main_with_hooks(test_blocks: &[TestBlockInfo]) -> String {
                 }
             }
 
-            output.push_str("  passed = passed + 1;\n");
+            // Check if test failed and update counters
+            output.push_str(&format!("  let test_failed_{}: Bool = __test_check();\n", test_idx));
+            output.push_str(&format!("  if (test_failed_{}) {{\n", test_idx));
+            output.push_str(&format!("    print(value = \"✗ {}::{}\");\n", test_block.block_name, test_func_name));
+            output.push_str("    failed = failed + 1;\n");
+            output.push_str("  } else {\n");
+            output.push_str(&format!("    print(value = \"✓ {}::{}\");\n", test_block.block_name, test_func_name));
+            output.push_str("    passed = passed + 1;\n");
+            output.push_str("  }\n");
             output.push_str("\n");
 
             test_idx += 1;
         }
     }
 
-    output.push_str(&format!("  print(value = \"{} tests, {} passed, 0 failed\");\n", total_tests, total_tests));
+    output.push_str(&format!("  print(value = \"{} tests, ${{passed}} passed, ${{failed}} failed\");\n", total_tests));
+    output.push_str("  if (failed > 0) {\n");
+    output.push_str("    return 1;\n");
+    output.push_str("  }\n");
     output.push_str("  return 0;\n");
     output.push_str("}\n");
 

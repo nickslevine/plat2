@@ -1,14 +1,12 @@
 ## Tooling
 * testing
-  * test filtering - module, block, function
-  * conditional compilation
   * don't fail fast - run all tests 
 
 
 
 ## Networking
 * networking / http requests
-  * rate limiting, backoff etc
+* rate limiting, backoff etc
 
 ## Concurrency
 * concurrency
@@ -71,6 +69,7 @@
 * language code reviews. 
 * iterate on error messages
 * comptime? 
+* js transpilation? 
 
 
 ## GC

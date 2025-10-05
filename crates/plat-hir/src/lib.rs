@@ -1643,6 +1643,26 @@ impl TypeChecker {
                     return Ok(HirType::Unit);
                 }
 
+                // Handle built-in __test_reset function (test framework internal)
+                if function == "__test_reset" {
+                    if !args.is_empty() {
+                        return Err(DiagnosticError::Type(
+                            "__test_reset does not accept any arguments".to_string()
+                        ));
+                    }
+                    return Ok(HirType::Unit);
+                }
+
+                // Handle built-in __test_check function (test framework internal)
+                if function == "__test_check" {
+                    if !args.is_empty() {
+                        return Err(DiagnosticError::Type(
+                            "__test_check does not accept any arguments".to_string()
+                        ));
+                    }
+                    return Ok(HirType::Bool);
+                }
+
                 // Try to resolve the function name (handles both local and qualified names)
                 let resolved_name = self.module_table.resolve(function)
                     .unwrap_or_else(|| function.clone());
