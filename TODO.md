@@ -1,16 +1,7 @@
-## Tooling
-* testing
-  * don't fail fast - run all tests 
-
-
-
-## Networking
-* networking / http requests
-* rate limiting, backoff etc
-
 ## Concurrency
 * concurrency
 * parallel loops
+* race combinator. 
 * blas
 
 ## stdlib
@@ -31,6 +22,9 @@
 * debugging 
 * sqlite 
 * ffi 
+* networking
+  * rate limiting, backoff, etc. 
+* queue, async queue. 
 
 
 
@@ -70,6 +64,8 @@
 * iterate on error messages
 * comptime? 
 * js transpilation? 
+* get rid of int return codes. 
+* unify dot and :: syntax? 
 
 
 ## GC

@@ -1,0 +1,10 @@
+fn main() -> Int32 {
+  let result: Result<Int32, String> = tcp_listen(host = "127.0.0.1", port = 8080);
+
+  match result {
+    Result::Ok(fd: Int32) -> print(value = "Success"),
+    Result::Err(err: String) -> print(value = "Error")
+  };
+
+  return 0;
+}

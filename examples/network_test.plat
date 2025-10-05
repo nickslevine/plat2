@@ -1,0 +1,6 @@
+fn main() -> Int32 {
+  print(value = "Testing network");
+  let result: Result<Int32, String> = tcp_listen(host = "127.0.0.1", port = 8080);
+  print(value = "Done");
+  return 0;
+}

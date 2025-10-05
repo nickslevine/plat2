@@ -1,0 +1,13 @@
+fn main() -> Int32 {
+  print(value = "Testing networking...");
+  
+  let listener: Result<Int32, String> = tcp_listen(host = "127.0.0.1", port = 9999);
+  
+  let status: Int32 = match listener {
+    Result::Ok(fd: Int32) -> 0,
+    Result::Err(err: String) -> 1
+  };
+  
+  print(value = "Test complete");
+  return status;
+}
