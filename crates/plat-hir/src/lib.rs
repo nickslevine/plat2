@@ -2178,6 +2178,69 @@ impl TypeChecker {
                     return Ok(HirType::Enum("Result".to_string(), vec![HirType::String, HirType::String]));
                 }
 
+                // Handle built-in file_read_binary function
+                if function == "file_read_binary" {
+                    // file_read_binary(fd: Int32, max_bytes: Int32) -> Result<List[Int8], String>
+                    if args.len() != 2 {
+                        return Err(DiagnosticError::Type(
+                            "file_read_binary requires exactly 2 arguments: 'fd' and 'max_bytes'".to_string()
+                        ));
+                    }
+
+                    let fd_arg = args.iter().find(|arg| arg.name == "fd")
+                        .ok_or_else(|| DiagnosticError::Type("file_read_binary requires a 'fd' parameter".to_string()))?;
+                    let max_bytes_arg = args.iter().find(|arg| arg.name == "max_bytes")
+                        .ok_or_else(|| DiagnosticError::Type("file_read_binary requires a 'max_bytes' parameter".to_string()))?;
+
+                    let fd_type = self.check_expression(&fd_arg.value)?;
+                    let max_bytes_type = self.check_expression(&max_bytes_arg.value)?;
+
+                    if fd_type != HirType::Int32 {
+                        return Err(DiagnosticError::Type(
+                            format!("file_read_binary 'fd' parameter must be Int32, got {:?}", fd_type)
+                        ));
+                    }
+                    if max_bytes_type != HirType::Int32 {
+                        return Err(DiagnosticError::Type(
+                            format!("file_read_binary 'max_bytes' parameter must be Int32, got {:?}", max_bytes_type)
+                        ));
+                    }
+
+                    return Ok(HirType::Enum("Result".to_string(), vec![HirType::List(Box::new(HirType::Int8)), HirType::String]));
+                }
+
+                // Handle built-in file_write_binary function
+                if function == "file_write_binary" {
+                    // file_write_binary(fd: Int32, data: List[Int8]) -> Result<Int32, String>
+                    if args.len() != 2 {
+                        return Err(DiagnosticError::Type(
+                            "file_write_binary requires exactly 2 arguments: 'fd' and 'data'".to_string()
+                        ));
+                    }
+
+                    let fd_arg = args.iter().find(|arg| arg.name == "fd")
+                        .ok_or_else(|| DiagnosticError::Type("file_write_binary requires a 'fd' parameter".to_string()))?;
+                    let data_arg = args.iter().find(|arg| arg.name == "data")
+                        .ok_or_else(|| DiagnosticError::Type("file_write_binary requires a 'data' parameter".to_string()))?;
+
+                    let fd_type = self.check_expression(&fd_arg.value)?;
+                    let data_type = self.check_expression(&data_arg.value)?;
+
+                    if fd_type != HirType::Int32 {
+                        return Err(DiagnosticError::Type(
+                            format!("file_write_binary 'fd' parameter must be Int32, got {:?}", fd_type)
+                        ));
+                    }
+                    let expected_data_type = HirType::List(Box::new(HirType::Int8));
+                    if data_type != expected_data_type {
+                        return Err(DiagnosticError::Type(
+                            format!("file_write_binary 'data' parameter must be List[Int8], got {:?}", data_type)
+                        ));
+                    }
+
+                    return Ok(HirType::Enum("Result".to_string(), vec![HirType::Int32, HirType::String]));
+                }
+
                 // Handle built-in channel_init function
                 if function == "channel_init" {
                     // channel_init<T>(capacity: Int32) -> Channel<T>

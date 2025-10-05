@@ -2907,6 +2907,62 @@ impl CodeGenerator {
                     return Ok(builder.inst_results(call)[0]);
                 }
 
+                // Handle built-in file_read_binary function
+                if function == "file_read_binary" {
+                    // file_read_binary(fd: Int32, max_bytes: Int32) -> Result<List[Int8], String>
+                    let fd_arg = args.iter().find(|arg| arg.name == "fd")
+                        .ok_or_else(|| CodegenError::UnsupportedFeature("file_read_binary missing 'fd' parameter".to_string()))?;
+                    let max_bytes_arg = args.iter().find(|arg| arg.name == "max_bytes")
+                        .ok_or_else(|| CodegenError::UnsupportedFeature("file_read_binary missing 'max_bytes' parameter".to_string()))?;
+
+                    let fd_val = Self::generate_expression_helper(builder, &fd_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                    let max_bytes_val = Self::generate_expression_helper(builder, &max_bytes_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+
+                    let func_sig = {
+                        let mut sig = module.make_signature();
+                        sig.call_conv = CallConv::SystemV;
+                        sig.params.push(AbiParam::new(I32)); // fd
+                        sig.params.push(AbiParam::new(I32)); // max_bytes
+                        sig.returns.push(AbiParam::new(I64)); // Result enum pointer
+                        sig
+                    };
+
+                    let func_id = module.declare_function("plat_file_read_binary", Linkage::Import, &func_sig)
+                        .map_err(CodegenError::ModuleError)?;
+                    let func_ref = module.declare_func_in_func(func_id, builder.func);
+
+                    let call = builder.ins().call(func_ref, &[fd_val, max_bytes_val]);
+                    return Ok(builder.inst_results(call)[0]);
+                }
+
+                // Handle built-in file_write_binary function
+                if function == "file_write_binary" {
+                    // file_write_binary(fd: Int32, data: List[Int8]) -> Result<Int32, String>
+                    let fd_arg = args.iter().find(|arg| arg.name == "fd")
+                        .ok_or_else(|| CodegenError::UnsupportedFeature("file_write_binary missing 'fd' parameter".to_string()))?;
+                    let data_arg = args.iter().find(|arg| arg.name == "data")
+                        .ok_or_else(|| CodegenError::UnsupportedFeature("file_write_binary missing 'data' parameter".to_string()))?;
+
+                    let fd_val = Self::generate_expression_helper(builder, &fd_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                    let data_val = Self::generate_expression_helper(builder, &data_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+
+                    let func_sig = {
+                        let mut sig = module.make_signature();
+                        sig.call_conv = CallConv::SystemV;
+                        sig.params.push(AbiParam::new(I32)); // fd
+                        sig.params.push(AbiParam::new(I64)); // array pointer
+                        sig.returns.push(AbiParam::new(I64)); // Result enum pointer
+                        sig
+                    };
+
+                    let func_id = module.declare_function("plat_file_write_binary", Linkage::Import, &func_sig)
+                        .map_err(CodegenError::ModuleError)?;
+                    let func_ref = module.declare_func_in_func(func_id, builder.func);
+
+                    let call = builder.ins().call(func_ref, &[fd_val, data_val]);
+                    return Ok(builder.inst_results(call)[0]);
+                }
+
                 // Handle built-in channel_init function
                 if function == "channel_init" {
                     // channel_init<T>(capacity: Int32) -> Channel<T>

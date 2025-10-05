@@ -5,6 +5,7 @@ use std::io::{Read, Write, Seek, SeekFrom};
 use std::sync::Mutex;
 use std::collections::HashMap;
 use super::core::{plat_gc_alloc, plat_gc_alloc_atomic};
+use super::array::{RuntimeArray, plat_array_create_i8};
 
 // Global file storage
 // Maps file descriptor (i32) to File handle
@@ -80,6 +81,17 @@ unsafe fn create_result_enum_err_string(error_msg: *const c_char) -> i64 {
     *ptr = err_disc as i32;
     let msg_ptr = ptr.add(2) as *mut i64;
     *msg_ptr = error_msg as i64;
+    ptr as i64
+}
+
+/// Create Result::Ok(List[Int8]) enum value
+unsafe fn create_result_enum_ok_list_i8(array_ptr: *mut RuntimeArray) -> i64 {
+    let ok_disc = variant_hash("Ok");
+    // Heap-allocated: [discriminant:i32][padding:i32][array_ptr:i64]
+    let ptr = plat_gc_alloc(16) as *mut i32;
+    *ptr = ok_disc as i32;
+    let arr_ptr = ptr.add(2) as *mut i64;
+    *arr_ptr = array_ptr as i64;
     ptr as i64
 }
 
@@ -558,6 +570,91 @@ pub extern "C" fn plat_dir_list(path_ptr: *const c_char) -> i64 {
                 let err_msg = alloc_c_string(&format!("dir_list failed: {}", e));
                 create_result_enum_err_string(err_msg)
             }
+        }
+    }
+}
+
+/// Read binary data from file
+/// Returns Result<List[Int8], String>
+#[no_mangle]
+pub extern "C" fn plat_file_read_binary(fd: i32, max_bytes: i32) -> i64 {
+    unsafe {
+        let mut files = FILES.lock().unwrap();
+
+        if let Some(file) = files.get_mut(&fd) {
+            let mut buffer = vec![0u8; max_bytes as usize];
+
+            match file.read(&mut buffer) {
+                Ok(bytes_read) => {
+                    buffer.truncate(bytes_read);
+
+                    // Convert Vec<u8> to Vec<i8> for List[Int8]
+                    let i8_buffer: Vec<i8> = buffer.into_iter().map(|b| b as i8).collect();
+
+                    // Create array using plat_array_create_i8
+                    let array_ptr = plat_array_create_i8(i8_buffer.as_ptr(), i8_buffer.len());
+
+                    if array_ptr.is_null() {
+                        let err_msg = alloc_c_string("file_read_binary: failed to allocate array");
+                        return create_result_enum_err_string(err_msg);
+                    }
+
+                    create_result_enum_ok_list_i8(array_ptr)
+                }
+                Err(e) => {
+                    let err_msg = alloc_c_string(&format!("file_read_binary failed: {}", e));
+                    create_result_enum_err_string(err_msg)
+                }
+            }
+        } else {
+            let err_msg = alloc_c_string("file_read_binary: invalid file descriptor");
+            create_result_enum_err_string(err_msg)
+        }
+    }
+}
+
+/// Write binary data to file
+/// Returns Result<Int32, String> where Int32 is the number of bytes written
+#[no_mangle]
+pub extern "C" fn plat_file_write_binary(fd: i32, array_ptr: *const RuntimeArray) -> i64 {
+    unsafe {
+        if array_ptr.is_null() {
+            let err_msg = alloc_c_string("file_write_binary: array is null");
+            return create_result_enum_err_string(err_msg);
+        }
+
+        let array = &*array_ptr;
+
+        // Verify this is an Int8 array
+        if array.element_type != super::array::ARRAY_TYPE_I8 {
+            let err_msg = alloc_c_string("file_write_binary: array must be List[Int8]");
+            return create_result_enum_err_string(err_msg);
+        }
+
+        // Convert i8 data to u8 for writing
+        let i8_slice = std::slice::from_raw_parts(array.data as *const i8, array.length);
+        let u8_vec: Vec<u8> = i8_slice.iter().map(|&b| b as u8).collect();
+
+        let mut files = FILES.lock().unwrap();
+
+        if let Some(file) = files.get_mut(&fd) {
+            match file.write(&u8_vec) {
+                Ok(bytes_written) => {
+                    // Ensure data is flushed to disk
+                    if let Err(e) = file.flush() {
+                        let err_msg = alloc_c_string(&format!("file_write_binary: failed to flush: {}", e));
+                        return create_result_enum_err_string(err_msg);
+                    }
+                    create_result_enum_ok_i32(bytes_written as i32)
+                }
+                Err(e) => {
+                    let err_msg = alloc_c_string(&format!("file_write_binary failed: {}", e));
+                    create_result_enum_err_string(err_msg)
+                }
+            }
+        } else {
+            let err_msg = alloc_c_string("file_write_binary: invalid file descriptor");
+            create_result_enum_err_string(err_msg)
         }
     }
 }

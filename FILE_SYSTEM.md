@@ -187,26 +187,42 @@ Implement low-level file system primitives following the same pattern as TCP net
 
 ## Phase 5: Binary File Support
 **Priority: MEDIUM** - For non-text file operations
+**Status**: ⚠️ **BLOCKED** - Requires Int8 literal support or array element casting
 
 ### Functions to Implement
 
 #### `file_read_binary(fd: Int32, max_bytes: Int32) -> Result<List[Int8], String>`
-- [ ] Runtime FFI implementation in `fs.rs` (read bytes as List[Int8], no UTF-8 validation)
-- [ ] Type checking in `plat-hir/src/lib.rs`
-- [ ] Code generation in `plat-codegen/src/lib.rs`
-- [ ] Test in `examples/file_binary_test.plat`
+- [x] Runtime FFI implementation in `fs.rs` (read bytes as List[Int8], no UTF-8 validation)
+- [x] Type checking in `plat-hir/src/lib.rs`
+- [x] Code generation in `plat-codegen/src/lib.rs`
+- [ ] Test in `examples/file_binary_test.plat` - BLOCKED
 
 #### `file_write_binary(fd: Int32, data: List[Int8]) -> Result<Int32, String>`
-- [ ] Runtime FFI implementation in `fs.rs` (write raw bytes from List[Int8])
-- [ ] Type checking in `plat-hir/src/lib.rs`
-- [ ] Code generation in `plat-codegen/src/lib.rs`
-- [ ] Test in `examples/file_binary_test.plat`
+- [x] Runtime FFI implementation in `fs.rs` (write raw bytes from List[Int8])
+- [x] Type checking in `plat-hir/src/lib.rs`
+- [x] Code generation in `plat-codegen/src/lib.rs`
+- [ ] Test in `examples/file_binary_test.plat` - BLOCKED
+
+### Phase 5 Implementation Notes
+**✅ Completed:**
+- Added `ARRAY_TYPE_I8` constant to `plat-runtime/src/ffi/array.rs`
+- Implemented `plat_array_create_i8` function for Int8 array creation
+- Implemented `plat_file_read_binary` FFI function with proper Result<List[Int8], String> return
+- Implemented `plat_file_write_binary` FFI function with List[Int8] parameter validation
+- Added type checking for both functions in `plat-hir`
+- Added code generation for both functions in `plat-codegen`
+
+**⚠️ Blocking Issue:**
+- Numeric literals in Plat default to Int32, cannot create List[Int8] literals directly
+- Example: `let data: List[Int8] = [0, 1, 2]` fails with "expected List(Int8), found List(Int32)"
+- **Workaround needed**: Int8 literal syntax (e.g., `0i8`) or cast expressions for array elements
+- Functions are fully implemented and ready to use once language supports Int8 array creation
 
 ### Phase 5 Testing
-- [ ] Test reading binary files (images, executables)
-- [ ] Test writing binary data
-- [ ] Test round-trip binary operations (write then read)
-- [ ] Verify no UTF-8 corruption on binary data
+- [ ] Test reading binary files (images, executables) - BLOCKED
+- [ ] Test writing binary data - BLOCKED
+- [ ] Test round-trip binary operations (write then read) - BLOCKED
+- [ ] Verify no UTF-8 corruption on binary data - BLOCKED
 
 ---
 

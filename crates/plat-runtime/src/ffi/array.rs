@@ -8,6 +8,7 @@ pub const ARRAY_TYPE_I64: u8 = 1;
 pub const ARRAY_TYPE_BOOL: u8 = 2;
 pub const ARRAY_TYPE_STRING: u8 = 3;
 pub const ARRAY_TYPE_CLASS: u8 = 4; // Custom class pointers (8 bytes like strings)
+pub const ARRAY_TYPE_I8: u8 = 5; // Int8 for binary file operations
 
 /// Array structure for runtime (C-compatible)
 /// Generic data pointer that can hold any type
@@ -18,6 +19,12 @@ pub struct RuntimeArray {
     pub(crate) capacity: usize,
     pub(crate) element_size: usize, // Size of each element in bytes
     pub(crate) element_type: u8, // Type discriminant: 0=i32, 1=i64, 2=bool, 3=string
+}
+
+/// Create a new i8 array on the GC heap
+#[no_mangle]
+pub extern "C" fn plat_array_create_i8(elements: *const i8, count: usize) -> *mut RuntimeArray {
+    create_typed_array(elements as *const u8, count, std::mem::size_of::<i8>(), ARRAY_TYPE_I8)
 }
 
 /// Create a new i32 array on the GC heap

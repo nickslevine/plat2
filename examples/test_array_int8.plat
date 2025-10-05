@@ -1,0 +1,21 @@
+fn main() -> Int32 {
+  print(value = "Testing Int8 array...");
+
+  // Create List[Int8]
+  let data: List[Int8] = [0, 1, 2, 3, 4];
+
+  print(value = "Created array with ${data.length()} elements");
+
+  let first: Option<Int8> = data[0];
+  let val: Int8 = match first {
+    Option::Some(v: Int8) -> v,
+    Option::None -> {
+      print(value = "Failed to get first element");
+      return 1;
+    }
+  };
+
+  print(value = "First element: ${val}");
+
+  return 0;
+}

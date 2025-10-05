@@ -1,0 +1,70 @@
+fn main() -> Int32 {
+  print(value = "Testing binary file write...");
+
+  // Open file for writing
+  let fd_result: Result<Int32, String> = file_open(path = "/tmp/test.bin", mode = "w");
+  let fd: Int32 = match fd_result {
+    Result::Ok(f: Int32) -> f,
+    Result::Err(e: String) -> {
+      print(value = "Failed to open file");
+      return 1;
+    }
+  };
+
+  // Create binary data
+  let data: List[Int8] = [0, 1, 2, 3, 4];
+
+  // Write binary data
+  let write_result: Result<Int32, String> = file_write_binary(fd = fd, data = data);
+  let bytes: Int32 = match write_result {
+    Result::Ok(n: Int32) -> n,
+    Result::Err(e: String) -> {
+      print(value = "Failed to write");
+      return 1;
+    }
+  };
+
+  print(value = "Wrote ${bytes} bytes");
+
+  // Close file
+  let _c1: Bool = match file_close(fd = fd) {
+    Result::Ok(b: Bool) -> b,
+    Result::Err(e: String) -> {
+      print(value = "Failed to close");
+      return 1;
+    }
+  };
+
+  // Read back
+  let fd2_result: Result<Int32, String> = file_open(path = "/tmp/test.bin", mode = "r");
+  let fd2: Int32 = match fd2_result {
+    Result::Ok(f: Int32) -> f,
+    Result::Err(e: String) -> {
+      print(value = "Failed to open for reading");
+      return 1;
+    }
+  };
+
+  let read_result: Result<List[Int8], String> = file_read_binary(fd = fd2, max_bytes = 100);
+  let read_data: List[Int8] = match read_result {
+    Result::Ok(d: List[Int8]) -> d,
+    Result::Err(e: String) -> {
+      print(value = "Failed to read");
+      return 1;
+    }
+  };
+
+  print(value = "Read ${read_data.length()} bytes");
+
+  // Close file
+  let _c2: Bool = match file_close(fd = fd2) {
+    Result::Ok(b: Bool) -> b,
+    Result::Err(e: String) -> {
+      print(value = "Failed to close");
+      return 1;
+    }
+  };
+
+  print(value = "✓ Binary file operations completed!");
+  return 0;
+}

@@ -83,6 +83,7 @@ Linting
 * pre/post-conditions
 * concurrency / parallel utils
 * building modules efficiently / incrementally (eg depedencies, std) 
+* context management 
 
 
 
