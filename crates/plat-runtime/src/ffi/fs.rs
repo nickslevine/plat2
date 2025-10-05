@@ -658,3 +658,86 @@ pub extern "C" fn plat_file_write_binary(fd: i32, array_ptr: *const RuntimeArray
         }
     }
 }
+
+/// Seek to a position in file
+/// Returns Result<Int64, String> where Int64 is the new position
+/// whence: 0 = start, 1 = current, 2 = end
+#[no_mangle]
+pub extern "C" fn plat_file_seek(fd: i32, offset: i64, whence: i32) -> i64 {
+    unsafe {
+        let mut files = FILES.lock().unwrap();
+
+        if let Some(file) = files.get_mut(&fd) {
+            let seek_from = match whence {
+                0 => SeekFrom::Start(offset as u64),
+                1 => SeekFrom::Current(offset),
+                2 => SeekFrom::End(offset),
+                _ => {
+                    let err_msg = alloc_c_string("file_seek: invalid whence value (must be 0=start, 1=current, 2=end)");
+                    return create_result_enum_err_string(err_msg);
+                }
+            };
+
+            match file.seek(seek_from) {
+                Ok(new_pos) => {
+                    create_result_enum_ok_i64(new_pos as i64)
+                }
+                Err(e) => {
+                    let err_msg = alloc_c_string(&format!("file_seek failed: {}", e));
+                    create_result_enum_err_string(err_msg)
+                }
+            }
+        } else {
+            let err_msg = alloc_c_string("file_seek: invalid file descriptor");
+            create_result_enum_err_string(err_msg)
+        }
+    }
+}
+
+/// Get current position in file
+/// Returns Result<Int64, String> where Int64 is the current position
+#[no_mangle]
+pub extern "C" fn plat_file_tell(fd: i32) -> i64 {
+    unsafe {
+        let mut files = FILES.lock().unwrap();
+
+        if let Some(file) = files.get_mut(&fd) {
+            match file.stream_position() {
+                Ok(pos) => {
+                    create_result_enum_ok_i64(pos as i64)
+                }
+                Err(e) => {
+                    let err_msg = alloc_c_string(&format!("file_tell failed: {}", e));
+                    create_result_enum_err_string(err_msg)
+                }
+            }
+        } else {
+            let err_msg = alloc_c_string("file_tell: invalid file descriptor");
+            create_result_enum_err_string(err_msg)
+        }
+    }
+}
+
+/// Rewind file to the beginning
+/// Returns Result<Bool, String>
+#[no_mangle]
+pub extern "C" fn plat_file_rewind(fd: i32) -> i64 {
+    unsafe {
+        let mut files = FILES.lock().unwrap();
+
+        if let Some(file) = files.get_mut(&fd) {
+            match file.seek(SeekFrom::Start(0)) {
+                Ok(_) => {
+                    create_result_enum_ok_bool(true)
+                }
+                Err(e) => {
+                    let err_msg = alloc_c_string(&format!("file_rewind failed: {}", e));
+                    create_result_enum_err_string(err_msg)
+                }
+            }
+        } else {
+            let err_msg = alloc_c_string("file_rewind: invalid file descriptor");
+            create_result_enum_err_string(err_msg)
+        }
+    }
+}

@@ -231,32 +231,46 @@ Implement low-level file system primitives following the same pattern as TCP net
 
 ## Phase 6: File Seeking/Positioning
 **Priority: MEDIUM** - For random access file operations
+**Status**: ✅ **COMPLETE** - All file seeking functions working correctly!
 
 ### Functions to Implement
 
 #### `file_seek(fd: Int32, offset: Int64, whence: Int32) -> Result<Int64, String>`
-- [ ] Runtime FFI implementation in `fs.rs` (seek to position, whence: 0=start, 1=current, 2=end)
-- [ ] Type checking in `plat-hir/src/lib.rs`
-- [ ] Code generation in `plat-codegen/src/lib.rs`
-- [ ] Test in `examples/file_seek_test.plat`
+- [x] Runtime FFI implementation in `fs.rs` (seek to position, whence: 0=start, 1=current, 2=end)
+- [x] Type checking in `plat-hir/src/lib.rs`
+- [x] Code generation in `plat-codegen/src/lib.rs`
+- [x] Test in `examples/test_file_seek.plat`
 
 #### `file_tell(fd: Int32) -> Result<Int64, String>`
-- [ ] Runtime FFI implementation in `fs.rs` (get current position in file)
-- [ ] Type checking in `plat-hir/src/lib.rs`
-- [ ] Code generation in `plat-codegen/src/lib.rs`
-- [ ] Test in `examples/file_seek_test.plat`
+- [x] Runtime FFI implementation in `fs.rs` (get current position in file)
+- [x] Type checking in `plat-hir/src/lib.rs`
+- [x] Code generation in `plat-codegen/src/lib.rs`
+- [x] Test in `examples/test_file_seek.plat`
 
 #### `file_rewind(fd: Int32) -> Result<Bool, String>`
-- [ ] Runtime FFI implementation in `fs.rs` (reset position to start of file)
-- [ ] Type checking in `plat-hir/src/lib.rs`
-- [ ] Code generation in `plat-codegen/src/lib.rs`
-- [ ] Test in `examples/file_seek_test.plat`
+- [x] Runtime FFI implementation in `fs.rs` (reset position to start of file)
+- [x] Type checking in `plat-hir/src/lib.rs`
+- [x] Code generation in `plat-codegen/src/lib.rs`
+- [x] Test in `examples/test_file_seek.plat`
+
+### Phase 6 Implementation Notes
+**✅ Completed:**
+- Implemented `plat_file_seek` FFI function with SeekFrom support (Start, Current, End)
+- Implemented `plat_file_tell` FFI function using stream_position()
+- Implemented `plat_file_rewind` FFI function (seek to start)
+- Added type checking for all three functions in `plat-hir`
+- Added code generation for all three functions in `plat-codegen`
+- **BUG FIX**: Fixed Int64 handling in Result enum extraction
+  - Int64 and Float64 values are 8 bytes, not 4 bytes
+  - Updated heap format offset calculations for 8-byte types
+  - Fixed match expression return type detection for Int64 pattern bindings
+  - Added Int64/Float64 to continuation block parameter type mapping
 
 ### Phase 6 Testing
-- [ ] Test seeking from start, current, and end positions
-- [ ] Test tell() returns correct position after seeks
-- [ ] Test rewind() resets to beginning
-- [ ] Test seek beyond file boundaries (error cases)
+- [x] Test seeking from start, current, and end positions
+- [x] Test tell() returns correct position after seeks
+- [x] Test rewind() resets to beginning
+- [x] Test seek beyond file boundaries (error cases)
 
 ---
 

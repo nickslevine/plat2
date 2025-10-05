@@ -1,0 +1,85 @@
+fn main() -> Int32 {
+  print(value = "Testing file seeking operations...");
+
+  let test_file: String = "test_seek.txt";
+  let content: String = "0123456789ABCDEFGHIJ";
+
+  let open_w: Result<Int32, String> = file_open(path = test_file, mode = "w");
+  let fd_w: Int32 = match open_w {
+    Result::Ok(f: Int32) -> f,
+    Result::Err(e: String) -> -1
+  };
+
+  if (fd_w < 0) {
+    print(value = "Failed to open file for writing");
+    return 1;
+  }
+
+  let write_result: Result<Int32, String> = file_write(fd = fd_w, data = content);
+  let bytes: Int32 = match write_result {
+    Result::Ok(n: Int32) -> n,
+    Result::Err(e: String) -> -1
+  };
+
+  print(value = "Wrote ${bytes} bytes");
+
+  let close_w: Result<Bool, String> = file_close(fd = fd_w);
+
+  let open_r: Result<Int32, String> = file_open(path = test_file, mode = "r");
+  let fd: Int32 = match open_r {
+    Result::Ok(f: Int32) -> f,
+    Result::Err(e: String) -> -1
+  };
+
+  if (fd < 0) {
+    print(value = "Failed to open file for reading");
+    return 1;
+  }
+
+  let tell1: Result<Int64, String> = file_tell(fd = fd);
+  let pos1: Int64 = match tell1 {
+    Result::Ok(p: Int64) -> p,
+    Result::Err(e: String) -> -1i64
+  };
+  print(value = "Position at start: ${pos1}");
+
+  let seek1: Result<Int64, String> = file_seek(fd = fd, offset = 10i64, whence = 0);
+  let pos2: Int64 = match seek1 {
+    Result::Ok(p: Int64) -> p,
+    Result::Err(e: String) -> -1i64
+  };
+  print(value = "Position after seek to 10: ${pos2}");
+
+  let read1: Result<String, String> = file_read(fd = fd, max_bytes = 5);
+  let data1: String = match read1 {
+    Result::Ok(s: String) -> s,
+    Result::Err(e: String) -> ""
+  };
+  print(value = "Read from position 10: '${data1}'");
+
+  let rewind_res: Result<Bool, String> = file_rewind(fd = fd);
+  let rewound: Bool = match rewind_res {
+    Result::Ok(b: Bool) -> b,
+    Result::Err(e: String) -> false
+  };
+
+  let tell2: Result<Int64, String> = file_tell(fd = fd);
+  let pos3: Int64 = match tell2 {
+    Result::Ok(p: Int64) -> p,
+    Result::Err(e: String) -> -1i64
+  };
+  print(value = "Position after rewind: ${pos3}");
+
+  let read2: Result<String, String> = file_read(fd = fd, max_bytes = 10);
+  let data2: String = match read2 {
+    Result::Ok(s: String) -> s,
+    Result::Err(e: String) -> ""
+  };
+  print(value = "Read from start: '${data2}'");
+
+  let close_r: Result<Bool, String> = file_close(fd = fd);
+  let del: Result<Bool, String> = file_delete(path = test_file);
+
+  print(value = "All file seeking tests completed!");
+  return 0;
+}

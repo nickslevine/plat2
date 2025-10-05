@@ -103,29 +103,57 @@ impl CodeGenerator {
             return VariableType::Int32;
         }
 
+        // Check if the arm body is an identifier that refers to a pattern binding
+        // If so, use the type from the pattern binding
+        for arm in arms {
+            if let Expression::Identifier { name, .. } = &arm.body {
+                // Check if this identifier is a pattern binding
+                if let Pattern::EnumVariant { bindings, .. } = &arm.pattern {
+                    for (binding_name, binding_type) in bindings {
+                        if binding_name == name {
+                            // Found the binding, convert its type
+                            return match binding_type {
+                                AstType::Bool => VariableType::Bool,
+                                AstType::Int8 => VariableType::Int8,
+                                AstType::Int16 => VariableType::Int16,
+                                AstType::Int32 => VariableType::Int32,
+                                AstType::Int64 => VariableType::Int64,
+                                AstType::Float8 => VariableType::Float8,
+                                AstType::Float16 => VariableType::Float16,
+                                AstType::Float32 => VariableType::Float32,
+                                AstType::Float64 => VariableType::Float64,
+                                AstType::String => VariableType::String,
+                                AstType::List(elem) => VariableType::Array(Box::new(VariableType::Int32)), // Simplified
+                                AstType::Dict(_, _) => VariableType::Dict,
+                                AstType::Set(_) => VariableType::Set,
+                                AstType::Named(type_name, _) => VariableType::Class(type_name.clone()),
+                            };
+                        }
+                    }
+                }
+            }
+        }
+
         // Check all arms to determine if we have mixed types requiring unified handling
         let mut has_string_literal = false;
         let mut has_integer_literal = false;
-        let mut has_pattern_binding = false;
 
         for arm in arms {
             match &arm.body {
                 Expression::Literal(Literal::String(_, _)) => has_string_literal = true,
                 Expression::Literal(Literal::InterpolatedString(_, _)) => has_string_literal = true,
                 Expression::Literal(Literal::Integer(_, _, _)) => has_integer_literal = true,
-                Expression::Identifier { .. } => has_pattern_binding = true,
                 _ => {}
             }
         }
 
-        // If we have string literals OR pattern bindings mixed with other types, use String (I64)
-        // If we only have integer literals and integer pattern bindings, use I32
-        if has_string_literal || (has_pattern_binding && has_string_literal) {
+        // If we have string literals, use String (I64)
+        if has_string_literal {
             return VariableType::String;
         }
 
-        // For pure integer cases (integer literals + integer pattern bindings), use I32
-        if has_integer_literal || has_pattern_binding {
+        // For integer literals, use I32
+        if has_integer_literal {
             return VariableType::Int32;
         }
 
@@ -2967,6 +2995,86 @@ impl CodeGenerator {
                     return Ok(builder.inst_results(call)[0]);
                 }
 
+                // Handle built-in file_seek function
+                if function == "file_seek" {
+                    // file_seek(fd: Int32, offset: Int64, whence: Int32) -> Result<Int64, String>
+                    let fd_arg = args.iter().find(|arg| arg.name == "fd")
+                        .ok_or_else(|| CodegenError::UnsupportedFeature("file_seek missing 'fd' parameter".to_string()))?;
+                    let offset_arg = args.iter().find(|arg| arg.name == "offset")
+                        .ok_or_else(|| CodegenError::UnsupportedFeature("file_seek missing 'offset' parameter".to_string()))?;
+                    let whence_arg = args.iter().find(|arg| arg.name == "whence")
+                        .ok_or_else(|| CodegenError::UnsupportedFeature("file_seek missing 'whence' parameter".to_string()))?;
+
+                    let fd_val = Self::generate_expression_helper(builder, &fd_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                    let offset_val = Self::generate_expression_helper(builder, &offset_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                    let whence_val = Self::generate_expression_helper(builder, &whence_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+
+                    let func_sig = {
+                        let mut sig = module.make_signature();
+                        sig.call_conv = CallConv::SystemV;
+                        sig.params.push(AbiParam::new(I32)); // fd
+                        sig.params.push(AbiParam::new(I64)); // offset
+                        sig.params.push(AbiParam::new(I32)); // whence
+                        sig.returns.push(AbiParam::new(I64)); // Result enum pointer
+                        sig
+                    };
+
+                    let func_id = module.declare_function("plat_file_seek", Linkage::Import, &func_sig)
+                        .map_err(CodegenError::ModuleError)?;
+                    let func_ref = module.declare_func_in_func(func_id, builder.func);
+
+                    let call = builder.ins().call(func_ref, &[fd_val, offset_val, whence_val]);
+                    return Ok(builder.inst_results(call)[0]);
+                }
+
+                // Handle built-in file_tell function
+                if function == "file_tell" {
+                    // file_tell(fd: Int32) -> Result<Int64, String>
+                    let fd_arg = args.iter().find(|arg| arg.name == "fd")
+                        .ok_or_else(|| CodegenError::UnsupportedFeature("file_tell missing 'fd' parameter".to_string()))?;
+
+                    let fd_val = Self::generate_expression_helper(builder, &fd_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+
+                    let func_sig = {
+                        let mut sig = module.make_signature();
+                        sig.call_conv = CallConv::SystemV;
+                        sig.params.push(AbiParam::new(I32)); // fd
+                        sig.returns.push(AbiParam::new(I64)); // Result enum pointer
+                        sig
+                    };
+
+                    let func_id = module.declare_function("plat_file_tell", Linkage::Import, &func_sig)
+                        .map_err(CodegenError::ModuleError)?;
+                    let func_ref = module.declare_func_in_func(func_id, builder.func);
+
+                    let call = builder.ins().call(func_ref, &[fd_val]);
+                    return Ok(builder.inst_results(call)[0]);
+                }
+
+                // Handle built-in file_rewind function
+                if function == "file_rewind" {
+                    // file_rewind(fd: Int32) -> Result<Bool, String>
+                    let fd_arg = args.iter().find(|arg| arg.name == "fd")
+                        .ok_or_else(|| CodegenError::UnsupportedFeature("file_rewind missing 'fd' parameter".to_string()))?;
+
+                    let fd_val = Self::generate_expression_helper(builder, &fd_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+
+                    let func_sig = {
+                        let mut sig = module.make_signature();
+                        sig.call_conv = CallConv::SystemV;
+                        sig.params.push(AbiParam::new(I32)); // fd
+                        sig.returns.push(AbiParam::new(I64)); // Result enum pointer
+                        sig
+                    };
+
+                    let func_id = module.declare_function("plat_file_rewind", Linkage::Import, &func_sig)
+                        .map_err(CodegenError::ModuleError)?;
+                    let func_ref = module.declare_func_in_func(func_id, builder.func);
+
+                    let call = builder.ins().call(func_ref, &[fd_val]);
+                    return Ok(builder.inst_results(call)[0]);
+                }
+
                 // Handle built-in channel_init function
                 if function == "channel_init" {
                     // channel_init<T>(capacity: Int32) -> Channel<T>
@@ -4711,7 +4819,9 @@ impl CodeGenerator {
                 // Determine the return type for the match expression early
                 let match_return_type = Self::determine_match_return_type(arms, variable_types);
                 let cont_param_type = match match_return_type {
-                    VariableType::String | VariableType::Array(_) | VariableType::Enum(_) | VariableType::Class(_) => I64,
+                    VariableType::String | VariableType::Array(_) | VariableType::Enum(_) | VariableType::Class(_) | VariableType::Int64 => I64,
+                    VariableType::Float64 => F64,
+                    VariableType::Float32 => F32,
                     _ => I32,
                 };
 
@@ -4781,8 +4891,11 @@ impl CodeGenerator {
                                 // Use runtime detection to handle both packed and heap formats
                                 // This is needed because FFI functions return heap pointers,
                                 // while Plat functions return packed values
-                                let field_val = if bindings.len() == 1 && !is_string {
-                                    // Single non-string field: detect format at runtime
+                                // Note: Int64 and Float64 cannot be packed (need 64 bits for value),
+                                // so they always use heap format like strings
+                                let is_always_heap = is_string || matches!(binding_type, AstType::Int64 | AstType::Float64);
+                                let field_val = if bindings.len() == 1 && !is_always_heap {
+                                    // Single 32-bit field: detect format at runtime
                                     let min_addr = builder.ins().iconst(I64, 0x1000);
                                     let max_pointer = builder.ins().iconst(I64, 0x7FFFFFFFFFFF);
 
@@ -4811,7 +4924,11 @@ impl CodeGenerator {
                                     // Heap format: load from offset (4 or 8 depending on type)
                                     builder.switch_to_block(heap_extract);
                                     builder.seal_block(heap_extract);
-                                    let offset = if is_string { 8 } else { 4 };
+                                    // 8-byte types (Int64, Float64, String) start at offset 8, 4-byte types at offset 4
+                                    let offset = match binding_type {
+                                        AstType::Int64 | AstType::Float64 | AstType::String => 8,
+                                        _ => 4,
+                                    };
                                     let heap_val = builder.ins().load(cranelift_type, MemFlags::new(), value_val, offset);
                                     builder.ins().jump(extract_done, &[heap_val]);
 
@@ -4820,15 +4937,24 @@ impl CodeGenerator {
                                     builder.seal_block(extract_done);
                                     builder.block_params(extract_done)[0]
                                 } else {
-                                    // Multi-field or string: always use heap format
-                                    // Strings are 8 bytes (I64 pointer), primitives are 4 bytes
-                                    let field_size = if is_string { 8 } else { 4 };
-                                    let offset = if is_string {
-                                        8 + (binding_idx * field_size) as i32 // Strings start at offset 8
+                                    // Multi-field, string, or Int64/Float64: always use heap format
+                                    // For single-field Int64/Float64: value_val is a heap pointer, load at offset 8
+                                    // For multi-field: calculate offset based on field index and size
+                                    if bindings.len() == 1 {
+                                        // Single field, must be heap format (Int64/Float64/String)
+                                        let offset = 8; // All 8-byte types start at offset 8
+                                        builder.ins().load(cranelift_type, MemFlags::new(), value_val, offset)
                                     } else {
-                                        4 + (binding_idx * field_size) as i32 // Primitives start at offset 4
-                                    };
-                                    builder.ins().load(cranelift_type, MemFlags::new(), value_val, offset)
+                                        // Multi-field: calculate field size and offset
+                                        let field_size = match binding_type {
+                                            AstType::Int64 | AstType::Float64 | AstType::String => 8,
+                                            _ => 4,
+                                        };
+
+                                        let base_offset = if field_size == 8 { 8 } else { 4 };
+                                        let offset = base_offset + (binding_idx * field_size) as i32;
+                                        builder.ins().load(cranelift_type, MemFlags::new(), value_val, offset)
+                                    }
                                 };
 
                                 let var = Variable::from_u32(*variable_counter);

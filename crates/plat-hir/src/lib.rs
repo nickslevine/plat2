@@ -2241,6 +2241,91 @@ impl TypeChecker {
                     return Ok(HirType::Enum("Result".to_string(), vec![HirType::Int32, HirType::String]));
                 }
 
+                // Handle built-in file_seek function
+                if function == "file_seek" {
+                    // file_seek(fd: Int32, offset: Int64, whence: Int32) -> Result<Int64, String>
+                    if args.len() != 3 {
+                        return Err(DiagnosticError::Type(
+                            "file_seek requires exactly 3 arguments: 'fd', 'offset', and 'whence'".to_string()
+                        ));
+                    }
+
+                    let fd_arg = args.iter().find(|arg| arg.name == "fd")
+                        .ok_or_else(|| DiagnosticError::Type("file_seek requires a 'fd' parameter".to_string()))?;
+                    let offset_arg = args.iter().find(|arg| arg.name == "offset")
+                        .ok_or_else(|| DiagnosticError::Type("file_seek requires an 'offset' parameter".to_string()))?;
+                    let whence_arg = args.iter().find(|arg| arg.name == "whence")
+                        .ok_or_else(|| DiagnosticError::Type("file_seek requires a 'whence' parameter".to_string()))?;
+
+                    let fd_type = self.check_expression(&fd_arg.value)?;
+                    let offset_type = self.check_expression(&offset_arg.value)?;
+                    let whence_type = self.check_expression(&whence_arg.value)?;
+
+                    if fd_type != HirType::Int32 {
+                        return Err(DiagnosticError::Type(
+                            format!("file_seek 'fd' parameter must be Int32, got {:?}", fd_type)
+                        ));
+                    }
+                    if offset_type != HirType::Int64 {
+                        return Err(DiagnosticError::Type(
+                            format!("file_seek 'offset' parameter must be Int64, got {:?}", offset_type)
+                        ));
+                    }
+                    if whence_type != HirType::Int32 {
+                        return Err(DiagnosticError::Type(
+                            format!("file_seek 'whence' parameter must be Int32, got {:?}", whence_type)
+                        ));
+                    }
+
+                    return Ok(HirType::Enum("Result".to_string(), vec![HirType::Int64, HirType::String]));
+                }
+
+                // Handle built-in file_tell function
+                if function == "file_tell" {
+                    // file_tell(fd: Int32) -> Result<Int64, String>
+                    if args.len() != 1 {
+                        return Err(DiagnosticError::Type(
+                            "file_tell requires exactly 1 argument: 'fd'".to_string()
+                        ));
+                    }
+
+                    let fd_arg = args.iter().find(|arg| arg.name == "fd")
+                        .ok_or_else(|| DiagnosticError::Type("file_tell requires a 'fd' parameter".to_string()))?;
+
+                    let fd_type = self.check_expression(&fd_arg.value)?;
+
+                    if fd_type != HirType::Int32 {
+                        return Err(DiagnosticError::Type(
+                            format!("file_tell 'fd' parameter must be Int32, got {:?}", fd_type)
+                        ));
+                    }
+
+                    return Ok(HirType::Enum("Result".to_string(), vec![HirType::Int64, HirType::String]));
+                }
+
+                // Handle built-in file_rewind function
+                if function == "file_rewind" {
+                    // file_rewind(fd: Int32) -> Result<Bool, String>
+                    if args.len() != 1 {
+                        return Err(DiagnosticError::Type(
+                            "file_rewind requires exactly 1 argument: 'fd'".to_string()
+                        ));
+                    }
+
+                    let fd_arg = args.iter().find(|arg| arg.name == "fd")
+                        .ok_or_else(|| DiagnosticError::Type("file_rewind requires a 'fd' parameter".to_string()))?;
+
+                    let fd_type = self.check_expression(&fd_arg.value)?;
+
+                    if fd_type != HirType::Int32 {
+                        return Err(DiagnosticError::Type(
+                            format!("file_rewind 'fd' parameter must be Int32, got {:?}", fd_type)
+                        ));
+                    }
+
+                    return Ok(HirType::Enum("Result".to_string(), vec![HirType::Bool, HirType::String]));
+                }
+
                 // Handle built-in channel_init function
                 if function == "channel_init" {
                     // channel_init<T>(capacity: Int32) -> Channel<T>
