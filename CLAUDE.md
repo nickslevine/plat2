@@ -200,6 +200,17 @@ plat2/
   - File descriptor-based API (Int32 sockets)
   - Result-based error handling for all network operations
   - Blocking I/O with DNS resolution support
+- **Structured Concurrency:**
+  - Green thread runtime with work-stealing scheduler
+  - `concurrent {}` blocks with automatic scope cleanup
+  - `spawn { ... }` for task creation (returns `Task<T>`)
+  - `.await()` for blocking on task completion
+  - Full type support: primitives (Int32, Int64, Bool, Float32, Float64), String, classes, collections, enums
+  - Variable capture in spawn closures (automatic context passing)
+  - Thread-safe task handles with condition variables (no busy-wait)
+
+**⚠️ Known Issues:**
+- **String concatenation bug**: String concatenation with the `+` operator produces invalid UTF-8 output in some cases (e.g., `"Hello, " + "World!"` outputs garbled text). This is a general codegen issue unrelated to the Task system. Simple string returns and interpolation work correctly.
 
 **📋 TODO (Stretch Goals):**
 - [ ] Generic constraints (`T: Display`)

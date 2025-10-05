@@ -1,8 +1,10 @@
+* file system access
+* string concat bug
 
 ## stdlib
 * set up stdlib. 
 
-
+pathlib
 * colored printing 
 * logging package
 * json, etc
@@ -72,6 +74,7 @@ Linting
 * blas
 * language spec
 * implementation details spec
+* pre/post-conditions
 
 
 ## GC

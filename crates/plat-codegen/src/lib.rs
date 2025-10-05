@@ -227,21 +227,78 @@ impl CodeGenerator {
                     _ => VariableType::Bool, // Comparison and logical operations return bool
                 }
             }
+            Expression::MethodCall { object, method, .. } => {
+                // For Class.init(...), infer the class type
+                if let Expression::Identifier { name, .. } = object.as_ref() {
+                    if method == "init" && name.chars().next().map_or(false, |c| c.is_uppercase()) {
+                        return VariableType::Class(name.clone());
+                    }
+                }
+                // For other method calls, we can't infer without type info, default to Int32
+                VariableType::Int32
+            }
+            Expression::ConstructorCall { class_name, .. } => {
+                // Constructor calls like Point.init(...) return the class type
+                VariableType::Class(class_name.clone())
+            }
             _ => VariableType::Int32, // Default
         }
     }
 
     /// Infer the return type of a block by analyzing return statements
-    fn infer_block_return_type(block: &Block, variable_types: &HashMap<String, VariableType>) -> VariableType {
+    /// Builds up local variable types as it processes statements
+    fn infer_block_return_type(block: &Block, outer_variable_types: &HashMap<String, VariableType>) -> VariableType {
+        let mut local_types = outer_variable_types.clone();
+
         for stmt in &block.statements {
-            if let Statement::Return { value, .. } = stmt {
-                if let Some(expr) = value {
-                    return Self::infer_expression_type(expr, variable_types);
+            match stmt {
+                Statement::Let { name, ty, .. } | Statement::Var { name, ty, .. } => {
+                    // Track locally declared variables - use simplified type mapping
+                    let var_type = match ty {
+                        AstType::Bool => VariableType::Bool,
+                        AstType::Int8 => VariableType::Int8,
+                        AstType::Int16 => VariableType::Int16,
+                        AstType::Int32 => VariableType::Int32,
+                        AstType::Int64 => VariableType::Int64,
+                        AstType::Float8 => VariableType::Float8,
+                        AstType::Float16 => VariableType::Float16,
+                        AstType::Float32 => VariableType::Float32,
+                        AstType::Float64 => VariableType::Float64,
+                        AstType::String => VariableType::String,
+                        AstType::List(elem) => VariableType::Array(Box::new(Self::ast_to_var_type_simple(elem))),
+                        AstType::Dict(_, _) => VariableType::Dict,
+                        AstType::Set(_) => VariableType::Set,
+                        AstType::Named(name, _) => {
+                            if name.starts_with(char::is_uppercase) {
+                                VariableType::Class(name.clone())
+                            } else {
+                                VariableType::Int32 // fallback
+                            }
+                        }
+                    };
+                    local_types.insert(name.clone(), var_type);
                 }
+                Statement::Return { value, .. } => {
+                    if let Some(expr) = value {
+                        return Self::infer_expression_type(expr, &local_types);
+                    }
+                }
+                _ => {}
             }
         }
         // Default to Int32 if no return found
         VariableType::Int32
+    }
+
+    /// Helper to convert AstType to VariableType (simplified version without type alias resolution)
+    fn ast_to_var_type_simple(ty: &AstType) -> VariableType {
+        match ty {
+            AstType::Bool => VariableType::Bool,
+            AstType::Int32 => VariableType::Int32,
+            AstType::Int64 => VariableType::Int64,
+            AstType::String => VariableType::String,
+            _ => VariableType::Int32,
+        }
     }
 
     /// Get the spawn function name for a given return type
@@ -252,7 +309,13 @@ impl CodeGenerator {
             VariableType::Int64 => "plat_spawn_task_i64",
             VariableType::Float32 => "plat_spawn_task_f32",
             VariableType::Float64 => "plat_spawn_task_f64",
-            _ => "plat_spawn_task_i64", // Default to i64 for unsupported types
+            VariableType::String => "plat_spawn_task_string",
+            VariableType::Array(_) => "plat_spawn_task_ptr",
+            VariableType::Dict => "plat_spawn_task_ptr",
+            VariableType::Set => "plat_spawn_task_ptr",
+            VariableType::Class(_) => "plat_spawn_task_ptr",
+            VariableType::Enum(_) => "plat_spawn_task_ptr",
+            _ => "plat_spawn_task_i64", // Default fallback
         }
     }
 
@@ -264,7 +327,13 @@ impl CodeGenerator {
             VariableType::Int64 => "plat_task_await_i64",
             VariableType::Float32 => "plat_task_await_f32",
             VariableType::Float64 => "plat_task_await_f64",
-            _ => "plat_task_await_i64", // Default to i64 for unsupported types
+            VariableType::String => "plat_task_await_string",
+            VariableType::Array(_) => "plat_task_await_ptr",
+            VariableType::Dict => "plat_task_await_ptr",
+            VariableType::Set => "plat_task_await_ptr",
+            VariableType::Class(_) => "plat_task_await_ptr",
+            VariableType::Enum(_) => "plat_task_await_ptr",
+            _ => "plat_task_await_i64", // Default fallback
         }
     }
 
@@ -4711,13 +4780,29 @@ impl CodeGenerator {
                 sig.returns.push(AbiParam::new(cranelift_return_type));
 
                 // Convert VariableType to AstType for statement generation
-                let return_ast_type = match closure_return_type {
+                let return_ast_type = match &closure_return_type {
                     VariableType::Bool => AstType::Bool,
                     VariableType::Int32 => AstType::Int32,
                     VariableType::Int64 => AstType::Int64,
                     VariableType::Float32 => AstType::Float32,
                     VariableType::Float64 => AstType::Float64,
-                    _ => AstType::Int64, // Default
+                    VariableType::String => AstType::String,
+                    VariableType::Array(elem_type) => {
+                        // Convert inner VariableType to AstType
+                        let ast_elem_type = match elem_type.as_ref() {
+                            VariableType::Int32 => AstType::Int32,
+                            VariableType::Int64 => AstType::Int64,
+                            VariableType::Bool => AstType::Bool,
+                            VariableType::String => AstType::String,
+                            _ => AstType::Int64, // Default for unsupported element types
+                        };
+                        AstType::List(Box::new(ast_elem_type))
+                    }
+                    VariableType::Dict => AstType::Dict(Box::new(AstType::String), Box::new(AstType::Int64)),
+                    VariableType::Set => AstType::Set(Box::new(AstType::Int64)),
+                    VariableType::Class(name) => AstType::Named(name.clone(), vec![]),
+                    VariableType::Enum(name) => AstType::Named(name.clone(), vec![]),
+                    _ => AstType::Int64, // Default fallback
                 };
 
                 // Allocate context struct if needed
@@ -4881,7 +4966,13 @@ impl CodeGenerator {
                         VariableType::Int64 => "plat_spawn_task_i64_ctx",
                         VariableType::Float32 => "plat_spawn_task_f32_ctx",
                         VariableType::Float64 => "plat_spawn_task_f64_ctx",
-                        _ => "plat_spawn_task_i64_ctx", // Default
+                        VariableType::String => "plat_spawn_task_string_ctx",
+                        VariableType::Array(_) => "plat_spawn_task_ptr_ctx",
+                        VariableType::Dict => "plat_spawn_task_ptr_ctx",
+                        VariableType::Set => "plat_spawn_task_ptr_ctx",
+                        VariableType::Class(_) => "plat_spawn_task_ptr_ctx",
+                        VariableType::Enum(_) => "plat_spawn_task_ptr_ctx",
+                        _ => "plat_spawn_task_i64_ctx", // Default fallback
                     }
                 } else {
                     Self::get_spawn_function_name(&closure_return_type)

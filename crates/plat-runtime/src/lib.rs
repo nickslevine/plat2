@@ -267,6 +267,84 @@ pub extern "C" fn plat_task_await_f64(handle_id: u64) -> f64 {
     0.0
 }
 
+/// Spawn a task that returns a String (*const i8)
+/// We use usize internally since raw pointers aren't Send
+#[no_mangle]
+pub extern "C" fn plat_spawn_task_string(func: extern "C" fn() -> *const i8) -> u64 {
+    use green_runtime::{GreenThreadRuntime, task_with_result::TaskWithResult, get_scope_registry};
+    use std::sync::Arc;
+
+    let task = TaskWithResult::new(move || func() as usize);
+    let handle = task.handle();
+    let task_id = task.id().as_u64();
+
+    let scope_registry = get_scope_registry();
+    scope_registry.register_task(handle.clone());
+
+    let runtime = GreenThreadRuntime::get();
+    let mut guard = runtime.lock();
+    if let Some(rt) = guard.as_mut() {
+        rt.spawn_with_result(task);
+    }
+
+    TASK_HANDLES.lock().unwrap().insert(task_id, Arc::new(handle));
+    task_id
+}
+
+/// Await a task and get its String result
+#[no_mangle]
+pub extern "C" fn plat_task_await_string(handle_id: u64) -> *const i8 {
+    use green_runtime::task_with_result::TaskHandle;
+
+    let handles = TASK_HANDLES.lock().unwrap();
+    if let Some(handle_any) = handles.get(&handle_id) {
+        if let Some(handle) = handle_any.downcast_ref::<TaskHandle<usize>>() {
+            let ptr_value = handle.await_result().unwrap_or(0);
+            return ptr_value as *const i8;
+        }
+    }
+    std::ptr::null()
+}
+
+/// Spawn a task that returns a pointer (for classes, collections, enums)
+/// We use usize internally since raw pointers aren't Send
+#[no_mangle]
+pub extern "C" fn plat_spawn_task_ptr(func: extern "C" fn() -> *const u8) -> u64 {
+    use green_runtime::{GreenThreadRuntime, task_with_result::TaskWithResult, get_scope_registry};
+    use std::sync::Arc;
+
+    let task = TaskWithResult::new(move || func() as usize);
+    let handle = task.handle();
+    let task_id = task.id().as_u64();
+
+    let scope_registry = get_scope_registry();
+    scope_registry.register_task(handle.clone());
+
+    let runtime = GreenThreadRuntime::get();
+    let mut guard = runtime.lock();
+    if let Some(rt) = guard.as_mut() {
+        rt.spawn_with_result(task);
+    }
+
+    TASK_HANDLES.lock().unwrap().insert(task_id, Arc::new(handle));
+    task_id
+}
+
+/// Await a task and get its pointer result (for classes, collections, enums)
+#[no_mangle]
+pub extern "C" fn plat_task_await_ptr(handle_id: u64) -> *const u8 {
+    use green_runtime::task_with_result::TaskHandle;
+
+    let handles = TASK_HANDLES.lock().unwrap();
+    if let Some(handle_any) = handles.get(&handle_id) {
+        if let Some(handle) = handle_any.downcast_ref::<TaskHandle<usize>>() {
+            let ptr_value = handle.await_result().unwrap_or(0);
+            return ptr_value as *const u8;
+        }
+    }
+    std::ptr::null()
+}
+
 // ============================================================================
 // Context-aware Spawn Functions (for variable capture)
 // ============================================================================
@@ -391,6 +469,62 @@ pub extern "C" fn plat_spawn_task_f64_ctx(func: extern "C" fn(*mut u8) -> f64, c
     let task = TaskWithResult::new(move || {
         let ctx_ptr = ctx_addr as *mut u8;
         func(ctx_ptr)
+    });
+    let handle = task.handle();
+    let task_id = task.id().as_u64();
+
+    let scope_registry = get_scope_registry();
+    scope_registry.register_task(handle.clone());
+
+    let runtime = GreenThreadRuntime::get();
+    let mut guard = runtime.lock();
+    if let Some(rt) = guard.as_mut() {
+        rt.spawn_with_result(task);
+    }
+
+    TASK_HANDLES.lock().unwrap().insert(task_id, Arc::new(handle));
+    task_id
+}
+
+/// Spawn a task with context that returns a String (*const i8)
+/// We use usize internally since raw pointers aren't Send
+#[no_mangle]
+pub extern "C" fn plat_spawn_task_string_ctx(func: extern "C" fn(*mut u8) -> *const i8, ctx: *mut u8) -> u64 {
+    use green_runtime::{GreenThreadRuntime, task_with_result::TaskWithResult, get_scope_registry};
+    use std::sync::Arc;
+
+    let ctx_addr = ctx as usize;
+    let task = TaskWithResult::new(move || {
+        let ctx_ptr = ctx_addr as *mut u8;
+        func(ctx_ptr) as usize
+    });
+    let handle = task.handle();
+    let task_id = task.id().as_u64();
+
+    let scope_registry = get_scope_registry();
+    scope_registry.register_task(handle.clone());
+
+    let runtime = GreenThreadRuntime::get();
+    let mut guard = runtime.lock();
+    if let Some(rt) = guard.as_mut() {
+        rt.spawn_with_result(task);
+    }
+
+    TASK_HANDLES.lock().unwrap().insert(task_id, Arc::new(handle));
+    task_id
+}
+
+/// Spawn a task with context that returns a pointer (for classes, collections, enums)
+/// We use usize internally since raw pointers aren't Send
+#[no_mangle]
+pub extern "C" fn plat_spawn_task_ptr_ctx(func: extern "C" fn(*mut u8) -> *const u8, ctx: *mut u8) -> u64 {
+    use green_runtime::{GreenThreadRuntime, task_with_result::TaskWithResult, get_scope_registry};
+    use std::sync::Arc;
+
+    let ctx_addr = ctx as usize;
+    let task = TaskWithResult::new(move || {
+        let ctx_ptr = ctx_addr as *mut u8;
+        func(ctx_ptr) as usize
     });
     let handle = task.handle();
     let task_id = task.id().as_u64();
