@@ -92,6 +92,8 @@ impl std::error::Error for ModuleError {}
 pub struct ModuleResolver {
     /// Root directory for module resolution
     root_dir: PathBuf,
+    /// Standard library root directory (for std:: modules)
+    stdlib_dir: PathBuf,
     /// Map of module paths to their metadata
     modules: HashMap<String, ModuleId>,
     /// Dependency graph
@@ -99,9 +101,10 @@ pub struct ModuleResolver {
 }
 
 impl ModuleResolver {
-    pub fn new(root_dir: PathBuf) -> Self {
+    pub fn new(root_dir: PathBuf, stdlib_dir: PathBuf) -> Self {
         Self {
             root_dir,
+            stdlib_dir,
             modules: HashMap::new(),
             dependencies: HashMap::new(),
         }
@@ -113,6 +116,11 @@ impl ModuleResolver {
         file_path: PathBuf,
         declared_path: &str,
     ) -> Result<ModuleId, ModuleError> {
+        // Check if this is a stdlib module
+        if declared_path.starts_with("std::") {
+            return self.register_stdlib_module(file_path, declared_path);
+        }
+
         // Validate that module path matches file location
         let expected_path = self.file_path_to_module_path(&file_path)?;
 
@@ -120,6 +128,58 @@ impl ModuleResolver {
             return Err(ModuleError::PathMismatch {
                 declared: declared_path.to_string(),
                 expected: expected_path.clone(),
+                file_path: file_path.clone(),
+            });
+        }
+
+        let module_id = ModuleId {
+            path: declared_path.to_string(),
+            file_path: file_path.clone(),
+        };
+
+        self.modules.insert(declared_path.to_string(), module_id.clone());
+        Ok(module_id)
+    }
+
+    /// Register a standard library module
+    fn register_stdlib_module(
+        &mut self,
+        file_path: PathBuf,
+        declared_path: &str,
+    ) -> Result<ModuleId, ModuleError> {
+        // For stdlib modules, validate against stdlib_dir instead of root_dir
+        let relative = file_path
+            .strip_prefix(&self.stdlib_dir)
+            .map_err(|_| ModuleError::PathMismatch {
+                declared: declared_path.to_string(),
+                expected: format!("std::*"),
+                file_path: file_path.clone(),
+            })?;
+
+        // Convert file path to module path
+        // The relative path is something like "std/hello.plat", we want "std::hello"
+        let mut components: Vec<String> = relative
+            .parent()
+            .unwrap_or(Path::new(""))
+            .components()
+            .filter_map(|c| c.as_os_str().to_str().map(|s| s.to_string()))
+            .collect();
+
+        // Add filename without extension
+        if let Some(stem) = relative.file_stem() {
+            if let Some(name) = stem.to_str() {
+                if name != "main" {
+                    components.push(name.to_string());
+                }
+            }
+        }
+
+        let expected_path = components.join("::");
+
+        if declared_path != expected_path {
+            return Err(ModuleError::PathMismatch {
+                declared: declared_path.to_string(),
+                expected: expected_path,
                 file_path: file_path.clone(),
             });
         }
@@ -245,8 +305,44 @@ impl ModuleResolver {
         order.push(module.to_string());
     }
 
+    /// Discover and register a stdlib module on-demand
+    pub fn discover_stdlib_module(&mut self, module_path: &str) -> Result<ModuleId, ModuleError> {
+        if !module_path.starts_with("std::") {
+            return Err(ModuleError::ModuleNotFound {
+                module_path: module_path.to_string(),
+                searched_paths: vec![self.root_dir.clone()],
+            });
+        }
+
+        // Convert module path to file path
+        // e.g., "std::json" -> "stdlib/std/json.plat"
+        let parts: Vec<&str> = module_path.split("::").collect();
+        let mut file_path = self.stdlib_dir.clone();
+
+        for part in &parts {
+            file_path.push(part);
+        }
+        file_path.set_extension("plat");
+
+        // Check if file exists
+        if !file_path.exists() {
+            return Err(ModuleError::ModuleNotFound {
+                module_path: module_path.to_string(),
+                searched_paths: vec![self.stdlib_dir.clone(), file_path],
+            });
+        }
+
+        // Register the module
+        self.register_stdlib_module(file_path, module_path)
+    }
+
     /// Resolve a module path to its file location
-    pub fn resolve_module(&self, module_path: &str) -> Result<&ModuleId, ModuleError> {
+    pub fn resolve_module(&mut self, module_path: &str) -> Result<&ModuleId, ModuleError> {
+        // If not already registered and starts with std::, try to discover it
+        if !self.modules.contains_key(module_path) && module_path.starts_with("std::") {
+            self.discover_stdlib_module(module_path)?;
+        }
+
         self.modules.get(module_path).ok_or_else(|| {
             ModuleError::ModuleNotFound {
                 module_path: module_path.to_string(),
@@ -262,7 +358,10 @@ mod tests {
 
     #[test]
     fn test_register_module() {
-        let mut resolver = ModuleResolver::new(PathBuf::from("/project"));
+        let mut resolver = ModuleResolver::new(
+            PathBuf::from("/project"),
+            PathBuf::from("/stdlib")
+        );
 
         let result = resolver.register_module(
             PathBuf::from("/project/database/connection.plat"),
@@ -274,7 +373,10 @@ mod tests {
 
     #[test]
     fn test_path_mismatch() {
-        let mut resolver = ModuleResolver::new(PathBuf::from("/project"));
+        let mut resolver = ModuleResolver::new(
+            PathBuf::from("/project"),
+            PathBuf::from("/stdlib")
+        );
 
         let result = resolver.register_module(
             PathBuf::from("/project/utils/helper.plat"),
@@ -286,7 +388,10 @@ mod tests {
 
     #[test]
     fn test_circular_dependency_detection() {
-        let mut resolver = ModuleResolver::new(PathBuf::from("/project"));
+        let mut resolver = ModuleResolver::new(
+            PathBuf::from("/project"),
+            PathBuf::from("/stdlib")
+        );
 
         resolver.register_module(PathBuf::from("/project/a.plat"), "a").unwrap();
         resolver.register_module(PathBuf::from("/project/b.plat"), "b").unwrap();
@@ -300,7 +405,10 @@ mod tests {
 
     #[test]
     fn test_compilation_order() {
-        let mut resolver = ModuleResolver::new(PathBuf::from("/project"));
+        let mut resolver = ModuleResolver::new(
+            PathBuf::from("/project"),
+            PathBuf::from("/stdlib")
+        );
 
         resolver.register_module(PathBuf::from("/project/a.plat"), "a").unwrap();
         resolver.register_module(PathBuf::from("/project/b.plat"), "b").unwrap();

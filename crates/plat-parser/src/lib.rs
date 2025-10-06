@@ -1072,36 +1072,45 @@ impl Parser {
             let span = self.previous_span();
             // Check for qualified name (module::item or EnumName::Variant)
             if self.match_token(&Token::DoubleColon) {
-                let second_part = self.consume_identifier("Expected identifier after '::'")?;
+                // Build the qualified path by collecting all :: separated identifiers
+                let mut path_parts = vec![name.clone()];
+                path_parts.push(self.consume_identifier("Expected identifier after '::'")?);
 
-                // Use a simple heuristic: if the first part starts with uppercase, treat as enum
-                // Otherwise, treat as qualified function/identifier (module::function)
-                let is_likely_enum = name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false);
-
-                // Check if this is an enum constructor with arguments
-                if is_likely_enum && self.match_token(&Token::LeftParen) {
-                    let args = self.parse_named_arguments()?;
-                    self.consume(Token::RightParen, "Expected ')' after enum constructor arguments")?;
-                    let end = self.previous_span().end;
-                    return Ok(Expression::EnumConstructor {
-                        enum_name: name,
-                        variant: second_part,
-                        args,
-                        span: Span::new(span.start, end),
-                    });
-                } else if is_likely_enum && !self.check(&Token::LeftParen) {
-                    // Enum variant without arguments
-                    let end = self.previous_span().end;
-                    return Ok(Expression::EnumConstructor {
-                        enum_name: name,
-                        variant: second_part,
-                        args: vec![],
-                        span: Span::new(span.start, end),
-                    });
+                // Continue reading :: separated identifiers to support multi-level paths like std::hello::greet
+                while self.match_token(&Token::DoubleColon) {
+                    path_parts.push(self.consume_identifier("Expected identifier after '::'")?);
                 }
 
-                // Otherwise, it's a qualified identifier (module::function)
-                let qualified_name = format!("{}::{}", name, second_part);
+                // Use a simple heuristic: if the first part starts with uppercase and we have exactly 2 parts, treat as enum
+                // Otherwise, treat as qualified function/identifier (module::function or std::module::function)
+                let is_likely_enum = name.chars().next().map(|c| c.is_uppercase()).unwrap_or(false) && path_parts.len() == 2;
+
+                if is_likely_enum {
+                    // Check if this is an enum constructor with arguments
+                    if self.match_token(&Token::LeftParen) {
+                        let args = self.parse_named_arguments()?;
+                        self.consume(Token::RightParen, "Expected ')' after enum constructor arguments")?;
+                        let end = self.previous_span().end;
+                        return Ok(Expression::EnumConstructor {
+                            enum_name: name,
+                            variant: path_parts[1].clone(),
+                            args,
+                            span: Span::new(span.start, end),
+                        });
+                    } else {
+                        // Enum variant without arguments
+                        let end = self.previous_span().end;
+                        return Ok(Expression::EnumConstructor {
+                            enum_name: name,
+                            variant: path_parts[1].clone(),
+                            args: vec![],
+                            span: Span::new(span.start, end),
+                        });
+                    }
+                }
+
+                // Otherwise, it's a qualified identifier (module::function or std::module::function)
+                let qualified_name = path_parts.join("::");
                 let end = self.previous_span().end;
                 return Ok(Expression::Identifier {
                     name: qualified_name,

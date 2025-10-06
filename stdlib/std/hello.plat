@@ -1,0 +1,5 @@
+mod std::hello;
+
+pub fn greet() -> String {
+  return "Hello from std::hello!";
+}

@@ -73,6 +73,36 @@ fn report_diagnostic_error(err: DiagnosticError, filename: &str, source: &str) -
     }
 }
 
+/// Get the standard library root directory
+fn get_stdlib_root() -> PathBuf {
+    // Stdlib is located in the project root directory
+    // First, try to get the directory where the executable is located
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(exe_dir) = exe_path.parent() {
+            // In development, the executable is in target/debug or target/release
+            // We need to go up to the project root
+            if let Some(target_dir) = exe_dir.parent() {
+                if let Some(project_root) = target_dir.parent() {
+                    let stdlib_path = project_root.join("stdlib");
+                    if stdlib_path.exists() {
+                        return stdlib_path;
+                    }
+                }
+            }
+        }
+    }
+
+    // Fallback: Try current directory + stdlib
+    let current_dir = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    let stdlib_path = current_dir.join("stdlib");
+    if stdlib_path.exists() {
+        return stdlib_path;
+    }
+
+    // Last resort: Just return ./stdlib (will fail later if it doesn't exist)
+    PathBuf::from("stdlib")
+}
+
 fn run() -> Result<()> {
     let cli = Cli::parse();
 
@@ -109,8 +139,26 @@ fn build_single_file(file: PathBuf) -> Result<()> {
     let filename = file.to_string_lossy();
     let parser = plat_parser::Parser::with_filename(&source, filename.as_ref())
         .map_err(|e| report_diagnostic_error(e, &filename, &source))?;
-    let mut program = parser.parse()
+    let program = parser.parse()
         .map_err(|e| report_diagnostic_error(e, &filename, &source))?;
+
+    // Check if the file has imports - if so, use multi-module build
+    if !program.use_decls.is_empty() {
+        let current_dir = file.parent().unwrap_or_else(|| Path::new("."));
+
+        // Discover all dependencies
+        let files = vec![file.clone()];
+        let ordered_files = resolve_modules(&files, current_dir)?;
+
+        // Build all modules together
+        build_multi_module(&ordered_files)?;
+
+        println!("{} Generated executable: {}", "✓".green().bold(), output_path.display());
+        return Ok(());
+    }
+
+    // No imports - use simple single-file build
+    let mut program = program;
 
     // Type check the program
     println!("  {} Type checking...", "→".cyan());
@@ -1030,14 +1078,45 @@ fn discover_plat_files(root: &Path) -> Result<Vec<PathBuf>> {
 
 /// Build module dependency graph and get compilation order
 fn resolve_modules(files: &[PathBuf], root_dir: &Path) -> Result<Vec<PathBuf>> {
-    let mut resolver = ModuleResolver::new(root_dir.to_path_buf());
+    let stdlib_dir = get_stdlib_root();
+    let mut resolver = ModuleResolver::new(root_dir.to_path_buf(), stdlib_dir);
 
-    // Register all modules
+    // Register all user modules
     for file in files {
         let (module_path, imports) = parse_module_info(file)?;
         resolver.register_module(file.clone(), &module_path)
             .map_err(|e| anyhow::anyhow!("{}", e))?;
         resolver.add_dependencies(&module_path, imports);
+    }
+
+    // Discover and register stdlib modules that are imported
+    // We need to do this in a loop because stdlib modules might import other stdlib modules
+    let mut processed_modules = std::collections::HashSet::new();
+    let mut to_process: Vec<PathBuf> = files.to_vec();
+
+    while !to_process.is_empty() {
+        let file = to_process.remove(0);
+        if processed_modules.contains(&file) {
+            continue;
+        }
+        processed_modules.insert(file.clone());
+
+        let (_, imports) = parse_module_info(&file)?;
+
+        // For each import that starts with std::, discover and register it
+        for import in imports.iter() {
+            if import.starts_with("std::") {
+                // Try to discover the stdlib module
+                if let Ok(module_id) = resolver.discover_stdlib_module(&import) {
+                    // Add the stdlib module's dependencies
+                    let (stdlib_module_path, stdlib_imports) = parse_module_info(&module_id.file_path)?;
+                    resolver.add_dependencies(&stdlib_module_path, stdlib_imports);
+
+                    // Also process this stdlib file for its imports
+                    to_process.push(module_id.file_path.clone());
+                }
+            }
+        }
     }
 
     // Get compilation order
