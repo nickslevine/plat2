@@ -1,6 +1,9 @@
 ## Next
 
-  Note: There's an existing codegen issue with cross-module function calls that affects all modules (not stdlib-specific), but
+
+There's a remaining issue with variable type
+  inference for call expressions, but that's a separate problem from the cross-module function signature resolution which has
+  been fixed.
 
 ## stdlib
 * set up stdlib. 
@@ -97,6 +100,7 @@ Linting
 * Error types. 
 * fuzz testing, parameterized testing. 
 * `plat add` 
+* plat check without build for speed. 
 
 
 

@@ -1541,7 +1541,7 @@ impl CodeGenerator {
                     return Self::generate_range_for_loop(
                         builder, variable, start, end, *inclusive, body,
                         variables, variable_types, variable_counter, functions, module, string_counter, class_metadata, type_aliases,
-                        function_name, function_return_type, test_mode
+                        function_name, function_return_type, test_mode, symbol_table
                     );
                 }
 
@@ -6342,6 +6342,13 @@ impl CodeGenerator {
                                 }
                                 Some(VariableType::Int8) | Some(VariableType::Int16) | Some(VariableType::Int32) | Some(VariableType::Bool) => {
                                     // I8/I16/I32/boolean variable, convert to string
+                                    // Need to extend I8/I16 to I32 first
+                                    let val_type = builder.func.dfg.value_type(expr_val);
+                                    let final_val = if val_type == I8 || val_type == I16 {
+                                        builder.ins().sextend(I32, expr_val)
+                                    } else {
+                                        expr_val
+                                    };
                                     let convert_sig = {
                                         let mut sig = module.make_signature();
                                         sig.call_conv = CallConv::SystemV;
@@ -6352,7 +6359,7 @@ impl CodeGenerator {
                                     let convert_id = module.declare_function("plat_i32_to_string", Linkage::Import, &convert_sig)
                                         .map_err(CodegenError::ModuleError)?;
                                     let convert_ref = module.declare_func_in_func(convert_id, builder.func);
-                                    let call = builder.ins().call(convert_ref, &[expr_val]);
+                                    let call = builder.ins().call(convert_ref, &[final_val]);
                                     builder.inst_results(call)[0]
                                 }
                                 Some(VariableType::Int64) => {
@@ -6466,6 +6473,21 @@ impl CodeGenerator {
                                     if val_type == I64 {
                                         // Assume it's a string pointer
                                         expr_val
+                                    } else if val_type == I8 || val_type == I16 {
+                                        // I8/I16 value, sign-extend to I32 then convert to string
+                                        let extended_val = builder.ins().sextend(I32, expr_val);
+                                        let convert_sig = {
+                                            let mut sig = module.make_signature();
+                                            sig.call_conv = CallConv::SystemV;
+                                            sig.params.push(AbiParam::new(I32));
+                                            sig.returns.push(AbiParam::new(I64));
+                                            sig
+                                        };
+                                        let convert_id = module.declare_function("plat_i32_to_string", Linkage::Import, &convert_sig)
+                                            .map_err(CodegenError::ModuleError)?;
+                                        let convert_ref = module.declare_func_in_func(convert_id, builder.func);
+                                        let call = builder.ins().call(convert_ref, &[extended_val]);
+                                        builder.inst_results(call)[0]
                                     } else {
                                         // I32 value, convert to string
                                         let convert_sig = {
@@ -6514,7 +6536,13 @@ impl CodeGenerator {
                                 let call = builder.ins().call(convert_ref, &[expr_val]);
                                 builder.inst_results(call)[0]
                             } else {
-                                // This is an i32 (from indexing), convert to string
+                                // This is an integer (from indexing or other), convert to string
+                                let val_type = builder.func.dfg.value_type(expr_val);
+                                let final_val = if val_type == I8 || val_type == I16 {
+                                    builder.ins().sextend(I32, expr_val)
+                                } else {
+                                    expr_val
+                                };
                                 let convert_sig = {
                                     let mut sig = module.make_signature();
                                     sig.call_conv = CallConv::SystemV;
@@ -6525,7 +6553,7 @@ impl CodeGenerator {
                                 let convert_id = module.declare_function("plat_i32_to_string", Linkage::Import, &convert_sig)
                                     .map_err(CodegenError::ModuleError)?;
                                 let convert_ref = module.declare_func_in_func(convert_id, builder.func);
-                                let call = builder.ins().call(convert_ref, &[expr_val]);
+                                let call = builder.ins().call(convert_ref, &[final_val]);
                                 builder.inst_results(call)[0]
                             }
                         }
@@ -6562,6 +6590,21 @@ impl CodeGenerator {
                                     .map_err(CodegenError::ModuleError)?;
                                 let convert_ref = module.declare_func_in_func(convert_id, builder.func);
                                 let call = builder.ins().call(convert_ref, &[expr_val]);
+                                builder.inst_results(call)[0]
+                            } else if val_type == I8 || val_type == I16 {
+                                // I8/I16 value, sign-extend to I32 then convert to string
+                                let extended_val = builder.ins().sextend(I32, expr_val);
+                                let convert_sig = {
+                                    let mut sig = module.make_signature();
+                                    sig.call_conv = CallConv::SystemV;
+                                    sig.params.push(AbiParam::new(I32));
+                                    sig.returns.push(AbiParam::new(I64));
+                                    sig
+                                };
+                                let convert_id = module.declare_function("plat_i32_to_string", Linkage::Import, &convert_sig)
+                                    .map_err(CodegenError::ModuleError)?;
+                                let convert_ref = module.declare_func_in_func(convert_id, builder.func);
+                                let call = builder.ins().call(convert_ref, &[extended_val]);
                                 builder.inst_results(call)[0]
                             } else {
                                 // I32 value, convert to string
