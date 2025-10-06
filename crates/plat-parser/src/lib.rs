@@ -49,21 +49,15 @@ impl Parser {
 
         // Parse type aliases
         let mut type_aliases = Vec::new();
-        while self.check(&Token::Pub) || self.check(&Token::Type) {
+        while self.check(&Token::Type) || (self.check(&Token::Pub) && self.peek_next() == Some(&Token::Type)) {
             let is_public = self.match_token(&Token::Pub);
-            if !self.check(&Token::Type) {
-                break; // pub followed by something other than type
-            }
             type_aliases.push(self.parse_type_alias(is_public)?);
         }
 
         // Parse newtypes
         let mut newtypes = Vec::new();
-        while self.check(&Token::Pub) || self.check(&Token::Newtype) {
+        while self.check(&Token::Newtype) || (self.check(&Token::Pub) && self.peek_next() == Some(&Token::Newtype)) {
             let is_public = self.match_token(&Token::Pub);
-            if !self.check(&Token::Newtype) {
-                break; // pub followed by something other than newtype
-            }
             newtypes.push(self.parse_newtype(is_public)?);
         }
 
