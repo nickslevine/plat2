@@ -16,7 +16,7 @@ use cranelift_codegen::ir::InstBuilder;
 use cranelift_frontend::{FunctionBuilder, FunctionBuilderContext, Variable};
 use cranelift_module::{Linkage, Module, ModuleError, FuncId, DataDescription};
 use cranelift_object::{ObjectBuilder, ObjectModule};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// Track the original Plat types of variables for better codegen decisions
 #[derive(Debug, Clone, PartialEq)]
@@ -81,6 +81,7 @@ pub struct CodeGenerator {
     newtypes: HashMap<String, AstType>, // Newtypes map to their underlying type
     test_mode: bool, // Whether we're in test mode
     bench_mode: bool, // Whether we're in bench mode
+    method_names: HashSet<String>, // Track which functions are enum/class methods (need implicit self)
 }
 
 impl CodeGenerator {
@@ -653,6 +654,7 @@ impl CodeGenerator {
             newtypes: HashMap::new(),
             test_mode: false,
             bench_mode: false,
+            method_names: HashSet::new(),
         })
     }
 
@@ -962,6 +964,7 @@ impl CodeGenerator {
         for enum_decl in &program.enums {
             for method in &enum_decl.methods {
                 let method_name = format!("{}::{}", enum_decl.name, method.name);
+                self.method_names.insert(method_name.clone()); // Track as method (needs implicit self)
                 self.declare_function_with_name(&method_name, method)?;
             }
         }
@@ -970,6 +973,7 @@ impl CodeGenerator {
         for class_decl in &program.classes {
             for method in &class_decl.methods {
                 let method_name = format!("{}__{}", class_decl.name, method.name);
+                self.method_names.insert(method_name.clone()); // Track as method (needs implicit self)
                 self.declare_function_with_name(&method_name, method)?;
             }
         }
@@ -1051,11 +1055,12 @@ impl CodeGenerator {
         sig.call_conv = CallConv::SystemV;
 
         // Add implicit self parameter for enum and class methods
-        if name.contains("::") {
-            // This is an enum method, add self parameter (represented as i64 for enum value)
-            sig.params.push(AbiParam::new(I64));
-        } else if name.contains("__") {
-            // This is a class method, add self parameter (represented as i64 for class instance pointer)
+        // Only add self parameter if this function is in our method_names set
+        // This distinguishes between:
+        //   - Enum/class methods (e.g., "Option::Some", "Point__get_x") -> need self
+        //   - Cross-module functions (e.g., "std::test::hello") -> no self
+        if self.method_names.contains(name) {
+            // This is an enum or class method, add self parameter (i64 pointer/value)
             sig.params.push(AbiParam::new(I64));
         }
 
@@ -1134,7 +1139,8 @@ impl CodeGenerator {
         let params = builder.block_params(entry_block).to_vec();
 
         // Check if this is a class or enum method (has implicit self parameter)
-        let has_implicit_self = name.contains("::") || name.contains("__");
+        // Use the method_names set to distinguish methods from cross-module functions
+        let has_implicit_self = self.method_names.contains(name);
         let param_offset = if has_implicit_self { 1 } else { 0 };
 
         // If this is a class/enum method, handle the implicit self parameter
@@ -3411,44 +3417,45 @@ impl CodeGenerator {
                     return Ok(class_ptr);
                 }
 
-                // Check if this is a cross-module call (qualified name with ::)
-                let func_id = if function.contains("::") {
-                    // Cross-module call - declare as import with standard ABI
-                    // For now, we assume all cross-module functions take i64 params and return i64
-                    // This is a simplified approach that works for most Plat types (pointers, strings, classes, etc.)
-                    // Future enhancement: pass HIR symbol table to get exact signatures
-
-                    let sig = {
-                        let mut sig = module.make_signature();
-                        sig.call_conv = CallConv::SystemV;
-                        // Add i64 parameter for each argument
-                        for _ in args {
-                            sig.params.push(AbiParam::new(I64));
-                        }
-                        // Assume i64 return (covers most Plat types: strings, objects, i64, etc.)
-                        sig.returns.push(AbiParam::new(I64));
-                        sig
-                    };
-
-                    module.declare_function(function, Linkage::Import, &sig)
-                        .map_err(CodegenError::ModuleError)?
-                } else {
-                    // Local function call - look up in functions map
-                    match functions.get(function) {
-                        Some(&id) => id,
-                        None => return Err(CodegenError::UndefinedFunction(function.clone())),
-                    }
-                };
-
-                // Get function reference for calling
-                let func_ref = module.declare_func_in_func(func_id, builder.func);
-
-                // Evaluate arguments
+                // Evaluate arguments first (needed to infer signature for cross-module calls)
                 let mut arg_values = Vec::new();
                 for arg in args {
                     let arg_val = Self::generate_expression_helper(builder, &arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
                     arg_values.push(arg_val);
                 }
+
+                // Look up function in the functions map
+                let func_id = match functions.get(function) {
+                    Some(&id) => id,
+                    None => {
+                        // Function not found in map - check if it's a cross-module call
+                        if function.contains("::") {
+                            // Cross-module call - declare as import with signature inferred from arguments
+                            // Build signature based on the evaluated argument types
+                            let sig = {
+                                let mut sig = module.make_signature();
+                                sig.call_conv = CallConv::SystemV;
+                                // Add parameters based on actual argument types
+                                for arg_val in &arg_values {
+                                    let arg_type = builder.func.dfg.value_type(*arg_val);
+                                    sig.params.push(AbiParam::new(arg_type));
+                                }
+                                // Assume i64 return (covers most Plat types: strings, objects, i64, etc.)
+                                // For Int32 returns, there will be implicit conversion
+                                sig.returns.push(AbiParam::new(I64));
+                                sig
+                            };
+
+                            module.declare_function(function, Linkage::Import, &sig)
+                                .map_err(CodegenError::ModuleError)?
+                        } else {
+                            return Err(CodegenError::UndefinedFunction(function.clone()));
+                        }
+                    }
+                };
+
+                // Get function reference for calling
+                let func_ref = module.declare_func_in_func(func_id, builder.func);
 
                 // Make the function call
                 let call = builder.ins().call(func_ref, &arg_values);
