@@ -1,0 +1,9 @@
+mod std::test;
+
+pub fn hello() -> String {
+  return "Hello from std::test!";
+}
+
+pub fn add(x: Int32, y: Int32) -> Int32 {
+  return x + y;
+}

@@ -95,6 +95,7 @@ Linting
 * binary sizes. 
 * Error types. 
 * fuzz testing, parameterized testing. 
+* `plat add` 
 
 
 

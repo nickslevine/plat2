@@ -118,11 +118,11 @@ impl Parser {
         self.consume(Token::Mod, "Expected 'mod'")?;
 
         let mut path = Vec::new();
-        path.push(self.consume_identifier("Expected module name")?);
+        path.push(self.consume_module_name("Expected module name")?);
 
-        // Parse nested module path (database::connection)
+        // Parse nested module path (database::connection or std::test)
         while self.match_token(&Token::DoubleColon) {
-            path.push(self.consume_identifier("Expected module name after '::'")?);
+            path.push(self.consume_module_name("Expected module name after '::'")?);
         }
 
         self.consume(Token::Semicolon, "Expected ';' after module declaration")?;
@@ -139,11 +139,11 @@ impl Parser {
         self.consume(Token::Use, "Expected 'use'")?;
 
         let mut path = Vec::new();
-        path.push(self.consume_identifier("Expected module name")?);
+        path.push(self.consume_module_name("Expected module name")?);
 
-        // Parse nested module path (database::connection)
+        // Parse nested module path (database::connection or std::test)
         while self.match_token(&Token::DoubleColon) {
-            path.push(self.consume_identifier("Expected module name after '::'")?);
+            path.push(self.consume_module_name("Expected module name after '::'")?);
         }
 
         self.consume(Token::Semicolon, "Expected ';' after use declaration")?;
@@ -1068,11 +1068,11 @@ impl Parser {
             if self.match_token(&Token::DoubleColon) {
                 // Build the qualified path by collecting all :: separated identifiers
                 let mut path_parts = vec![name.clone()];
-                path_parts.push(self.consume_identifier("Expected identifier after '::'")?);
+                path_parts.push(self.consume_module_name("Expected identifier after '::'")?);
 
-                // Continue reading :: separated identifiers to support multi-level paths like std::hello::greet
+                // Continue reading :: separated identifiers to support multi-level paths like std::test::hello
                 while self.match_token(&Token::DoubleColon) {
-                    path_parts.push(self.consume_identifier("Expected identifier after '::'")?);
+                    path_parts.push(self.consume_module_name("Expected identifier after '::'")?);
                 }
 
                 // Use a simple heuristic: if the first part starts with uppercase and we have exactly 2 parts, treat as enum
@@ -1706,6 +1706,36 @@ impl Parser {
                 self.current_span().start
             )))
         }
+    }
+
+    /// Consume a module name (identifier or keyword like 'test')
+    /// This is more permissive than consume_identifier because module names can be keywords
+    fn consume_module_name(&mut self, message: &str) -> Result<String, DiagnosticError> {
+        let token = &self.peek().token;
+        let name = match token {
+            Token::Ident(name) => name.clone(),
+            // Allow keywords as module names
+            Token::Test => "test".to_string(),
+            Token::Mod => "mod".to_string(),
+            Token::Type => "type".to_string(),
+            Token::Bench => "bench".to_string(),
+            Token::Init => "init".to_string(),
+            Token::List => "list".to_string(),
+            Token::Dict => "dict".to_string(),
+            Token::Set => "set".to_string(),
+            Token::Enum => "enum".to_string(),
+            Token::Class => "class".to_string(),
+            Token::Fn => "fn".to_string(),
+            _ => {
+                return Err(DiagnosticError::Syntax(format!(
+                    "{} at position {}",
+                    message,
+                    self.current_span().start
+                )));
+            }
+        };
+        self.advance();
+        Ok(name)
     }
 
     fn is_dict_literal(&mut self) -> bool {
