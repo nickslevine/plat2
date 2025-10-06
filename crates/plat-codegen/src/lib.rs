@@ -82,6 +82,7 @@ pub struct CodeGenerator {
     test_mode: bool, // Whether we're in test mode
     bench_mode: bool, // Whether we're in bench mode
     method_names: HashSet<String>, // Track which functions are enum/class methods (need implicit self)
+    symbol_table: Option<plat_hir::ModuleSymbolTable>, // Global symbol table for cross-module function lookups
 }
 
 impl CodeGenerator {
@@ -588,6 +589,32 @@ impl CodeGenerator {
         }
     }
 
+    /// Convert a HIR type to a Cranelift type
+    fn hir_type_to_cranelift(ty: &HirType) -> Type {
+        match ty {
+            HirType::Bool => I32,
+            HirType::Int8 => I8,
+            HirType::Int16 => I16,
+            HirType::Int32 => I32,
+            HirType::Int64 => I64,
+            HirType::Float8 => F32, // Cranelift doesn't support 8-bit floats, use F32
+            HirType::Float16 => F32, // Cranelift doesn't support 16-bit floats, use F32
+            HirType::Float32 => F32,
+            HirType::Float64 => F64,
+            HirType::String => I64,
+            HirType::List(_) => I64,
+            HirType::Dict(_, _) => I64,
+            HirType::Set(_) => I64,
+            HirType::Enum(_, _) => I64, // Enums are pointers
+            HirType::Class(_, _) => I64, // Classes are pointers
+            HirType::TypeParameter(_) => I64, // Generic type parameters become pointers at runtime
+            HirType::Newtype(_) => I64, // Newtypes are represented the same as their underlying type (usually pointer)
+            HirType::Task(_) => I64, // Task handles are pointers
+            HirType::Channel(_) => I64, // Channels are pointers
+            HirType::Unit => I64, // Unit type is represented as i64 0
+        }
+    }
+
     /// Convert an AST type to a VariableType
     fn ast_type_to_variable_type(&self, ast_type: &AstType) -> VariableType {
         Self::ast_type_to_variable_type_static(&self.type_aliases, ast_type)
@@ -655,6 +682,7 @@ impl CodeGenerator {
             test_mode: false,
             bench_mode: false,
             method_names: HashSet::new(),
+            symbol_table: None,
         })
     }
 
@@ -667,6 +695,12 @@ impl CodeGenerator {
     /// Enable bench mode for this code generator
     pub fn with_bench_mode(mut self) -> Self {
         self.bench_mode = true;
+        self
+    }
+
+    /// Set the global symbol table for cross-module function lookups
+    pub fn with_symbol_table(mut self, symbol_table: plat_hir::ModuleSymbolTable) -> Self {
+        self.symbol_table = Some(symbol_table);
         self
     }
 
@@ -1181,6 +1215,7 @@ impl CodeGenerator {
         // Extract the functions HashMap and type_aliases to avoid borrowing self while builder exists
         let functions_copy = self.functions.clone();
         let type_aliases_copy = self.type_aliases.clone();
+        let symbol_table = self.symbol_table.as_ref();
 
         // Initialize runtime for main function
         if function.name == "main" {
@@ -1211,7 +1246,7 @@ impl CodeGenerator {
                 &type_aliases_copy,
                 name,
                 &function.return_type,
-                self.test_mode
+                self.test_mode, symbol_table
             )?;
         }
 
@@ -1259,11 +1294,12 @@ impl CodeGenerator {
         type_aliases: &HashMap<String, AstType>,
         function_name: &str,
         function_return_type: &Option<AstType>,
-        test_mode: bool
+        test_mode: bool,
+        symbol_table: Option<&plat_hir::ModuleSymbolTable>
     ) -> Result<bool, CodegenError> {
         match statement {
             Statement::Let { name, ty, value, .. } => {
-                let val = Self::generate_expression_with_expected_type(builder, value, Some(ty), variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                let val = Self::generate_expression_with_expected_type(builder, value, Some(ty), variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
                 let var = Variable::from_u32(*variable_counter);
                 *variable_counter += 1;
 
@@ -1278,7 +1314,7 @@ impl CodeGenerator {
                 Ok(false)
             }
             Statement::Var { name, ty, value, .. } => {
-                let val = Self::generate_expression_with_expected_type(builder, value, Some(ty), variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                let val = Self::generate_expression_with_expected_type(builder, value, Some(ty), variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
                 let var = Variable::from_u32(*variable_counter);
                 *variable_counter += 1;
 
@@ -1294,7 +1330,7 @@ impl CodeGenerator {
             }
             Statement::Return { value, .. } => {
                 if let Some(expr) = value {
-                    let val = Self::generate_expression_helper(builder, expr, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                    let val = Self::generate_expression_helper(builder, expr, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                     // Special handling for main returning Result/Option
                     if function_name == "main" && function_return_type.as_ref().map_or(false, |ty| Self::is_result_or_option_with_int_return(ty)) {
@@ -1374,12 +1410,12 @@ impl CodeGenerator {
                 Ok(true)
             }
             Statement::Expression(expr) => {
-                Self::generate_expression_helper(builder, expr, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                Self::generate_expression_helper(builder, expr, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
                 Ok(false)
             }
             Statement::Print { value, .. } => {
                 // Generate the value to print
-                let val = Self::generate_expression_helper(builder, value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                let val = Self::generate_expression_helper(builder, value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                 // Call the print runtime function
                 // For now, we need to declare the print function if it's not already declared
@@ -1406,7 +1442,7 @@ impl CodeGenerator {
             }
             Statement::If { condition, then_branch, else_branch, .. } => {
                 // Evaluate condition
-                let condition_val = Self::generate_expression_helper(builder, condition, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                let condition_val = Self::generate_expression_helper(builder, condition, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                 // Convert condition to boolean (non-zero = true)
                 let _zero = builder.ins().iconst(I32, 0);
@@ -1428,8 +1464,8 @@ impl CodeGenerator {
                     then_has_return |= Self::generate_statement_helper(
                         builder, stmt, variables, variable_types, variable_counter,
                         functions, module, string_counter, class_metadata, type_aliases,
-                        function_name, function_return_type, test_mode
-                    )?;
+                        function_name, function_return_type, test_mode, symbol_table
+            )?;
                 }
                 if !then_has_return {
                     builder.ins().jump(merge_block, &[]);
@@ -1444,8 +1480,8 @@ impl CodeGenerator {
                         else_has_return |= Self::generate_statement_helper(
                             builder, stmt, variables, variable_types, variable_counter,
                             functions, module, string_counter, class_metadata, type_aliases,
-                            function_name, function_return_type, test_mode
-                        )?;
+                            function_name, function_return_type, test_mode, symbol_table
+            )?;
                     }
                 }
                 if !else_has_return {
@@ -1469,7 +1505,7 @@ impl CodeGenerator {
 
                 // Loop header: evaluate condition
                 builder.switch_to_block(loop_header);
-                let condition_val = Self::generate_expression_helper(builder, condition, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                let condition_val = Self::generate_expression_helper(builder, condition, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
                 let _zero = builder.ins().iconst(I32, 0);
                 let condition_bool = builder.ins().icmp_imm(IntCC::NotEqual, condition_val, 0);
                 builder.ins().brif(condition_bool, loop_body, &[], loop_exit, &[]);
@@ -1481,8 +1517,8 @@ impl CodeGenerator {
                     body_has_return |= Self::generate_statement_helper(
                         builder, stmt, variables, variable_types, variable_counter,
                         functions, module, string_counter, class_metadata, type_aliases,
-                        function_name, function_return_type, test_mode
-                    )?;
+                        function_name, function_return_type, test_mode, symbol_table
+            )?;
                 }
                 if !body_has_return {
                     builder.ins().jump(loop_header, &[]);
@@ -1515,7 +1551,7 @@ impl CodeGenerator {
                 let element_cranelift_type = Self::variable_type_to_cranelift_type(&element_type);
 
                 // Evaluate iterable
-                let array_val = Self::generate_expression_helper(builder, iterable, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                let array_val = Self::generate_expression_helper(builder, iterable, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                 // Get array length
                 let len_sig = {
@@ -1610,8 +1646,8 @@ impl CodeGenerator {
                     body_has_return |= Self::generate_statement_helper(
                         builder, stmt, variables, variable_types, variable_counter,
                         functions, module, string_counter, class_metadata, type_aliases,
-                        function_name, function_return_type, test_mode
-                    )?;
+                        function_name, function_return_type, test_mode, symbol_table
+            )?;
                 }
 
                 // Increment index
@@ -1681,8 +1717,8 @@ impl CodeGenerator {
                         type_aliases,
                         function_name,
                         function_return_type,
-                        test_mode
-                    )?;
+                        test_mode, symbol_table
+            )?;
                     if returned {
                         body_returned = true;
                         break;
@@ -1728,11 +1764,12 @@ impl CodeGenerator {
         type_aliases: &HashMap<String, AstType>,
         function_name: &str,
         function_return_type: &Option<AstType>,
-        test_mode: bool
+        test_mode: bool,
+        symbol_table: Option<&plat_hir::ModuleSymbolTable>
     ) -> Result<bool, CodegenError> {
         // Evaluate start and end expressions
-        let start_val = Self::generate_expression_helper(builder, start, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
-        let end_val = Self::generate_expression_helper(builder, end, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+        let start_val = Self::generate_expression_helper(builder, start, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+        let end_val = Self::generate_expression_helper(builder, end, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
         // Infer the integer type from start expression (both should be same type due to HIR check)
         let int_type = Self::infer_expression_type(start, variable_types);
@@ -1786,7 +1823,7 @@ impl CodeGenerator {
             body_has_return |= Self::generate_statement_helper(
                 builder, stmt, variables, variable_types, variable_counter,
                 functions, module, string_counter, class_metadata, type_aliases,
-                function_name, function_return_type, test_mode
+                function_name, function_return_type, test_mode, symbol_table
             )?;
         }
 
@@ -1837,24 +1874,25 @@ impl CodeGenerator {
         string_counter: &mut usize,
         variable_counter: &mut u32,
         class_metadata: &HashMap<String, ClassMetadata>,
-        test_mode: bool
+        test_mode: bool,
+        symbol_table: Option<&plat_hir::ModuleSymbolTable>
     ) -> Result<Value, CodegenError> {
         match expr {
             Expression::Literal(Literal::Array(elements, _)) => {
                 // Use expected type information for array generation
-                Self::generate_typed_array_literal(builder, elements, expected_type, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)
+                Self::generate_typed_array_literal(builder, elements, expected_type, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)
             }
             Expression::Literal(Literal::Dict(pairs, _)) => {
                 // Use expected type information for dict generation
-                Self::generate_typed_dict_literal(builder, pairs, expected_type, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)
+                Self::generate_typed_dict_literal(builder, pairs, expected_type, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)
             }
             Expression::Literal(Literal::Set(elements, _)) => {
                 // Use expected type information for set generation
-                Self::generate_typed_set_literal(builder, elements, expected_type, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)
+                Self::generate_typed_set_literal(builder, elements, expected_type, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)
             }
             _ => {
                 // For non-array expressions, use the regular helper
-                Self::generate_expression_helper(builder, expr, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)
+                Self::generate_expression_helper(builder, expr, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)
             }
         }
     }
@@ -1870,7 +1908,8 @@ impl CodeGenerator {
         string_counter: &mut usize,
         variable_counter: &mut u32,
         class_metadata: &HashMap<String, ClassMetadata>,
-        test_mode: bool
+        test_mode: bool,
+        symbol_table: Option<&plat_hir::ModuleSymbolTable>
     ) -> Result<Value, CodegenError> {
         if pairs.is_empty() {
             // For empty dicts, determine type from annotation or default to string->i32
@@ -1909,11 +1948,11 @@ impl CodeGenerator {
 
         for (key_expr, value_expr) in pairs {
             // Evaluate key (must be string)
-            let key_val = Self::generate_expression_helper(builder, key_expr, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+            let key_val = Self::generate_expression_helper(builder, key_expr, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
             keys.push(key_val);
 
             // Evaluate value
-            let value_val = Self::generate_expression_helper(builder, value_expr, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+            let value_val = Self::generate_expression_helper(builder, value_expr, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
             values.push(value_val);
 
             // Determine value type
@@ -1994,7 +2033,8 @@ impl CodeGenerator {
         string_counter: &mut usize,
         variable_counter: &mut u32,
         class_metadata: &HashMap<String, ClassMetadata>,
-        test_mode: bool
+        test_mode: bool,
+        symbol_table: Option<&plat_hir::ModuleSymbolTable>
     ) -> Result<Value, CodegenError> {
         if elements.is_empty() {
             // For empty sets, determine type from annotation or default to i32
@@ -2031,7 +2071,7 @@ impl CodeGenerator {
 
         for element_expr in elements {
             // Evaluate element
-            let value_val = Self::generate_expression_helper(builder, element_expr, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+            let value_val = Self::generate_expression_helper(builder, element_expr, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
             values.push(value_val);
 
             // Determine value type
@@ -2106,11 +2146,12 @@ impl CodeGenerator {
         string_counter: &mut usize,
         variable_counter: &mut u32,
         class_metadata: &HashMap<String, ClassMetadata>,
-        test_mode: bool
+        test_mode: bool,
+        symbol_table: Option<&plat_hir::ModuleSymbolTable>
     ) -> Result<Value, CodegenError> {
         match expr {
             Expression::Literal(literal) => {
-                Self::generate_literal(builder, literal, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)
+                Self::generate_literal(builder, literal, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)
             }
             Expression::Identifier { name, .. } => {
                 if let Some(&var) = variables.get(name) {
@@ -2126,8 +2167,8 @@ impl CodeGenerator {
                     BinaryOp::Divide | BinaryOp::Modulo | BinaryOp::Equal |
                     BinaryOp::NotEqual | BinaryOp::Less | BinaryOp::LessEqual |
                     BinaryOp::Greater | BinaryOp::GreaterEqual => {
-                        let left_val = Self::generate_expression_helper(builder, left, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
-                        let right_val = Self::generate_expression_helper(builder, right, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                        let left_val = Self::generate_expression_helper(builder, left, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+                        let right_val = Self::generate_expression_helper(builder, right, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                         // Determine if we're working with floats or strings
                         let left_type = Self::infer_expression_type(left, variable_types);
@@ -2278,7 +2319,7 @@ impl CodeGenerator {
                     }
                     BinaryOp::And => {
                         // Short-circuit AND: evaluate left first
-                        let left_val = Self::generate_expression_helper(builder, left, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                        let left_val = Self::generate_expression_helper(builder, left, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                         // If left is false, don't evaluate right
                         let zero = builder.ins().iconst(I32, 0);
@@ -2299,7 +2340,7 @@ impl CodeGenerator {
                         builder.seal_block(eval_right_block);
 
                         // Now evaluate the right operand
-                        let right_val = Self::generate_expression_helper(builder, right, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                        let right_val = Self::generate_expression_helper(builder, right, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
                         let right_is_true = builder.ins().icmp_imm(IntCC::NotEqual, right_val, 0);
                         let right_as_i32 = builder.ins().uextend(I32, right_is_true);
                         builder.ins().jump(merge_block, &[right_as_i32]);
@@ -2312,7 +2353,7 @@ impl CodeGenerator {
                     }
                     BinaryOp::Or => {
                         // Short-circuit OR: evaluate left first
-                        let left_val = Self::generate_expression_helper(builder, left, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                        let left_val = Self::generate_expression_helper(builder, left, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                         // If left is true, don't evaluate right
                         let one = builder.ins().iconst(I32, 1);
@@ -2333,7 +2374,7 @@ impl CodeGenerator {
                         builder.seal_block(eval_right_block);
 
                         // Now evaluate the right operand
-                        let right_val = Self::generate_expression_helper(builder, right, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                        let right_val = Self::generate_expression_helper(builder, right, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
                         let right_is_true = builder.ins().icmp_imm(IntCC::NotEqual, right_val, 0);
                         let right_as_i32 = builder.ins().uextend(I32, right_is_true);
                         builder.ins().jump(merge_block, &[right_as_i32]);
@@ -2347,7 +2388,7 @@ impl CodeGenerator {
                 }
             }
             Expression::Unary { op, operand, .. } => {
-                let operand_val = Self::generate_expression_helper(builder, operand, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                let operand_val = Self::generate_expression_helper(builder, operand, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                 match op {
                     UnaryOp::Negate => Ok(builder.ins().ineg(operand_val)),
@@ -2360,7 +2401,7 @@ impl CodeGenerator {
                 }
             }
             Expression::Assignment { target, value, .. } => {
-                let val = Self::generate_expression_helper(builder, value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                let val = Self::generate_expression_helper(builder, value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                 match target.as_ref() {
                     Expression::Identifier { name, .. } => {
@@ -2379,7 +2420,7 @@ impl CodeGenerator {
                         // 3. Store the value at object_ptr + offset
 
                         // Get the object value (class instance pointer)
-                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                         // Determine class name from the object type
                         let class_name = Self::get_class_name(object, variable_types)
@@ -2415,15 +2456,15 @@ impl CodeGenerator {
                     // Generate code for the condition
                     let condition_val = Self::generate_expression_helper(
                         builder, &condition_arg.value, variables, variable_types,
-                        functions, module, string_counter, variable_counter, class_metadata, test_mode
-                    )?;
+                        functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table
+            )?;
 
                     // Generate code for the optional message
                     let message_val = if let Some(msg_arg) = message_arg {
                         Self::generate_expression_helper(
                             builder, &msg_arg.value, variables, variable_types,
-                            functions, module, string_counter, variable_counter, class_metadata, test_mode
-                        )?
+                            functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table
+            )?
                     } else {
                         // Use null pointer for default message
                         builder.ins().iconst(I64, 0)
@@ -2520,8 +2561,8 @@ impl CodeGenerator {
                     let port_arg = args.iter().find(|arg| arg.name == "port")
                         .ok_or_else(|| CodegenError::UnsupportedFeature("tcp_listen missing 'port' parameter".to_string()))?;
 
-                    let host_val = Self::generate_expression_helper(builder, &host_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
-                    let port_val = Self::generate_expression_helper(builder, &port_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                    let host_val = Self::generate_expression_helper(builder, &host_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+                    let port_val = Self::generate_expression_helper(builder, &port_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                     let func_sig = {
                         let mut sig = module.make_signature();
@@ -2546,7 +2587,7 @@ impl CodeGenerator {
                     let listener_arg = args.iter().find(|arg| arg.name == "listener")
                         .ok_or_else(|| CodegenError::UnsupportedFeature("tcp_accept missing 'listener' parameter".to_string()))?;
 
-                    let listener_val = Self::generate_expression_helper(builder, &listener_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                    let listener_val = Self::generate_expression_helper(builder, &listener_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                     let func_sig = {
                         let mut sig = module.make_signature();
@@ -2572,8 +2613,8 @@ impl CodeGenerator {
                     let port_arg = args.iter().find(|arg| arg.name == "port")
                         .ok_or_else(|| CodegenError::UnsupportedFeature("tcp_connect missing 'port' parameter".to_string()))?;
 
-                    let host_val = Self::generate_expression_helper(builder, &host_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
-                    let port_val = Self::generate_expression_helper(builder, &port_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                    let host_val = Self::generate_expression_helper(builder, &host_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+                    let port_val = Self::generate_expression_helper(builder, &port_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                     let func_sig = {
                         let mut sig = module.make_signature();
@@ -2600,8 +2641,8 @@ impl CodeGenerator {
                     let max_bytes_arg = args.iter().find(|arg| arg.name == "max_bytes")
                         .ok_or_else(|| CodegenError::UnsupportedFeature("tcp_read missing 'max_bytes' parameter".to_string()))?;
 
-                    let socket_val = Self::generate_expression_helper(builder, &socket_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
-                    let max_bytes_val = Self::generate_expression_helper(builder, &max_bytes_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                    let socket_val = Self::generate_expression_helper(builder, &socket_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+                    let max_bytes_val = Self::generate_expression_helper(builder, &max_bytes_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                     let func_sig = {
                         let mut sig = module.make_signature();
@@ -2628,8 +2669,8 @@ impl CodeGenerator {
                     let data_arg = args.iter().find(|arg| arg.name == "data")
                         .ok_or_else(|| CodegenError::UnsupportedFeature("tcp_write missing 'data' parameter".to_string()))?;
 
-                    let socket_val = Self::generate_expression_helper(builder, &socket_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
-                    let data_val = Self::generate_expression_helper(builder, &data_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                    let socket_val = Self::generate_expression_helper(builder, &socket_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+                    let data_val = Self::generate_expression_helper(builder, &data_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                     let func_sig = {
                         let mut sig = module.make_signature();
@@ -2654,7 +2695,7 @@ impl CodeGenerator {
                     let socket_arg = args.iter().find(|arg| arg.name == "socket")
                         .ok_or_else(|| CodegenError::UnsupportedFeature("tcp_close missing 'socket' parameter".to_string()))?;
 
-                    let socket_val = Self::generate_expression_helper(builder, &socket_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                    let socket_val = Self::generate_expression_helper(builder, &socket_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                     let func_sig = {
                         let mut sig = module.make_signature();
@@ -2680,8 +2721,8 @@ impl CodeGenerator {
                     let mode_arg = args.iter().find(|arg| arg.name == "mode")
                         .ok_or_else(|| CodegenError::UnsupportedFeature("file_open missing 'mode' parameter".to_string()))?;
 
-                    let path_val = Self::generate_expression_helper(builder, &path_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
-                    let mode_val = Self::generate_expression_helper(builder, &mode_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                    let path_val = Self::generate_expression_helper(builder, &path_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+                    let mode_val = Self::generate_expression_helper(builder, &mode_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                     let func_sig = {
                         let mut sig = module.make_signature();
@@ -2708,8 +2749,8 @@ impl CodeGenerator {
                     let max_bytes_arg = args.iter().find(|arg| arg.name == "max_bytes")
                         .ok_or_else(|| CodegenError::UnsupportedFeature("file_read missing 'max_bytes' parameter".to_string()))?;
 
-                    let fd_val = Self::generate_expression_helper(builder, &fd_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
-                    let max_bytes_val = Self::generate_expression_helper(builder, &max_bytes_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                    let fd_val = Self::generate_expression_helper(builder, &fd_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+                    let max_bytes_val = Self::generate_expression_helper(builder, &max_bytes_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                     let func_sig = {
                         let mut sig = module.make_signature();
@@ -2736,8 +2777,8 @@ impl CodeGenerator {
                     let data_arg = args.iter().find(|arg| arg.name == "data")
                         .ok_or_else(|| CodegenError::UnsupportedFeature("file_write missing 'data' parameter".to_string()))?;
 
-                    let fd_val = Self::generate_expression_helper(builder, &fd_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
-                    let data_val = Self::generate_expression_helper(builder, &data_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                    let fd_val = Self::generate_expression_helper(builder, &fd_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+                    let data_val = Self::generate_expression_helper(builder, &data_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                     let func_sig = {
                         let mut sig = module.make_signature();
@@ -2762,7 +2803,7 @@ impl CodeGenerator {
                     let fd_arg = args.iter().find(|arg| arg.name == "fd")
                         .ok_or_else(|| CodegenError::UnsupportedFeature("file_close missing 'fd' parameter".to_string()))?;
 
-                    let fd_val = Self::generate_expression_helper(builder, &fd_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                    let fd_val = Self::generate_expression_helper(builder, &fd_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                     let func_sig = {
                         let mut sig = module.make_signature();
@@ -2786,7 +2827,7 @@ impl CodeGenerator {
                     let path_arg = args.iter().find(|arg| arg.name == "path")
                         .ok_or_else(|| CodegenError::UnsupportedFeature("file_exists missing 'path' parameter".to_string()))?;
 
-                    let path_val = Self::generate_expression_helper(builder, &path_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                    let path_val = Self::generate_expression_helper(builder, &path_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                     let func_sig = {
                         let mut sig = module.make_signature();
@@ -2810,7 +2851,7 @@ impl CodeGenerator {
                     let path_arg = args.iter().find(|arg| arg.name == "path")
                         .ok_or_else(|| CodegenError::UnsupportedFeature("file_size missing 'path' parameter".to_string()))?;
 
-                    let path_val = Self::generate_expression_helper(builder, &path_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                    let path_val = Self::generate_expression_helper(builder, &path_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                     let func_sig = {
                         let mut sig = module.make_signature();
@@ -2834,7 +2875,7 @@ impl CodeGenerator {
                     let path_arg = args.iter().find(|arg| arg.name == "path")
                         .ok_or_else(|| CodegenError::UnsupportedFeature("file_is_dir missing 'path' parameter".to_string()))?;
 
-                    let path_val = Self::generate_expression_helper(builder, &path_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                    let path_val = Self::generate_expression_helper(builder, &path_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                     let func_sig = {
                         let mut sig = module.make_signature();
@@ -2858,7 +2899,7 @@ impl CodeGenerator {
                     let path_arg = args.iter().find(|arg| arg.name == "path")
                         .ok_or_else(|| CodegenError::UnsupportedFeature("file_delete missing 'path' parameter".to_string()))?;
 
-                    let path_val = Self::generate_expression_helper(builder, &path_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                    let path_val = Self::generate_expression_helper(builder, &path_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                     let func_sig = {
                         let mut sig = module.make_signature();
@@ -2885,8 +2926,8 @@ impl CodeGenerator {
                     let new_path_arg = args.iter().find(|arg| arg.name == "new_path")
                         .ok_or_else(|| CodegenError::UnsupportedFeature("file_rename missing 'new_path' parameter".to_string()))?;
 
-                    let old_path_val = Self::generate_expression_helper(builder, &old_path_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
-                    let new_path_val = Self::generate_expression_helper(builder, &new_path_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                    let old_path_val = Self::generate_expression_helper(builder, &old_path_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+                    let new_path_val = Self::generate_expression_helper(builder, &new_path_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                     let func_sig = {
                         let mut sig = module.make_signature();
@@ -2911,7 +2952,7 @@ impl CodeGenerator {
                     let path_arg = args.iter().find(|arg| arg.name == "path")
                         .ok_or_else(|| CodegenError::UnsupportedFeature("dir_create missing 'path' parameter".to_string()))?;
 
-                    let path_val = Self::generate_expression_helper(builder, &path_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                    let path_val = Self::generate_expression_helper(builder, &path_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                     let func_sig = {
                         let mut sig = module.make_signature();
@@ -2935,7 +2976,7 @@ impl CodeGenerator {
                     let path_arg = args.iter().find(|arg| arg.name == "path")
                         .ok_or_else(|| CodegenError::UnsupportedFeature("dir_create_all missing 'path' parameter".to_string()))?;
 
-                    let path_val = Self::generate_expression_helper(builder, &path_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                    let path_val = Self::generate_expression_helper(builder, &path_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                     let func_sig = {
                         let mut sig = module.make_signature();
@@ -2959,7 +3000,7 @@ impl CodeGenerator {
                     let path_arg = args.iter().find(|arg| arg.name == "path")
                         .ok_or_else(|| CodegenError::UnsupportedFeature("dir_remove missing 'path' parameter".to_string()))?;
 
-                    let path_val = Self::generate_expression_helper(builder, &path_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                    let path_val = Self::generate_expression_helper(builder, &path_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                     let func_sig = {
                         let mut sig = module.make_signature();
@@ -2983,7 +3024,7 @@ impl CodeGenerator {
                     let path_arg = args.iter().find(|arg| arg.name == "path")
                         .ok_or_else(|| CodegenError::UnsupportedFeature("dir_list missing 'path' parameter".to_string()))?;
 
-                    let path_val = Self::generate_expression_helper(builder, &path_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                    let path_val = Self::generate_expression_helper(builder, &path_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                     let func_sig = {
                         let mut sig = module.make_signature();
@@ -3009,8 +3050,8 @@ impl CodeGenerator {
                     let max_bytes_arg = args.iter().find(|arg| arg.name == "max_bytes")
                         .ok_or_else(|| CodegenError::UnsupportedFeature("file_read_binary missing 'max_bytes' parameter".to_string()))?;
 
-                    let fd_val = Self::generate_expression_helper(builder, &fd_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
-                    let max_bytes_val = Self::generate_expression_helper(builder, &max_bytes_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                    let fd_val = Self::generate_expression_helper(builder, &fd_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+                    let max_bytes_val = Self::generate_expression_helper(builder, &max_bytes_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                     let func_sig = {
                         let mut sig = module.make_signature();
@@ -3037,8 +3078,8 @@ impl CodeGenerator {
                     let data_arg = args.iter().find(|arg| arg.name == "data")
                         .ok_or_else(|| CodegenError::UnsupportedFeature("file_write_binary missing 'data' parameter".to_string()))?;
 
-                    let fd_val = Self::generate_expression_helper(builder, &fd_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
-                    let data_val = Self::generate_expression_helper(builder, &data_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                    let fd_val = Self::generate_expression_helper(builder, &fd_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+                    let data_val = Self::generate_expression_helper(builder, &data_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                     let func_sig = {
                         let mut sig = module.make_signature();
@@ -3067,9 +3108,9 @@ impl CodeGenerator {
                     let whence_arg = args.iter().find(|arg| arg.name == "whence")
                         .ok_or_else(|| CodegenError::UnsupportedFeature("file_seek missing 'whence' parameter".to_string()))?;
 
-                    let fd_val = Self::generate_expression_helper(builder, &fd_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
-                    let offset_val = Self::generate_expression_helper(builder, &offset_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
-                    let whence_val = Self::generate_expression_helper(builder, &whence_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                    let fd_val = Self::generate_expression_helper(builder, &fd_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+                    let offset_val = Self::generate_expression_helper(builder, &offset_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+                    let whence_val = Self::generate_expression_helper(builder, &whence_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                     let func_sig = {
                         let mut sig = module.make_signature();
@@ -3095,7 +3136,7 @@ impl CodeGenerator {
                     let fd_arg = args.iter().find(|arg| arg.name == "fd")
                         .ok_or_else(|| CodegenError::UnsupportedFeature("file_tell missing 'fd' parameter".to_string()))?;
 
-                    let fd_val = Self::generate_expression_helper(builder, &fd_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                    let fd_val = Self::generate_expression_helper(builder, &fd_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                     let func_sig = {
                         let mut sig = module.make_signature();
@@ -3119,7 +3160,7 @@ impl CodeGenerator {
                     let fd_arg = args.iter().find(|arg| arg.name == "fd")
                         .ok_or_else(|| CodegenError::UnsupportedFeature("file_rewind missing 'fd' parameter".to_string()))?;
 
-                    let fd_val = Self::generate_expression_helper(builder, &fd_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                    let fd_val = Self::generate_expression_helper(builder, &fd_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                     let func_sig = {
                         let mut sig = module.make_signature();
@@ -3146,8 +3187,8 @@ impl CodeGenerator {
                     let mode_arg = args.iter().find(|arg| arg.name == "mode")
                         .ok_or_else(|| CodegenError::UnsupportedFeature("file_chmod missing 'mode' parameter".to_string()))?;
 
-                    let path_val = Self::generate_expression_helper(builder, &path_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
-                    let mode_val = Self::generate_expression_helper(builder, &mode_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                    let path_val = Self::generate_expression_helper(builder, &path_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+                    let mode_val = Self::generate_expression_helper(builder, &mode_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                     let func_sig = {
                         let mut sig = module.make_signature();
@@ -3172,7 +3213,7 @@ impl CodeGenerator {
                     let path_arg = args.iter().find(|arg| arg.name == "path")
                         .ok_or_else(|| CodegenError::UnsupportedFeature("file_get_permissions missing 'path' parameter".to_string()))?;
 
-                    let path_val = Self::generate_expression_helper(builder, &path_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                    let path_val = Self::generate_expression_helper(builder, &path_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                     let func_sig = {
                         let mut sig = module.make_signature();
@@ -3196,7 +3237,7 @@ impl CodeGenerator {
                     let path_arg = args.iter().find(|arg| arg.name == "path")
                         .ok_or_else(|| CodegenError::UnsupportedFeature("file_modified_time missing 'path' parameter".to_string()))?;
 
-                    let path_val = Self::generate_expression_helper(builder, &path_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                    let path_val = Self::generate_expression_helper(builder, &path_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                     let func_sig = {
                         let mut sig = module.make_signature();
@@ -3220,7 +3261,7 @@ impl CodeGenerator {
                     let path_arg = args.iter().find(|arg| arg.name == "path")
                         .ok_or_else(|| CodegenError::UnsupportedFeature("file_created_time missing 'path' parameter".to_string()))?;
 
-                    let path_val = Self::generate_expression_helper(builder, &path_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                    let path_val = Self::generate_expression_helper(builder, &path_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                     let func_sig = {
                         let mut sig = module.make_signature();
@@ -3247,8 +3288,8 @@ impl CodeGenerator {
                     let link_arg = args.iter().find(|arg| arg.name == "link")
                         .ok_or_else(|| CodegenError::UnsupportedFeature("symlink_create missing 'link' parameter".to_string()))?;
 
-                    let target_val = Self::generate_expression_helper(builder, &target_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
-                    let link_val = Self::generate_expression_helper(builder, &link_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                    let target_val = Self::generate_expression_helper(builder, &target_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+                    let link_val = Self::generate_expression_helper(builder, &link_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                     let func_sig = {
                         let mut sig = module.make_signature();
@@ -3273,7 +3314,7 @@ impl CodeGenerator {
                     let path_arg = args.iter().find(|arg| arg.name == "path")
                         .ok_or_else(|| CodegenError::UnsupportedFeature("symlink_read missing 'path' parameter".to_string()))?;
 
-                    let path_val = Self::generate_expression_helper(builder, &path_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                    let path_val = Self::generate_expression_helper(builder, &path_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                     let func_sig = {
                         let mut sig = module.make_signature();
@@ -3297,7 +3338,7 @@ impl CodeGenerator {
                     let path_arg = args.iter().find(|arg| arg.name == "path")
                         .ok_or_else(|| CodegenError::UnsupportedFeature("file_is_symlink missing 'path' parameter".to_string()))?;
 
-                    let path_val = Self::generate_expression_helper(builder, &path_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                    let path_val = Self::generate_expression_helper(builder, &path_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                     let func_sig = {
                         let mut sig = module.make_signature();
@@ -3321,7 +3362,7 @@ impl CodeGenerator {
                     let path_arg = args.iter().find(|arg| arg.name == "path")
                         .ok_or_else(|| CodegenError::UnsupportedFeature("symlink_delete missing 'path' parameter".to_string()))?;
 
-                    let path_val = Self::generate_expression_helper(builder, &path_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                    let path_val = Self::generate_expression_helper(builder, &path_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                     let func_sig = {
                         let mut sig = module.make_signature();
@@ -3345,7 +3386,7 @@ impl CodeGenerator {
                     let capacity_arg = args.iter().find(|arg| arg.name == "capacity")
                         .ok_or_else(|| CodegenError::UnsupportedFeature("channel_init missing 'capacity' parameter".to_string()))?;
 
-                    let capacity_val = Self::generate_expression_helper(builder, &capacity_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                    let capacity_val = Self::generate_expression_helper(builder, &capacity_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                     // TODO: Infer the channel element type from context
                     // For now, default to Int32
@@ -3420,7 +3461,7 @@ impl CodeGenerator {
                 // Evaluate arguments first (needed to infer signature for cross-module calls)
                 let mut arg_values = Vec::new();
                 for arg in args {
-                    let arg_val = Self::generate_expression_helper(builder, &arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                    let arg_val = Self::generate_expression_helper(builder, &arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
                     arg_values.push(arg_val);
                 }
 
@@ -3430,19 +3471,40 @@ impl CodeGenerator {
                     None => {
                         // Function not found in map - check if it's a cross-module call
                         if function.contains("::") {
-                            // Cross-module call - declare as import with signature inferred from arguments
-                            // Build signature based on the evaluated argument types
+                            // Cross-module call - look up signature from symbol table
                             let sig = {
                                 let mut sig = module.make_signature();
                                 sig.call_conv = CallConv::SystemV;
-                                // Add parameters based on actual argument types
-                                for arg_val in &arg_values {
-                                    let arg_type = builder.func.dfg.value_type(*arg_val);
-                                    sig.params.push(AbiParam::new(arg_type));
+
+                                // Try to get function signature from symbol table
+                                if let Some(sym_table) = symbol_table {
+                                    if let Some(plat_hir::Symbol::Function(func_sig)) = sym_table.global_symbols.get(function) {
+                                        // Use actual parameter types from symbol table
+                                        for (_, param_type) in &func_sig.params {
+                                            let cranelift_type = Self::hir_type_to_cranelift(param_type);
+                                            sig.params.push(AbiParam::new(cranelift_type));
+                                        }
+
+                                        // Use actual return type from symbol table
+                                        let return_cranelift_type = Self::hir_type_to_cranelift(&func_sig.return_type);
+                                        sig.returns.push(AbiParam::new(return_cranelift_type));
+                                    } else {
+                                        // Fallback: infer from arguments if not in symbol table
+                                        for arg_val in &arg_values {
+                                            let arg_type = builder.func.dfg.value_type(*arg_val);
+                                            sig.params.push(AbiParam::new(arg_type));
+                                        }
+                                        sig.returns.push(AbiParam::new(I64)); // Default to i64 return
+                                    }
+                                } else {
+                                    // No symbol table available - use old behavior
+                                    for arg_val in &arg_values {
+                                        let arg_type = builder.func.dfg.value_type(*arg_val);
+                                        sig.params.push(AbiParam::new(arg_type));
+                                    }
+                                    sig.returns.push(AbiParam::new(I64));
                                 }
-                                // Assume i64 return (covers most Plat types: strings, objects, i64, etc.)
-                                // For Int32 returns, there will be implicit conversion
-                                sig.returns.push(AbiParam::new(I64));
+
                                 sig
                             };
 
@@ -3470,8 +3532,8 @@ impl CodeGenerator {
                 }
             }
             Expression::Index { object, index, .. } => {
-                let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
-                let index_val = Self::generate_expression_helper(builder, index, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+                let index_val = Self::generate_expression_helper(builder, index, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                 // Use safe get that returns Option<T>
                 let func_sig = {
@@ -3575,7 +3637,7 @@ impl CodeGenerator {
                             return Err(CodegenError::UnsupportedFeature("len() method takes no arguments".to_string()));
                         }
 
-                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                         // Declare plat_array_len function
                         let len_sig = {
@@ -3605,7 +3667,7 @@ impl CodeGenerator {
                             return Err(CodegenError::UnsupportedFeature("length() method takes no arguments".to_string()));
                         }
 
-                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                         // Determine object type for dispatch
                         let is_set = Self::is_set_type(object, variable_types);
@@ -3670,8 +3732,8 @@ impl CodeGenerator {
                             return Err(CodegenError::UnsupportedFeature("concat() method takes exactly one argument".to_string()));
                         }
 
-                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
-                        let arg_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+                        let arg_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                         let func_sig = {
                             let mut sig = module.make_signature();
@@ -3694,8 +3756,8 @@ impl CodeGenerator {
                             return Err(CodegenError::UnsupportedFeature("contains() method takes exactly one argument".to_string()));
                         }
 
-                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
-                        let arg_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+                        let arg_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                         // Determine object type for dispatch
                         let is_set = Self::is_set_type(object, variable_types);
@@ -3752,8 +3814,8 @@ impl CodeGenerator {
                             return Err(CodegenError::UnsupportedFeature(format!("{}() method takes exactly one argument", method)));
                         }
 
-                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
-                        let arg_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+                        let arg_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                         let func_sig = {
                             let mut sig = module.make_signature();
@@ -3777,7 +3839,7 @@ impl CodeGenerator {
                             return Err(CodegenError::UnsupportedFeature(format!("{}() method takes no arguments", method)));
                         }
 
-                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                         let func_sig = {
                             let mut sig = module.make_signature();
@@ -3800,9 +3862,9 @@ impl CodeGenerator {
                             return Err(CodegenError::UnsupportedFeature(format!("{}() method takes exactly two arguments", method)));
                         }
 
-                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
-                        let from_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
-                        let to_val = Self::generate_expression_helper(builder, &args[1].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+                        let from_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+                        let to_val = Self::generate_expression_helper(builder, &args[1].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                         let func_sig = {
                             let mut sig = module.make_signature();
@@ -3827,8 +3889,8 @@ impl CodeGenerator {
                             return Err(CodegenError::UnsupportedFeature("split() method takes exactly one argument".to_string()));
                         }
 
-                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
-                        let delimiter_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+                        let delimiter_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                         let func_sig = {
                             let mut sig = module.make_signature();
@@ -3851,7 +3913,7 @@ impl CodeGenerator {
                             return Err(CodegenError::UnsupportedFeature(format!("{}() method takes no arguments", method)));
                         }
 
-                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                         let func_sig = {
                             let mut sig = module.make_signature();
@@ -3874,7 +3936,7 @@ impl CodeGenerator {
                             return Err(CodegenError::UnsupportedFeature(format!("{}() method takes no arguments", method)));
                         }
 
-                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                         let func_sig = {
                             let mut sig = module.make_signature();
@@ -3898,8 +3960,8 @@ impl CodeGenerator {
                             return Err(CodegenError::UnsupportedFeature("get() method takes exactly one argument".to_string()));
                         }
 
-                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
-                        let index_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+                        let index_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                         let func_sig = {
                             let mut sig = module.make_signature();
@@ -3932,9 +3994,9 @@ impl CodeGenerator {
                             return Err(CodegenError::UnsupportedFeature("set() method takes exactly two arguments".to_string()));
                         }
 
-                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
-                        let index_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
-                        let value_val = Self::generate_expression_helper(builder, &args[1].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+                        let index_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+                        let value_val = Self::generate_expression_helper(builder, &args[1].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                         // Convert value to i64 if needed
                         let value_64 = if builder.func.dfg.value_type(value_val) == I32 {
@@ -3967,8 +4029,8 @@ impl CodeGenerator {
                             return Err(CodegenError::UnsupportedFeature("append() method takes exactly one argument".to_string()));
                         }
 
-                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
-                        let value_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+                        let value_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                         // Convert value to i64 if needed
                         let value_64 = if builder.func.dfg.value_type(value_val) == I32 {
@@ -4000,9 +4062,9 @@ impl CodeGenerator {
                             return Err(CodegenError::UnsupportedFeature("insert_at() method takes exactly two arguments".to_string()));
                         }
 
-                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
-                        let index_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
-                        let value_val = Self::generate_expression_helper(builder, &args[1].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+                        let index_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+                        let value_val = Self::generate_expression_helper(builder, &args[1].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                         // Convert value to i64 if needed
                         let value_64 = if builder.func.dfg.value_type(value_val) == I32 {
@@ -4035,8 +4097,8 @@ impl CodeGenerator {
                             return Err(CodegenError::UnsupportedFeature("remove_at() method takes exactly one argument".to_string()));
                         }
 
-                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
-                        let index_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+                        let index_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                         let func_sig = {
                             let mut sig = module.make_signature();
@@ -4068,7 +4130,7 @@ impl CodeGenerator {
                             return Err(CodegenError::UnsupportedFeature("clear() method takes no arguments".to_string()));
                         }
 
-                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                         // Determine object type for dispatch
                         let is_set = Self::is_set_type(object, variable_types);
@@ -4131,8 +4193,8 @@ impl CodeGenerator {
                             return Err(CodegenError::UnsupportedFeature("index_of() method takes exactly one argument".to_string()));
                         }
 
-                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
-                        let value_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+                        let value_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                         // Convert value to i64 if needed
                         let value_64 = if builder.func.dfg.value_type(value_val) == I32 {
@@ -4172,8 +4234,8 @@ impl CodeGenerator {
                             return Err(CodegenError::UnsupportedFeature("count() method takes exactly one argument".to_string()));
                         }
 
-                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
-                        let value_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+                        let value_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                         // Convert value to i64 if needed
                         let value_64 = if builder.func.dfg.value_type(value_val) == I32 {
@@ -4203,9 +4265,9 @@ impl CodeGenerator {
                             return Err(CodegenError::UnsupportedFeature("slice() method takes exactly two arguments".to_string()));
                         }
 
-                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
-                        let start_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
-                        let end_val = Self::generate_expression_helper(builder, &args[1].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+                        let start_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+                        let end_val = Self::generate_expression_helper(builder, &args[1].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                         let func_sig = {
                             let mut sig = module.make_signature();
@@ -4229,7 +4291,7 @@ impl CodeGenerator {
                             return Err(CodegenError::UnsupportedFeature("all() method takes exactly one argument".to_string()));
                         }
 
-                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                         // For now, use simplified version that checks if all elements are truthy
                         let func_sig = {
@@ -4252,7 +4314,7 @@ impl CodeGenerator {
                             return Err(CodegenError::UnsupportedFeature("any() method takes exactly one argument".to_string()));
                         }
 
-                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                         // For now, use simplified version that checks if any element is truthy
                         let func_sig = {
@@ -4278,8 +4340,8 @@ impl CodeGenerator {
                                     return Err(CodegenError::UnsupportedFeature("Dict.get() method takes exactly one argument".to_string()));
                                 }
 
-                                let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
-                                let key_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                                let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+                                let key_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                                 let func_sig = {
                                     let mut sig = module.make_signature();
@@ -4302,9 +4364,9 @@ impl CodeGenerator {
                                     return Err(CodegenError::UnsupportedFeature("Dict.set() method takes exactly two arguments".to_string()));
                                 }
 
-                                let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
-                                let key_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
-                                let value_val = Self::generate_expression_helper(builder, &args[1].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                                let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+                                let key_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+                                let value_val = Self::generate_expression_helper(builder, &args[1].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                                 // Determine value type
                                 let value_type = Self::get_dict_value_type(&args[1].value, variable_types);
@@ -4333,8 +4395,8 @@ impl CodeGenerator {
                                     return Err(CodegenError::UnsupportedFeature("Dict.remove() method takes exactly one argument".to_string()));
                                 }
 
-                                let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
-                                let key_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                                let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+                                let key_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                                 let func_sig = {
                                     let mut sig = module.make_signature();
@@ -4357,7 +4419,7 @@ impl CodeGenerator {
                                     return Err(CodegenError::UnsupportedFeature("Dict.clear() method takes no arguments".to_string()));
                                 }
 
-                                let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                                let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                                 let func_sig = {
                                     let mut sig = module.make_signature();
@@ -4378,7 +4440,7 @@ impl CodeGenerator {
                                     return Err(CodegenError::UnsupportedFeature("Dict.length() method takes no arguments".to_string()));
                                 }
 
-                                let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                                let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                                 let func_sig = {
                                     let mut sig = module.make_signature();
@@ -4400,7 +4462,7 @@ impl CodeGenerator {
                                     return Err(CodegenError::UnsupportedFeature("Dict.keys() method takes no arguments".to_string()));
                                 }
 
-                                let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                                let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                                 let func_sig = {
                                     let mut sig = module.make_signature();
@@ -4422,7 +4484,7 @@ impl CodeGenerator {
                                     return Err(CodegenError::UnsupportedFeature("Dict.values() method takes no arguments".to_string()));
                                 }
 
-                                let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                                let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                                 let func_sig = {
                                     let mut sig = module.make_signature();
@@ -4444,8 +4506,8 @@ impl CodeGenerator {
                                     return Err(CodegenError::UnsupportedFeature("Dict.has_key() method takes exactly one argument".to_string()));
                                 }
 
-                                let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
-                                let key_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                                let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+                                let key_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                                 let func_sig = {
                                     let mut sig = module.make_signature();
@@ -4468,8 +4530,8 @@ impl CodeGenerator {
                                     return Err(CodegenError::UnsupportedFeature("Dict.has_value() method takes exactly one argument".to_string()));
                                 }
 
-                                let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
-                                let value_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                                let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+                                let value_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                                 // Determine value type
                                 let value_type = Self::get_dict_value_type(&args[0].value, variable_types);
@@ -4497,8 +4559,8 @@ impl CodeGenerator {
                                     return Err(CodegenError::UnsupportedFeature("Dict.merge() method takes exactly one argument".to_string()));
                                 }
 
-                                let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
-                                let other_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                                let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+                                let other_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                                 let func_sig = {
                                     let mut sig = module.make_signature();
@@ -4520,9 +4582,9 @@ impl CodeGenerator {
                                     return Err(CodegenError::UnsupportedFeature("Dict.get_or() method takes exactly two arguments".to_string()));
                                 }
 
-                                let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
-                                let key_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
-                                let default_val = Self::generate_expression_helper(builder, &args[1].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                                let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+                                let key_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+                                let default_val = Self::generate_expression_helper(builder, &args[1].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                                 let func_sig = {
                                     let mut sig = module.make_signature();
@@ -4552,8 +4614,8 @@ impl CodeGenerator {
                                     return Err(CodegenError::UnsupportedFeature(format!("Set.{}() method takes exactly one argument", method)));
                                 }
 
-                                let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
-                                let value_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                                let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+                                let value_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                                 // Determine value type
                                 let value_type = Self::get_set_value_type(&args[0].value, variable_types);
@@ -4589,8 +4651,8 @@ impl CodeGenerator {
                                     return Err(CodegenError::UnsupportedFeature(format!("Set.{}() method takes exactly one argument", method)));
                                 }
 
-                                let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
-                                let other_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                                let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+                                let other_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                                 let func_sig = {
                                     let mut sig = module.make_signature();
@@ -4614,8 +4676,8 @@ impl CodeGenerator {
                                     return Err(CodegenError::UnsupportedFeature(format!("Set.{}() method takes exactly one argument", method)));
                                 }
 
-                                let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
-                                let other_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                                let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+                                let other_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                                 let func_sig = {
                                     let mut sig = module.make_signature();
@@ -4656,8 +4718,8 @@ impl CodeGenerator {
                         };
 
                         // Generate the channel ID and value
-                        let channel_id = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
-                        let value = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                        let channel_id = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+                        let value = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                         // Determine which send function to call based on element type
                         let send_func_name = match channel_element_type {
@@ -4704,7 +4766,7 @@ impl CodeGenerator {
                         };
 
                         // Generate the channel ID
-                        let channel_id = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                        let channel_id = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                         // Determine which recv function to call based on element type
                         let (recv_func_name, use_out_param) = match channel_element_type {
@@ -4768,7 +4830,7 @@ impl CodeGenerator {
                         }
 
                         // Generate the channel ID
-                        let channel_id = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                        let channel_id = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                         // Declare and call the close function
                         let mut close_sig = module.make_signature();
@@ -4804,7 +4866,7 @@ impl CodeGenerator {
                         };
 
                         // Generate the task handle value
-                        let task_handle = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                        let task_handle = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                         // Get the appropriate await function name based on inner type
                         let await_func_name = Self::get_await_function_name(&task_inner_type);
@@ -4833,7 +4895,7 @@ impl CodeGenerator {
                     }
                     // Class methods
                     method_name if Self::is_class_type(object, variable_types) => {
-                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
                         let class_name = Self::get_class_name(object, variable_types).unwrap_or_else(|| "Unknown".to_string());
 
                         // Check if this is a virtual method call that needs dynamic dispatch
@@ -4846,7 +4908,7 @@ impl CodeGenerator {
                         let mut call_args = vec![object_val]; // Start with self
                         for (i, arg) in args.iter().enumerate() {
                             eprintln!("DEBUG: Processing argument {} of type {:?}", i, arg);
-                            let arg_val = Self::generate_expression_helper(builder, &arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                            let arg_val = Self::generate_expression_helper(builder, &arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
                             call_args.push(arg_val);
                         }
 
@@ -4939,7 +5001,7 @@ impl CodeGenerator {
                 } else if args.len() == 1 {
                     // Check if the argument is a pointer type (String, Array, etc.)
                     // that cannot be packed into 32 bits
-                    let arg_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                    let arg_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                     // Determine if we need heap allocation based on the argument type
                     let needs_heap = match &args[0].value {
@@ -5023,7 +5085,7 @@ impl CodeGenerator {
 
                     // Store each field
                     for (i, arg) in args.iter().enumerate() {
-                        let arg_val = Self::generate_expression_helper(builder, &arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                        let arg_val = Self::generate_expression_helper(builder, &arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
                         let offset = 4 + (i * 4) as i32; // discriminant + field index * field_size
                         builder.ins().store(MemFlags::new(), arg_val, ptr, offset);
                     }
@@ -5032,7 +5094,7 @@ impl CodeGenerator {
                 }
             }
             Expression::Match { value, arms, .. } => {
-                let value_val = Self::generate_expression_helper(builder, value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                let value_val = Self::generate_expression_helper(builder, value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                 if arms.is_empty() {
                     return Err(CodegenError::UnsupportedFeature(
@@ -5232,7 +5294,7 @@ impl CodeGenerator {
                         }
                     }
 
-                    let arm_result = Self::generate_expression_helper(builder, &arm.body, &arm_variables, &arm_variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                    let arm_result = Self::generate_expression_helper(builder, &arm.body, &arm_variables, &arm_variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                     // Convert arm result to match the expected continuation block type
                     let converted_result = {
@@ -5272,7 +5334,7 @@ impl CodeGenerator {
             }
             Expression::Try { expression, .. } => {
                 // Generate code for the expression
-                let expr_val = Self::generate_expression_helper(builder, expression, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                let expr_val = Self::generate_expression_helper(builder, expression, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
 
                 // The ? operator desugars to:
                 // match expr {
@@ -5399,8 +5461,8 @@ impl CodeGenerator {
 
                 // First, evaluate the object expression to get the class pointer
                 let object_val = Self::generate_expression_helper(
-                    builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode
-                )?;
+                    builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table
+            )?;
 
                 // Determine class name from the object type
                 let class_name = Self::get_class_name(object, variable_types)
@@ -5471,8 +5533,8 @@ impl CodeGenerator {
 
                     // Evaluate the field value
                     let field_value = Self::generate_expression_helper(
-                        builder, field_value_expr, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode
-                    )?;
+                        builder, field_value_expr, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table
+            )?;
 
                     // Look up field offset from class metadata
                     let (offset, _field_type) = Self::get_field_info_static(class_metadata, class_name, field_name)?;
@@ -5504,8 +5566,8 @@ impl CodeGenerator {
 
                 // Evaluate condition
                 let cond_val = Self::generate_expression_helper(
-                    builder, condition, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode
-                )?;
+                    builder, condition, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table
+            )?;
 
                 // Convert i32 bool to i8 for conditional branch
                 let cond_bool = builder.ins().icmp_imm(IntCC::NotEqual, cond_val, 0);
@@ -5517,8 +5579,8 @@ impl CodeGenerator {
                 builder.switch_to_block(then_block);
                 builder.seal_block(then_block);
                 let then_val = Self::generate_expression_helper(
-                    builder, then_branch, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode
-                )?;
+                    builder, then_branch, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table
+            )?;
                 builder.ins().jump(cont_block, &[then_val]);
 
                 // Generate else branch (or default to unit value)
@@ -5526,8 +5588,8 @@ impl CodeGenerator {
                 builder.seal_block(else_block);
                 let else_val = if let Some(else_expr) = else_branch {
                     Self::generate_expression_helper(
-                        builder, else_expr, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode
-                    )?
+                        builder, else_expr, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table
+            )?
                 } else {
                     // If no else branch, default to 0 (unit value represented as i32)
                     builder.ins().iconst(I32, 0)
@@ -5545,8 +5607,8 @@ impl CodeGenerator {
             Expression::Cast { value, target_type, .. } => {
                 // Generate the value to cast
                 let value_val = Self::generate_expression_helper(
-                    builder, value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode
-                )?;
+                    builder, value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table
+            )?;
 
                 // Determine source type
                 let source_type = Self::infer_expression_type(value, variable_types);
@@ -5790,8 +5852,8 @@ impl CodeGenerator {
                                 &empty_type_aliases,
                                 &closure_name,
                                 &Some(return_ast_type.clone()),
-                                test_mode
-                            )?;
+                                test_mode, symbol_table
+            )?;
                         }
 
                         // If the block didn't have a return, add a default return
@@ -5817,8 +5879,8 @@ impl CodeGenerator {
                             string_counter,
                             &mut closure_variable_counter,
                             class_metadata,
-                            test_mode
-                        )?;
+                            test_mode, symbol_table
+            )?;
 
                         closure_builder.ins().return_(&[result_val]);
                     }
@@ -5901,7 +5963,8 @@ impl CodeGenerator {
         string_counter: &mut usize,
         variable_counter: &mut u32,
         class_metadata: &HashMap<String, ClassMetadata>,
-        test_mode: bool
+        test_mode: bool,
+        symbol_table: Option<&plat_hir::ModuleSymbolTable>
     ) -> Result<Value, CodegenError> {
         if elements.is_empty() {
             // For empty arrays, determine type from annotation or default to i32
@@ -5984,7 +6047,7 @@ impl CodeGenerator {
         // Generate all element values
         let mut element_values = Vec::new();
         for element in elements {
-            let element_val = Self::generate_expression_helper(builder, element, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+            let element_val = Self::generate_expression_helper(builder, element, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
             element_values.push(element_val);
         }
 
@@ -6038,7 +6101,8 @@ impl CodeGenerator {
         string_counter: &mut usize,
         variable_counter: &mut u32,
         class_metadata: &HashMap<String, ClassMetadata>,
-        test_mode: bool
+        test_mode: bool,
+        symbol_table: Option<&plat_hir::ModuleSymbolTable>
     ) -> Result<Value, CodegenError> {
         match literal {
             Literal::Bool(b, _) => {
@@ -6165,8 +6229,8 @@ impl CodeGenerator {
 
                             // Generate the expression value
                             let expr_val = Self::generate_expression_helper(
-                                builder, expr, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode
-                            )?;
+                                builder, expr, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table
+            )?;
                             expression_data.push((expr_val, expr.as_ref()));
                         }
                     }
@@ -6575,7 +6639,7 @@ impl CodeGenerator {
                 // First, evaluate all elements
                 let mut element_values = Vec::new();
                 for element in elements {
-                    let element_val = Self::generate_expression_helper(builder, element, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                    let element_val = Self::generate_expression_helper(builder, element, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
                     element_values.push(element_val);
                 }
 
@@ -6652,11 +6716,11 @@ impl CodeGenerator {
 
                 for (key_expr, value_expr) in pairs {
                     // Evaluate key (must be string)
-                    let key_val = Self::generate_expression_helper(builder, key_expr, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                    let key_val = Self::generate_expression_helper(builder, key_expr, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
                     keys.push(key_val);
 
                     // Evaluate value
-                    let value_val = Self::generate_expression_helper(builder, value_expr, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                    let value_val = Self::generate_expression_helper(builder, value_expr, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
                     values.push(value_val);
 
                     // Determine value type (simplified - assuming i32 values for now)
@@ -6755,7 +6819,7 @@ impl CodeGenerator {
 
                 for element_expr in elements {
                     // Evaluate element
-                    let value_val = Self::generate_expression_helper(builder, element_expr, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode)?;
+                    let value_val = Self::generate_expression_helper(builder, element_expr, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
                     values.push(value_val);
 
                     // Determine value type

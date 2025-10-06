@@ -334,7 +334,8 @@ fn build_multi_module(ordered_files: &[PathBuf]) -> Result<()> {
 
     for (file_path, program) in &modules {
         let codegen = plat_codegen::CodeGenerator::new()
-            .with_context(|| "Failed to initialize code generator")?;
+            .with_context(|| "Failed to initialize code generator")?
+            .with_symbol_table(global_symbols.clone());
 
         let object_bytes = codegen.generate_code(program)
             .with_context(|| format!("Code generation failed for {}", file_path.display()))?;

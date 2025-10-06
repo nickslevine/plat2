@@ -1,7 +1,7 @@
 ## Next
 
   Note: There's an existing codegen issue with cross-module function calls that affects all modules (not stdlib-specific), but
-  the stdlib infrastructure itself is working correctly.
+
 ## stdlib
 * set up stdlib. 
 
