@@ -5,9 +5,12 @@
 //! - Dependency graph construction
 //! - Circular dependency detection
 //! - Module path resolution based on folder structure
+//! - Object file caching for stdlib modules
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
+use std::fs;
+use std::time::SystemTime;
 
 /// Represents a module's identity and metadata
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -430,5 +433,93 @@ mod tests {
 
         assert!(a_pos < b_pos, "a at {}, b at {}", a_pos, b_pos);
         assert!(b_pos < c_pos, "b at {}, c at {}", b_pos, c_pos);
+    }
+}
+
+/// Cache for compiled stdlib modules
+/// Uses object file caching: stores compiled .o files and checks timestamps
+pub struct StdlibCache {
+    cache_dir: PathBuf,
+}
+
+impl StdlibCache {
+    /// Create a new cache instance
+    pub fn new(cache_dir: PathBuf) -> Self {
+        Self { cache_dir }
+    }
+
+    /// Initialize the cache directory structure
+    pub fn init(&self) -> std::io::Result<()> {
+        fs::create_dir_all(&self.cache_dir)?;
+        Ok(())
+    }
+
+    /// Get the cache file path for a module
+    fn cache_path(&self, module_path: &str) -> PathBuf {
+        // Convert module path to safe filename
+        // e.g., "std::json" -> "std-json.o"
+        let safe_name = module_path.replace("::", "-");
+        self.cache_dir.join(format!("{}.o", safe_name))
+    }
+
+    /// Check if a cached object file exists and is up-to-date
+    pub fn is_cached(&self, module_path: &str, source_path: &Path) -> bool {
+        let cache_path = self.cache_path(module_path);
+
+        if !cache_path.exists() {
+            return false;
+        }
+
+        // Compare modification times
+        let cache_modified = match fs::metadata(&cache_path).and_then(|m| m.modified()) {
+            Ok(time) => time,
+            Err(_) => return false,
+        };
+
+        let source_modified = match fs::metadata(source_path).and_then(|m| m.modified()) {
+            Ok(time) => time,
+            Err(_) => return false,
+        };
+
+        // Cache is valid if it's newer than source
+        cache_modified > source_modified
+    }
+
+    /// Get the path to a cached object file (if valid)
+    pub fn get(&self, module_path: &str, source_path: &Path) -> Option<PathBuf> {
+        if self.is_cached(module_path, source_path) {
+            Some(self.cache_path(module_path))
+        } else {
+            None
+        }
+    }
+
+    /// Store a compiled object file in the cache
+    pub fn put(&self, module_path: &str, object_file: &Path) -> std::io::Result<()> {
+        let cache_path = self.cache_path(module_path);
+        fs::copy(object_file, cache_path)?;
+        Ok(())
+    }
+
+    /// Invalidate (delete) a cached module
+    pub fn invalidate(&self, module_path: &str) -> std::io::Result<()> {
+        let cache_path = self.cache_path(module_path);
+        if cache_path.exists() {
+            fs::remove_file(cache_path)?;
+        }
+        Ok(())
+    }
+
+    /// Clear all cached modules
+    pub fn clear_all(&self) -> std::io::Result<()> {
+        if self.cache_dir.exists() {
+            for entry in fs::read_dir(&self.cache_dir)? {
+                let entry = entry?;
+                if entry.path().extension().and_then(|s| s.to_str()) == Some("o") {
+                    fs::remove_file(entry.path())?;
+                }
+            }
+        }
+        Ok(())
     }
 }

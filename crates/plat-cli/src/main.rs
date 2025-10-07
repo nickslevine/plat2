@@ -272,6 +272,12 @@ fn build_project() -> Result<()> {
 
 /// Build multiple modules together with cross-module symbol resolution
 fn build_multi_module(ordered_files: &[PathBuf]) -> Result<()> {
+    // Initialize stdlib cache
+    let cache_dir = get_project_root()?.join("target").join("stdlib-cache");
+    let stdlib_cache = plat_modules::StdlibCache::new(cache_dir);
+    stdlib_cache.init()
+        .with_context(|| "Failed to initialize stdlib cache")?;
+
     // Phase 1: Parse all modules
     println!("\n  {} Parsing all modules...", "→".cyan());
     let mut modules = Vec::new();
@@ -328,11 +334,28 @@ fn build_multi_module(ordered_files: &[PathBuf]) -> Result<()> {
         }
     }
 
-    // Phase 4: Generate object files for all modules
+    // Phase 4: Generate object files for all modules (with caching for stdlib)
     println!("  {} Generating code for all modules...", "→".cyan());
     let mut object_files = Vec::new();
 
     for (file_path, program) in &modules {
+        let module_path = program.module_decl
+            .as_ref()
+            .map(|m| m.path.join("::"))
+            .unwrap_or_default();
+
+        let object_file = file_path.with_extension("o");
+
+        // Check if this is a stdlib module and if it's cached
+        if module_path.starts_with("std::") {
+            if let Some(cached_path) = stdlib_cache.get(&module_path, file_path) {
+                println!("    {} Using cached {}", "→".cyan(), module_path);
+                object_files.push(cached_path);
+                continue;
+            }
+        }
+
+        // Compile the module
         let codegen = plat_codegen::CodeGenerator::new()
             .with_context(|| "Failed to initialize code generator")?
             .with_symbol_table(global_symbols.clone());
@@ -340,9 +363,16 @@ fn build_multi_module(ordered_files: &[PathBuf]) -> Result<()> {
         let object_bytes = codegen.generate_code(program)
             .with_context(|| format!("Code generation failed for {}", file_path.display()))?;
 
-        let object_file = file_path.with_extension("o");
         std::fs::write(&object_file, &object_bytes)
             .with_context(|| format!("Failed to write object file: {}", object_file.display()))?;
+
+        // Cache stdlib modules
+        if module_path.starts_with("std::") {
+            if let Err(e) = stdlib_cache.put(&module_path, &object_file) {
+                // Don't fail the build if caching fails, just log it
+                eprintln!("Warning: Failed to cache {}: {}", module_path, e);
+            }
+        }
 
         object_files.push(object_file);
     }
