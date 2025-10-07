@@ -319,7 +319,7 @@ pub fn read_file(path: String) -> Result<String, String> {
 
 **Goal**: JSON parser written entirely in Plat (no Rust!)
 
-**Status**: 95% Complete - Implementation done, symbol resolution issue remaining
+**Status**: 98% Complete - Type checking passes! Minor codegen issue with qualified enum variants remaining
 
 **Module**: `stdlib/std/json.plat`
 
@@ -480,14 +480,49 @@ if (ch == "n") {
     - **Fix**: Added explicit cases for List, Dict, Set, and Named types to use i64 pointers
     - **Locations**: `plat-codegen/src/lib.rs:5365-5368` and `5377-5381`
     - **Result**: `stringify()` and `stringify_array()` now compile successfully! ✨
-14. ⏸️ **Current Issue**: Type mismatch in `stringify_object()` function
-    - **Error**: Verifier error "arg 1 (v41) has type i64, expected i32" in function call
-    - **Status**: Likely related to loop variable `i` being widened from Int32 to i64 in while loop
-    - **Next**: Investigate loop variable type handling in codegen
+14. ✅ **FIXED (2025-10-07)**: Duplicate module loading in multi-module compilation
+    - **Bug**: `std::json` was being parsed twice in module list
+    - **Root Cause**: `build_multi_module()` didn't track which files were already parsed
+    - **Fix**: Added `HashSet<PathBuf>` to track parsed files and skip duplicates
+    - **Location**: `plat-cli/src/main.rs:282-304`
+15. ✅ **FIXED (2025-10-07)**: Cross-module function resolution
+    - **Bug**: `json::stringify` couldn't resolve to `std::json::stringify`
+    - **Root Cause**: `ModuleSymbolTable::resolve()` returned partially qualified names unchanged
+    - **Fix**: Added logic to match module prefix against imports and construct fully qualified names
+    - **Location**: `plat-hir/src/lib.rs:99-150`
+16. ✅ **FIXED (2025-10-07)**: Fully qualified type names for enums and classes
+    - **Bug**: Type mismatch "expected Enum(\"JsonValue\", []), got Enum(\"std::json::JsonValue\", [])"
+    - **Root Cause**: Enums and classes stored with unqualified names but arguments used qualified names
+    - **Fix**: Store canonical fully qualified names in `enum_info.name` and `class_info.name` fields
+    - **Locations**: Multiple locations in `plat-hir/src/lib.rs` (symbol collection, registration, type conversion)
+17. ✅ **FIXED (2025-10-07)**: Class method collection in symbol phase
+    - **Bug**: "Class 'Parser' has no init method" during type checking
+    - **Root Cause**: `collect_symbols_from_program()` didn't populate class methods
+    - **Fix**: Added complete method collection including default init generation in symbol collection phase
+    - **Location**: `plat-hir/src/lib.rs:709-778`
+18. ✅ **FIXED (2025-10-07)**: Stale unqualified class entries
+    - **Bug**: Still "Class 'Parser' has no init method" after fix #17
+    - **Root Cause**: `collect_class_info()` overwrote qualified entries but left stale unqualified entries
+    - **Fix**: Update both qualified and unqualified class entries when modifying class info
+    - **Location**: `plat-hir/src/lib.rs:1336-1345`
+19. ✅ **FIXED (2025-10-07)**: Enum constructor canonical names
+    - **Bug**: "Match arm returns type Enum(\"JsonValue\", []), expected Enum(\"std::json::JsonValue\", [])"
+    - **Root Cause**: Enum constructors returned unqualified names
+    - **Fix**: Use canonical name from `enum_info.name` in enum constructor return type
+    - **Location**: `plat-hir/src/lib.rs:3901-3921, 4041-4042`
+20. ✅ **FIXED (2025-10-07)**: Pattern matching with qualified enum names
+    - **Bug**: "Pattern expects enum 'std::json::JsonValue', got 'JsonValue'"
+    - **Root Cause**: Pattern matching compared unqualified pattern name with qualified expected name
+    - **Fix**: Resolve pattern enum name to canonical form before comparison
+    - **Location**: `plat-hir/src/lib.rs:4970-4991`
+21. ✅ **MAJOR MILESTONE (2025-10-07)**: Type checking PASSES for std::json! 🎉
+    - **Achievement**: Multi-module stdlib compilation now successfully completes type checking phase
+    - **Remaining**: Minor codegen issue with qualified enum variant names (e.g., `json::JsonValue::Null`)
+    - **Status**: Ready for final codegen fix to complete Phase 4
 
 **Next Steps**:
-1. ⏸️ Fix loop variable type handling in stringify_object (i32 vs i64 issue)
-2. ⏸️ Complete json.plat compilation
+1. ⏸️ Fix qualified enum variant resolution in codegen (e.g., `json::JsonValue::Null` → `std::json::JsonValue::Null`)
+2. ⏸️ Complete json.plat compilation (final codegen pass)
 3. ⏸️ Add comprehensive test suite once compilation succeeds
 4. ⏸️ Test parse() and stringify() functions with real JSON
 

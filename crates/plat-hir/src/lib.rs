@@ -93,13 +93,43 @@ impl ModuleSymbolTable {
         } else {
             format!("{}::{}", self.current_module, name)
         };
+        eprintln!("DEBUG register: Registering '{}' (module: '{}', name: '{}')",
+                  qualified_name, self.current_module, name);
         self.global_symbols.insert(qualified_name, symbol);
     }
 
     /// Resolve a name to a qualified name using imports
     pub fn resolve(&self, name: &str) -> Option<String> {
-        // Check if it's already qualified
+        eprintln!("DEBUG resolve: called with name='{}', current_module='{}', imports={:?}",
+                  name, self.current_module, self.imports);
+
+        // Handle partially qualified names (e.g., "json::stringify")
         if name.contains("::") {
+            let parts: Vec<&str> = name.splitn(2, "::").collect();
+            if parts.len() == 2 {
+                let (module_prefix, symbol_name) = (parts[0], parts[1]);
+                eprintln!("DEBUG resolve: split '{}' → module_prefix='{}', symbol_name='{}'",
+                          name, module_prefix, symbol_name);
+
+                // Check if module_prefix matches any import
+                for import in &self.imports {
+                    eprintln!("DEBUG resolve: checking import '{}'", import);
+                    // Match if import ends with "::module_prefix" or equals "module_prefix"
+                    if import.ends_with(&format!("::{}", module_prefix)) || import == module_prefix {
+                        let fully_qualified = format!("{}::{}", import, symbol_name);
+                        eprintln!("DEBUG resolve: checking global_symbols for '{}'", fully_qualified);
+                        if self.global_symbols.contains_key(&fully_qualified) {
+                            eprintln!("DEBUG resolve: FOUND! '{}' → '{}'", name, fully_qualified);
+                            return Some(fully_qualified);
+                        } else {
+                            eprintln!("DEBUG resolve: NOT in global_symbols");
+                        }
+                    }
+                }
+            }
+
+            // If no import matched, try as-is (might be already fully qualified)
+            eprintln!("DEBUG resolve: '{}' contains :: but no matching import, returning as-is", name);
             return Some(name.to_string());
         }
 
@@ -422,6 +452,9 @@ impl TypeChecker {
     /// Resolve a qualified type name through imports
     /// Example: json::JsonValue -> std::json::JsonValue (if "use std::json" was imported)
     fn resolve_qualified_type_name(&self, type_name: &str) -> String {
+        eprintln!("DEBUG resolve_qualified_type_name: type_name='{}', imports={:?}",
+                  type_name, self.module_table.imports);
+
         if !type_name.contains("::") {
             return type_name.to_string();
         }
@@ -433,24 +466,30 @@ impl TypeChecker {
         }
 
         let first_part = parts[0];
+        eprintln!("DEBUG resolve_qualified_type_name: first_part='{}'", first_part);
 
         // Try to find a matching import
         for import in &self.module_table.imports {
+            eprintln!("DEBUG resolve_qualified_type_name: checking import '{}'", import);
             // Check if this import ends with the first part
             // e.g., "std::json" ends with "json"
             if import == first_part || import.ends_with(&format!("::{}", first_part)) {
                 // Replace the first part with the full import path
                 // json::JsonValue -> std::json::JsonValue
                 let remaining_parts = &parts[1..];
-                if remaining_parts.is_empty() {
-                    return import.clone();
+                let resolved = if remaining_parts.is_empty() {
+                    import.clone()
                 } else {
-                    return format!("{}::{}", import, remaining_parts.join("::"));
-                }
+                    format!("{}::{}", import, remaining_parts.join("::"))
+                };
+                eprintln!("DEBUG resolve_qualified_type_name: MATCHED! '{}' → '{}'",
+                          type_name, resolved);
+                return resolved;
             }
         }
 
         // No matching import found, return as-is
+        eprintln!("DEBUG resolve_qualified_type_name: NO MATCH, returning as-is");
         type_name.to_string()
     }
 
@@ -461,26 +500,45 @@ impl TypeChecker {
         module_path: &str,
         global_symbols: &mut ModuleSymbolTable,
     ) -> Result<(), DiagnosticError> {
-        // Update the module table's current module
+        eprintln!("DEBUG collect_symbols_from_program: module_path='{}', enums={}, functions={}, classes={}",
+                  module_path, program.enums.len(), program.functions.len(), program.classes.len());
+
+        // Update the module table's current module (both global and local)
         global_symbols.current_module = module_path.to_string();
+        self.module_table.current_module = module_path.to_string();
 
         // IMPORTANT: Collect enums FIRST (with two-phase registration) so functions/classes can reference them
         // Phase 1: Register enum names with empty variants
         for enum_decl in &program.enums {
+            // Use fully qualified name for enum storage
+            let qualified_enum_name = if global_symbols.current_module.is_empty() {
+                enum_decl.name.clone()
+            } else {
+                format!("{}::{}", global_symbols.current_module, enum_decl.name)
+            };
+
             let enum_info = EnumInfo {
-                name: enum_decl.name.clone(),
+                name: qualified_enum_name.clone(),  // Use fully qualified name
                 type_params: enum_decl.type_params.clone(),
                 variants: HashMap::new(), // Empty for now
                 methods: HashMap::new(),
                 is_public: enum_decl.is_public,
             };
-            // Register in BOTH global_symbols AND local self.enums for type resolution
+            // Register in global_symbols with unqualified name (will be qualified by register())
             global_symbols.register(&enum_decl.name, Symbol::Enum(enum_info.clone()));
-            self.enums.insert(enum_decl.name.clone(), enum_info);
+            // Store in local enums with FULLY qualified name for type resolution
+            self.enums.insert(qualified_enum_name, enum_info);
         }
 
         // Phase 2: Now resolve variant field types (enums are registered, so recursive refs work)
         for enum_decl in &program.enums {
+            // Calculate the fully qualified name
+            let qualified_enum_name = if global_symbols.current_module.is_empty() {
+                enum_decl.name.clone()
+            } else {
+                format!("{}::{}", global_symbols.current_module, enum_decl.name)
+            };
+
             let mut variants = HashMap::new();
             for variant in &enum_decl.variants {
                 let field_types: Result<Vec<HirType>, _> = variant.fields.iter()
@@ -491,17 +549,13 @@ impl TypeChecker {
             }
 
             // Update the enum with resolved variants in BOTH local and global tables
-            if let Some(enum_info) = self.enums.get_mut(&enum_decl.name) {
+            // Use fully qualified name for local lookup
+            if let Some(enum_info) = self.enums.get_mut(&qualified_enum_name) {
                 enum_info.variants = variants.clone();
             }
 
-            let qualified_name = if global_symbols.current_module.is_empty() {
-                enum_decl.name.clone()
-            } else {
-                format!("{}::{}", global_symbols.current_module, enum_decl.name)
-            };
-
-            if let Some(Symbol::Enum(enum_info)) = global_symbols.global_symbols.get(&qualified_name) {
+            // Update in global symbols
+            if let Some(Symbol::Enum(enum_info)) = global_symbols.global_symbols.get(&qualified_enum_name) {
                 let mut updated_enum = enum_info.clone();
                 updated_enum.variants = variants;
                 global_symbols.register(&enum_decl.name, Symbol::Enum(updated_enum));
@@ -509,15 +563,24 @@ impl TypeChecker {
         }
 
         // Now collect all function declarations (can now reference enums)
+        eprintln!("DEBUG collect_symbols_from_program: Registering {} functions", program.functions.len());
         for func in &program.functions {
+            eprintln!("DEBUG collect_symbols_from_program: Processing function '{}', is_public={}", func.name, func.is_public);
+
             // Build function signature
             let params: Result<Vec<(String, HirType)>, _> = func.params.iter()
                 .map(|p| Ok((p.name.clone(), self.ast_type_to_hir_type(&p.ty)?)))
                 .collect();
-            let params = params?;
+            let params = params.map_err(|e| {
+                eprintln!("DEBUG collect_symbols_from_program: ERROR converting params for function '{}': {:?}", func.name, e);
+                e
+            })?;
 
             let return_type = if let Some(ref rt) = func.return_type {
-                self.ast_type_to_hir_type(rt)?
+                self.ast_type_to_hir_type(rt).map_err(|e| {
+                    eprintln!("DEBUG collect_symbols_from_program: ERROR converting return type for function '{}': {:?}", func.name, e);
+                    e
+                })?
             } else {
                 HirType::Unit
             };
@@ -535,6 +598,7 @@ impl TypeChecker {
                 is_public: func.is_public,
             };
 
+            eprintln!("DEBUG collect_symbols_from_program: About to register function '{}'", func.name);
             global_symbols.register(&func.name, Symbol::Function(sig));
         }
 
@@ -608,6 +672,13 @@ impl TypeChecker {
 
         // Collect all class declarations
         for class_decl in &program.classes {
+            // Use fully qualified name for class storage
+            let qualified_class_name = if global_symbols.current_module.is_empty() {
+                class_decl.name.clone()
+            } else {
+                format!("{}::{}", global_symbols.current_module, class_decl.name)
+            };
+
             // Build class info (simplified for now)
             let mut fields = HashMap::new();
             for field in &class_decl.fields {
@@ -620,7 +691,7 @@ impl TypeChecker {
             }
 
             let class_info = ClassInfo {
-                name: class_decl.name.clone(),
+                name: qualified_class_name.clone(),  // Use fully qualified name
                 type_params: class_decl.type_params.clone(),
                 parent_class: class_decl.parent_class.clone(),
                 fields,
@@ -629,7 +700,81 @@ impl TypeChecker {
                 is_public: class_decl.is_public,
             };
 
-            global_symbols.register(&class_decl.name, Symbol::Class(class_info));
+            // Register in global_symbols with unqualified name (will be qualified by register())
+            global_symbols.register(&class_decl.name, Symbol::Class(class_info.clone()));
+            // Store in local classes with FULLY qualified name for type resolution
+            self.classes.insert(qualified_class_name, class_info);
+        }
+
+        // Collect class methods (including auto-generated init methods)
+        for class_decl in &program.classes {
+            let qualified_class_name = if global_symbols.current_module.is_empty() {
+                class_decl.name.clone()
+            } else {
+                format!("{}::{}", global_symbols.current_module, class_decl.name)
+            };
+
+            // Collect method signatures
+            for method in &class_decl.methods {
+                let params: Result<Vec<(String, HirType)>, _> = method.params.iter()
+                    .map(|p| Ok((p.name.clone(), self.ast_type_to_hir_type(&p.ty)?)))
+                    .collect();
+                let params = params?;
+
+                let return_type = if let Some(ref rt) = method.return_type {
+                    self.ast_type_to_hir_type(rt)?
+                } else {
+                    HirType::Unit
+                };
+
+                let default_values: Vec<Option<Expression>> = method.params.iter()
+                    .map(|p| p.default_value.clone())
+                    .collect();
+
+                let method_sig = FunctionSignature {
+                    type_params: method.type_params.clone(),
+                    params,
+                    default_values,
+                    return_type,
+                    is_mutable: method.is_mutable,
+                    is_public: method.is_public,
+                };
+
+                // Add method to the class info in self.classes
+                if let Some(class_info) = self.classes.get_mut(&qualified_class_name) {
+                    class_info.methods.insert(method.name.clone(), method_sig);
+                }
+            }
+
+            // If no init method was defined, generate a default one
+            let has_init = class_decl.methods.iter().any(|m| m.name == "init");
+            if !has_init {
+                let mut param_types = Vec::new();
+                for field in &class_decl.fields {
+                    let field_type = self.ast_type_to_hir_type(&field.ty)?;
+                    param_types.push((field.name.clone(), field_type));
+                }
+
+                // Default init returns the class type (use fully qualified name)
+                let type_args: Vec<HirType> = class_decl.type_params.iter()
+                    .map(|param| HirType::TypeParameter(param.clone()))
+                    .collect();
+                let class_type = HirType::Class(qualified_class_name.clone(), type_args);
+
+                let default_init_signature = FunctionSignature {
+                    type_params: vec![],
+                    params: param_types.clone(),
+                    default_values: vec![None; param_types.len()],
+                    return_type: class_type,
+                    is_mutable: false,
+                    is_public: true,
+                };
+
+                // Add to class methods
+                if let Some(class_info) = self.classes.get_mut(&qualified_class_name) {
+                    class_info.methods.insert("init".to_string(), default_init_signature);
+                }
+            }
         }
 
         Ok(())
@@ -1013,6 +1158,13 @@ impl TypeChecker {
     }
 
     fn register_class_name(&mut self, class_decl: &ClassDecl) -> Result<(), DiagnosticError> {
+        // Calculate fully qualified class name
+        let qualified_class_name = if !self.module_table.current_module.is_empty() {
+            format!("{}::{}", self.module_table.current_module, class_decl.name)
+        } else {
+            class_decl.name.clone()
+        };
+
         // Validate class name follows TitleCase
         if !is_title_case(&class_decl.name) {
             return Err(DiagnosticError::Type(
@@ -1029,10 +1181,10 @@ impl TypeChecker {
             }
         }
 
-        // Just register the class name with empty info for now (skip if already loaded from global symbols)
-        if !self.classes.contains_key(&class_decl.name) {
+        // Just register the class name with empty info for now (use fully qualified name)
+        if !self.classes.contains_key(&qualified_class_name) {
             let class_info = ClassInfo {
-                name: class_decl.name.clone(),
+                name: qualified_class_name.clone(),  // Use fully qualified name
                 type_params: class_decl.type_params.clone(),
                 parent_class: class_decl.parent_class.clone(),
                 fields: HashMap::new(),
@@ -1040,13 +1192,20 @@ impl TypeChecker {
                 virtual_methods: HashMap::new(),
                 is_public: class_decl.is_public,
             };
-            self.classes.insert(class_decl.name.clone(), class_info);
+            self.classes.insert(qualified_class_name, class_info);
         }
 
         Ok(())
     }
 
     fn collect_class_info(&mut self, class_decl: &ClassDecl) -> Result<(), DiagnosticError> {
+        // Calculate fully qualified class name
+        let qualified_class_name = if !self.module_table.current_module.is_empty() {
+            format!("{}::{}", self.module_table.current_module, class_decl.name)
+        } else {
+            class_decl.name.clone()
+        };
+
         // Add type parameters to scope
         let old_type_params = self.type_parameters.clone();
         self.type_parameters.extend(class_decl.type_params.iter().cloned());
@@ -1118,6 +1277,8 @@ impl TypeChecker {
 
         // If no init method was defined, generate a default one
         if !methods.contains_key("init") {
+            eprintln!("DEBUG collect_class_info: Generating default init for class '{}'", qualified_class_name);
+
             // Create a default init signature that takes all fields as parameters (in declaration order)
             let mut param_types = Vec::new();
             for field in &class_decl.fields {
@@ -1125,11 +1286,11 @@ impl TypeChecker {
                 param_types.push((field.name.clone(), field_type));
             }
 
-            // Default init returns the class type
+            // Default init returns the class type (use fully qualified name)
             let type_args: Vec<HirType> = class_decl.type_params.iter()
                 .map(|param| HirType::TypeParameter(param.clone()))
                 .collect();
-            let class_type = HirType::Class(class_decl.name.clone(), type_args);
+            let class_type = HirType::Class(qualified_class_name.clone(), type_args);
 
             let default_init_signature = FunctionSignature {
                 type_params: vec![], // init methods don't have their own type parameters
@@ -1142,10 +1303,13 @@ impl TypeChecker {
 
             // Store in class methods
             methods.insert("init".to_string(), default_init_signature.clone());
+            eprintln!("DEBUG collect_class_info: Added init to methods map for '{}'", qualified_class_name);
 
             // Also store in global functions map with qualified name
             let method_name = format!("{}::init", class_decl.name);
             self.functions.insert(method_name, default_init_signature);
+        } else {
+            eprintln!("DEBUG collect_class_info: Class '{}' already has init method", qualified_class_name);
         }
 
         // Separate virtual methods from regular methods
@@ -1159,7 +1323,7 @@ impl TypeChecker {
 
         // Update the existing class info with the collected fields and methods
         let class_info = ClassInfo {
-            name: class_decl.name.clone(),
+            name: qualified_class_name.clone(),  // Use fully qualified name
             type_params: class_decl.type_params.clone(),
             parent_class: class_decl.parent_class.clone(),
             fields,
@@ -1168,8 +1332,17 @@ impl TypeChecker {
             is_public: class_decl.is_public,
         };
 
-        // Update the existing entry (it should exist from register_class_name)
-        self.classes.insert(class_decl.name.clone(), class_info);
+        // Store with fully qualified name as key
+        // IMPORTANT: Also update the unqualified version if it exists (from load_symbols_from_module_table)
+        self.classes.insert(qualified_class_name.clone(), class_info.clone());
+
+        // Also update unqualified name if this is a module symbol
+        if !self.module_table.current_module.is_empty() {
+            let unqualified = qualified_class_name
+                .strip_prefix(&format!("{}::", self.module_table.current_module))
+                .unwrap_or(&qualified_class_name);
+            self.classes.insert(unqualified.to_string(), class_info);
+        }
 
         // Restore previous type parameters
         self.type_parameters = old_type_params;
@@ -3726,11 +3899,26 @@ impl TypeChecker {
                 Ok(HirType::Unit)
             }
             Expression::EnumConstructor { enum_name, variant, args, .. } => {
-                // Check if enum exists
-                let enum_info = self.enums.get(enum_name)
-                    .ok_or_else(|| DiagnosticError::Type(
+                // Try to find the enum - try both qualified and unqualified names
+                let enum_info = if let Some(info) = self.enums.get(enum_name) {
+                    info.clone()
+                } else if !self.module_table.current_module.is_empty() {
+                    let qualified = format!("{}::{}", self.module_table.current_module, enum_name);
+                    if let Some(info) = self.enums.get(&qualified) {
+                        info.clone()
+                    } else {
+                        return Err(DiagnosticError::Type(
+                            format!("Unknown enum '{}'", enum_name)
+                        ));
+                    }
+                } else {
+                    return Err(DiagnosticError::Type(
                         format!("Unknown enum '{}'", enum_name)
-                    ))?.clone();
+                    ));
+                };
+
+                // Use the canonical enum name from the enum info
+                let canonical_enum_name = &enum_info.name;
 
                 // Check visibility for cross-module enum access
                 // Enums with :: in their name are qualified (cross-module)
@@ -3850,8 +4038,8 @@ impl TypeChecker {
                     }
                 }
 
-                // Return the enum type with inferred type parameters
-                Ok(HirType::Enum(enum_name.clone(), inferred_type_params))
+                // Return the enum type with inferred type parameters (use canonical name)
+                Ok(HirType::Enum(canonical_enum_name.clone(), inferred_type_params))
             }
             Expression::Match { value, arms, .. } => {
                 let value_type = self.check_expression(value, None)?;
@@ -3994,11 +4182,33 @@ impl TypeChecker {
                 }
             }
             Expression::ConstructorCall { class_name, args, .. } => {
-                // Check if class exists
-                let class_info = self.classes.get(class_name)
-                    .ok_or_else(|| DiagnosticError::Type(
+                // Try to find the class - try both qualified and unqualified names
+                // This handles both old check_program path (unqualified) and new collect_symbols path (qualified)
+                let class_info = if let Some(info) = self.classes.get(class_name) {
+                    // Found with unqualified name
+                    info.clone()
+                } else if !self.module_table.current_module.is_empty() {
+                    // Try with current module qualification
+                    let qualified = format!("{}::{}", self.module_table.current_module, class_name);
+                    if let Some(info) = self.classes.get(&qualified) {
+                        info.clone()
+                    } else {
+                        return Err(DiagnosticError::Type(
+                            format!("Unknown class '{}'", class_name)
+                        ));
+                    }
+                } else {
+                    return Err(DiagnosticError::Type(
                         format!("Unknown class '{}'", class_name)
-                    ))?.clone();
+                    ));
+                };
+
+                // Use the canonical class name from the class info (not the lookup name)
+                let qualified_class_name = &class_info.name;
+
+                eprintln!("DEBUG ConstructorCall: Found class '{}' (canonical name: '{}'), has {} methods",
+                          class_name, qualified_class_name, class_info.methods.len());
+                eprintln!("DEBUG ConstructorCall: Methods: {:?}", class_info.methods.keys().collect::<Vec<_>>());
 
                 // Check visibility for cross-module class access
                 // Classes with :: in their name are qualified (cross-module)
@@ -4120,11 +4330,11 @@ impl TypeChecker {
                 // If the class is generic, specialize it
                 if !class_info.type_params.is_empty() {
                     let _specialized_name = self.monomorphizer.specialize_class(&class_info, &inferred_type_args)?;
-                    // Return the generic class type with inferred type arguments
-                    Ok(HirType::Class(class_name.clone(), inferred_type_args))
+                    // Return the generic class type with inferred type arguments (use qualified name)
+                    Ok(HirType::Class(qualified_class_name.clone(), inferred_type_args))
                 } else {
-                    // Return the non-generic class instance type
-                    Ok(HirType::Class(class_name.clone(), vec![]))
+                    // Return the non-generic class instance type (use qualified name)
+                    Ok(HirType::Class(qualified_class_name.clone(), vec![]))
                 }
             }
             Expression::SuperCall { method, args, .. } => {
@@ -4643,13 +4853,32 @@ impl TypeChecker {
                     }
                     Ok(HirType::TypeParameter(name.clone()))
                 }
-                // Check if this is a known enum (try both as-is and with import resolution)
-                else if self.enums.contains_key(name) {
+                // Check if this is a known enum
+                // First try qualifying with current module (for local references like JsonValue in std::json)
+                else if {
+                    let qualified_name = if !self.module_table.current_module.is_empty() {
+                        format!("{}::{}", self.module_table.current_module, name)
+                    } else {
+                        name.to_string()
+                    };
+                    self.enums.contains_key(&qualified_name) || self.enums.contains_key(name)
+                } {
+                    // Try current module first
+                    let qualified_name = if !self.module_table.current_module.is_empty() {
+                        format!("{}::{}", self.module_table.current_module, name)
+                    } else {
+                        name.to_string()
+                    };
+                    let enum_name = if self.enums.contains_key(&qualified_name) {
+                        qualified_name
+                    } else {
+                        name.to_string()
+                    };
                     let type_args: Result<Vec<HirType>, DiagnosticError> = type_params
                         .iter()
                         .map(|param| self.ast_type_to_hir_type(param))
                         .collect();
-                    Ok(HirType::Enum(name.clone(), type_args?))
+                    Ok(HirType::Enum(enum_name, type_args?))
                 }
                 // Try to resolve qualified name through imports (e.g., json::JsonValue -> std::json::JsonValue)
                 else if name.contains("::") {
@@ -4673,12 +4902,31 @@ impl TypeChecker {
                     }
                 }
                 // Check if this is a known class
-                else if self.classes.contains_key(name) {
+                // First try qualifying with current module (for local references)
+                else if {
+                    let qualified_name = if !self.module_table.current_module.is_empty() {
+                        format!("{}::{}", self.module_table.current_module, name)
+                    } else {
+                        name.to_string()
+                    };
+                    self.classes.contains_key(&qualified_name) || self.classes.contains_key(name)
+                } {
+                    // Try current module first
+                    let qualified_name = if !self.module_table.current_module.is_empty() {
+                        format!("{}::{}", self.module_table.current_module, name)
+                    } else {
+                        name.to_string()
+                    };
+                    let class_name = if self.classes.contains_key(&qualified_name) {
+                        qualified_name
+                    } else {
+                        name.to_string()
+                    };
                     let type_args: Result<Vec<HirType>, DiagnosticError> = type_params
                         .iter()
                         .map(|param| self.ast_type_to_hir_type(param))
                         .collect();
-                    Ok(HirType::Class(name.clone(), type_args?))
+                    Ok(HirType::Class(class_name, type_args?))
                 }
                 else {
                     Err(DiagnosticError::Type(
@@ -4721,9 +4969,23 @@ impl TypeChecker {
 
                 // Check enum name matches (if specified)
                 if let Some(pattern_enum) = enum_name {
-                    if pattern_enum != expected_enum {
+                    // Resolve pattern enum name to canonical form
+                    let canonical_pattern_enum = if let Some(info) = self.enums.get(pattern_enum) {
+                        &info.name
+                    } else if !self.module_table.current_module.is_empty() {
+                        let qualified = format!("{}::{}", self.module_table.current_module, pattern_enum);
+                        if let Some(info) = self.enums.get(&qualified) {
+                            &info.name
+                        } else {
+                            pattern_enum  // Use as-is if not found
+                        }
+                    } else {
+                        pattern_enum
+                    };
+
+                    if canonical_pattern_enum != expected_enum {
                         return Err(DiagnosticError::Type(
-                            format!("Pattern expects enum '{}', got '{}'", expected_enum, pattern_enum)
+                            format!("Pattern expects enum '{}', got '{}'", expected_enum, canonical_pattern_enum)
                         ));
                     }
                 }

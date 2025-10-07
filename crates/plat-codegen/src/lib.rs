@@ -3562,7 +3562,17 @@ impl CodeGenerator {
                     .map_err(CodegenError::ModuleError)?;
                 let func_ref = module.declare_func_in_func(func_id, builder.func);
 
-                let call = builder.ins().call(func_ref, &[object_val, index_val]);
+                // Ensure index is i32 (convert from i64 if needed)
+                let index_type = builder.func.dfg.value_type(index_val);
+                eprintln!("DEBUG: Index type for array access: {:?}", index_type);
+                let index_i32 = if index_type == I64 {
+                    eprintln!("DEBUG: Converting index from i64 to i32");
+                    builder.ins().ireduce(I32, index_val)
+                } else {
+                    index_val
+                };
+
+                let call = builder.ins().call(func_ref, &[object_val, index_i32]);
                 let results = builder.inst_results(call);
 
                 let found = results[0]; // i32: 0 or 1
@@ -3643,6 +3653,7 @@ impl CodeGenerator {
                 Ok(result)
             }
             Expression::MethodCall { object, method, args, .. } => {
+                eprintln!("DEBUG MethodCall: method='{}', object={:?}", method, object);
                 match method.as_str() {
                     "len" => {
                         if !args.is_empty() {
@@ -4016,8 +4027,8 @@ impl CodeGenerator {
                         let call = builder.ins().call(func_ref, &[object_val, index_val]);
                         Ok(builder.inst_results(call)[0])
                     }
-                    // Array methods
-                    "get" => {
+                    // Array methods (only for lists, not dicts)
+                    "get" if Self::is_list_type(object, variable_types) => {
                         if args.len() != 1 {
                             return Err(CodegenError::UnsupportedFeature("get() method takes exactly one argument".to_string()));
                         }
@@ -4039,7 +4050,15 @@ impl CodeGenerator {
                             .map_err(CodegenError::ModuleError)?;
                         let func_ref = module.declare_func_in_func(func_id, builder.func);
 
-                        let call = builder.ins().call(func_ref, &[object_val, index_val]);
+                        // Ensure index is i32 (convert from i64 if needed)
+                        let index_type = builder.func.dfg.value_type(index_val);
+                        let index_i32 = if index_type == I64 {
+                            builder.ins().ireduce(I32, index_val)
+                        } else {
+                            index_val
+                        };
+
+                        let call = builder.ins().call(func_ref, &[object_val, index_i32]);
                         let results = builder.inst_results(call);
 
                         // For now, return packed Option<T> as i64 (found in high bit, value in low bits)
@@ -5196,11 +5215,25 @@ impl CodeGenerator {
 
                         Ok(ptr)
                     } else {
-                        // Pack discriminant and value for i32 types
+                        // Pack discriminant and value
                         let disc_val = builder.ins().iconst(I64, discriminant as i64);
                         let disc_shifted = builder.ins().ishl_imm(disc_val, 32);
-                        let arg_extended = builder.ins().uextend(I64, arg_val);
-                        let packed = builder.ins().bor(disc_shifted, arg_extended);
+                        // Convert value to i64 based on type
+                        let arg_type = builder.func.dfg.value_type(arg_val);
+                        let arg_as_i64 = if arg_type == I64 {
+                            arg_val
+                        } else if arg_type == F64 {
+                            // For floats, use bitcast to preserve bit pattern
+                            builder.ins().bitcast(I64, MemFlags::new(), arg_val)
+                        } else if arg_type == F32 {
+                            // For F32, bitcast to i32 then extend
+                            let as_i32 = builder.ins().bitcast(I32, MemFlags::new(), arg_val);
+                            builder.ins().uextend(I64, as_i32)
+                        } else {
+                            // For integers smaller than i64, extend
+                            builder.ins().uextend(I64, arg_val)
+                        };
+                        let packed = builder.ins().bor(disc_shifted, arg_as_i64);
                         Ok(packed)
                     }
                 } else {
@@ -7191,11 +7224,19 @@ impl CodeGenerator {
     fn is_class_type(expr: &Expression, variable_types: &HashMap<String, VariableType>) -> bool {
         match expr {
             Expression::ConstructorCall { .. } => true,
+            Expression::Self_ { .. } => {
+                // self is always a class instance when it appears
+                eprintln!("DEBUG is_class_type: Expression::Self_ => true");
+                true
+            }
             Expression::Identifier { name, .. } => {
                 // Look up variable type
                 if let Some(var_type) = variable_types.get(name) {
-                    matches!(var_type, VariableType::Class(_))
+                    let is_class = matches!(var_type, VariableType::Class(_));
+                    eprintln!("DEBUG is_class_type: name='{}', type={:?}, is_class={}", name, var_type, is_class);
+                    is_class
                 } else {
+                    eprintln!("DEBUG is_class_type: name='{}' not found in variable_types", name);
                     false
                 }
             }

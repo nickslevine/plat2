@@ -279,12 +279,19 @@ fn build_multi_module(ordered_files: &[PathBuf]) -> Result<()> {
     stdlib_cache.init()
         .with_context(|| "Failed to initialize stdlib cache")?;
 
-    // Phase 1: Parse all user modules
+    // Phase 1: Parse all modules (user and stdlib)
     println!("\n  {} Parsing all modules...", "→".cyan());
     let mut modules = Vec::new();
-    let mut stdlib_imports = HashSet::new();
+    let mut parsed_files = HashSet::new(); // Track which files we've already parsed
 
     for file in ordered_files {
+        // Skip if we've already parsed this file
+        if parsed_files.contains(file) {
+            eprintln!("DEBUG: Skipping duplicate file: {:?}", file);
+            continue;
+        }
+        parsed_files.insert(file.clone());
+
         let source = fs::read_to_string(file)
             .with_context(|| format!("Failed to read file: {}", file.display()))?;
 
@@ -293,41 +300,7 @@ fn build_multi_module(ordered_files: &[PathBuf]) -> Result<()> {
         let program = parser.parse()
             .with_context(|| "Failed to parse program")?;
 
-        // Collect stdlib imports from this module
-        for use_decl in &program.use_decls {
-            let import_path = use_decl.path.join("::");
-            if import_path.starts_with("std::") {
-                stdlib_imports.insert(import_path);
-            }
-        }
-
         modules.push((file.clone(), program));
-    }
-
-    // Phase 1.5: Discover and parse stdlib modules
-    if !stdlib_imports.is_empty() {
-        println!("  {} Discovering stdlib modules...", "→".cyan());
-        let stdlib_root = get_stdlib_root();
-        let current_dir = std::env::current_dir()
-            .with_context(|| "Failed to get current directory")?;
-        let mut resolver = plat_modules::ModuleResolver::new(current_dir, stdlib_root);
-
-        for stdlib_module in &stdlib_imports {
-            let module_id = resolver.discover_stdlib_module(stdlib_module)
-                .with_context(|| format!("Failed to discover stdlib module: {}", stdlib_module))?;
-
-            // Parse the stdlib module
-            let source = fs::read_to_string(&module_id.file_path)
-                .with_context(|| format!("Failed to read stdlib module: {}", module_id.file_path.display()))?;
-
-            let parser = plat_parser::Parser::new(&source)
-                .with_context(|| "Failed to create parser for stdlib module")?;
-            let program = parser.parse()
-                .with_context(|| format!("Failed to parse stdlib module: {}", stdlib_module))?;
-
-            println!("    {} Loaded {}", "→".cyan(), stdlib_module);
-            modules.push((module_id.file_path.clone(), program));
-        }
     }
 
     // Phase 2: Build global symbol table from all modules (including stdlib)
@@ -339,6 +312,8 @@ fn build_multi_module(ordered_files: &[PathBuf]) -> Result<()> {
             .as_ref()
             .map(|m| m.path.join("::"))
             .unwrap_or_default();
+
+        eprintln!("DEBUG: Collecting symbols from module '{}' (file: {:?})", module_path, file_path);
 
         // Register all top-level symbols from this module
         let mut temp_checker = plat_hir::TypeChecker::new();
@@ -357,9 +332,12 @@ fn build_multi_module(ordered_files: &[PathBuf]) -> Result<()> {
         let mut module_symbols = global_symbols.clone();
         module_symbols.current_module = module_path.clone();
 
+        eprintln!("DEBUG: Type checking module '{}' (file: {:?})", module_path, file_path);
+
         // Add imports for this module
         for use_decl in &program.use_decls {
             let import_path = use_decl.path.join("::");
+            eprintln!("DEBUG: Adding import '{}' for module '{}'", import_path, module_path);
             module_symbols.add_import(import_path);
         }
 
@@ -382,11 +360,13 @@ fn build_multi_module(ordered_files: &[PathBuf]) -> Result<()> {
             .unwrap_or_default();
 
         let object_file = file_path.with_extension("o");
+        eprintln!("DEBUG: Processing module '{}' from file {:?}", module_path, file_path);
 
         // Check if this is a stdlib module and if it's cached
         if module_path.starts_with("std::") {
             if let Some(cached_path) = stdlib_cache.get(&module_path, file_path) {
                 println!("    {} Using cached {}", "→".cyan(), module_path);
+                eprintln!("DEBUG: Adding cached object file: {:?}", cached_path);
                 object_files.push(cached_path);
                 continue;
             }
@@ -416,11 +396,16 @@ fn build_multi_module(ordered_files: &[PathBuf]) -> Result<()> {
             }
         }
 
+        eprintln!("DEBUG: Adding compiled object file: {:?}", object_file);
         object_files.push(object_file);
     }
 
     // Phase 5: Link all object files together
     println!("  {} Linking {} object file(s)...", "→".cyan(), object_files.len());
+    eprintln!("DEBUG: Object files to link:");
+    for (idx, obj) in object_files.iter().enumerate() {
+        eprintln!("  [{}] {:?}", idx, obj);
+    }
 
     // Build the runtime library first
     let build_result = Command::new("cargo")
