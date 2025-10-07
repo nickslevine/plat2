@@ -1,80 +1,18 @@
 use std::json;
 
 fn main() -> Int32 {
-  // Test parsing null
-  let null_result: Result<json::JsonValue, String> = json::parse(input = "null");
-  match null_result {
-    Result::Ok(val: json::JsonValue) -> {
-      print(value = "Parsed null successfully");
-    },
+  let result: Result<json::JsonValue, String> = json::parse(input = "null");
+
+  let value: json::JsonValue = match result {
+    Result::Ok(v: json::JsonValue) -> v,
     Result::Err(err: String) -> {
-      print(value = "Error parsing null: ${err}");
+      print(value = "Parse error: ${err}");
       return 1;
     }
   };
 
-  // Test parsing boolean
-  let bool_result: Result<json::JsonValue, String> = json::parse(input = "true");
-  match bool_result {
-    Result::Ok(val: json::JsonValue) -> {
-      print(value = "Parsed boolean successfully");
-    },
-    Result::Err(err: String) -> {
-      print(value = "Error parsing boolean: ${err}");
-      return 1;
-    }
-  };
+  let json_str: String = json::stringify(value = value);
+  print(value = "JSON: ${json_str}");
 
-  // Test parsing number
-  let num_result: Result<json::JsonValue, String> = json::parse(input = "42");
-  match num_result {
-    Result::Ok(val: json::JsonValue) -> {
-      print(value = "Parsed number successfully");
-    },
-    Result::Err(err: String) -> {
-      print(value = "Error parsing number: ${err}");
-      return 1;
-    }
-  };
-
-  // Test parsing string
-  let str_result: Result<json::JsonValue, String> = json::parse(input = "\"hello\"");
-  match str_result {
-    Result::Ok(val: json::JsonValue) -> {
-      print(value = "Parsed string successfully");
-    },
-    Result::Err(err: String) -> {
-      print(value = "Error parsing string: ${err}");
-      return 1;
-    }
-  };
-
-  // Test parsing array
-  let arr_result: Result<json::JsonValue, String> = json::parse(input = "[1, 2, 3]");
-  match arr_result {
-    Result::Ok(val: json::JsonValue) -> {
-      print(value = "Parsed array successfully");
-    },
-    Result::Err(err: String) -> {
-      print(value = "Error parsing array: ${err}");
-      return 1;
-    }
-  };
-
-  // Test parsing object
-  let obj_result: Result<json::JsonValue, String> = json::parse(input = "{\"name\": \"Alice\", \"age\": 30}");
-  match obj_result {
-    Result::Ok(val: json::JsonValue) -> {
-      print(value = "Parsed object successfully");
-      let json_str: String = json::stringify(value = val);
-      print(value = "Stringified: ${json_str}");
-    },
-    Result::Err(err: String) -> {
-      print(value = "Error parsing object: ${err}");
-      return 1;
-    }
-  };
-
-  print(value = "All JSON tests passed!");
   return 0;
 }

@@ -397,8 +397,13 @@ fn build_multi_module(ordered_files: &[PathBuf]) -> Result<()> {
             .with_context(|| "Failed to initialize code generator")?
             .with_symbol_table(global_symbols.clone());
 
-        let object_bytes = codegen.generate_code(program)
-            .with_context(|| format!("Code generation failed for {}", file_path.display()))?;
+        let object_bytes = match codegen.generate_code(program) {
+            Ok(bytes) => bytes,
+            Err(e) => {
+                eprintln!("Code generation error details: {:?}", e);
+                anyhow::bail!("Code generation failed for {}: {}", file_path.display(), e);
+            }
+        };
 
         std::fs::write(&object_file, &object_bytes)
             .with_context(|| format!("Failed to write object file: {}", object_file.display()))?;

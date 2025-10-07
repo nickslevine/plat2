@@ -3469,8 +3469,22 @@ impl CodeGenerator {
                 let func_id = match functions.get(function) {
                     Some(&id) => id,
                     None => {
-                        // Function not found in map - check if it's a cross-module call
-                        if function.contains("::") {
+                        // Function not found in map
+                        // If it doesn't contain "::", it might be a same-module call with a simple name
+                        // Try to find it in the functions map with a module prefix
+                        if !function.contains("::") {
+                            // Look for any function that ends with "::function_name" in the map
+                            let suffix = format!("::{}", function);
+                            let maybe_mangled = functions.keys()
+                                .find(|k| k.ends_with(&suffix))
+                                .map(|k| k.as_str());
+
+                            if let Some(mangled_name) = maybe_mangled {
+                                functions[mangled_name]
+                            } else {
+                                return Err(CodegenError::UndefinedFunction(function.clone()));
+                            }
+                        } else {
                             // Cross-module call - look up signature from symbol table
                             let sig = {
                                 let mut sig = module.make_signature();
@@ -3510,8 +3524,6 @@ impl CodeGenerator {
 
                             module.declare_function(function, Linkage::Import, &sig)
                                 .map_err(CodegenError::ModuleError)?
-                        } else {
-                            return Err(CodegenError::UndefinedFunction(function.clone()));
                         }
                     }
                 };
@@ -5350,15 +5362,23 @@ impl CodeGenerator {
                                     AstType::Bool => (VariableType::Bool, I32, false),
                                     AstType::Float32 => (VariableType::Float32, F32, false),
                                     AstType::Float64 => (VariableType::Float64, F64, false),
+                                    AstType::List(_) => (VariableType::Array(Box::new(VariableType::Int32)), I64, false),
+                                    AstType::Dict(_, _) => (VariableType::Dict, I64, false),
+                                    AstType::Set(_) => (VariableType::Set, I64, false),
+                                    AstType::Named(name, _) => (VariableType::Class(name.clone()), I64, false),
                                     _ => (VariableType::Int32, I32, false), // Fallback for other types
                                 };
 
                                 // Use runtime detection to handle both packed and heap formats
                                 // This is needed because FFI functions return heap pointers,
                                 // while Plat functions return packed values
-                                // Note: Int64 and Float64 cannot be packed (need 64 bits for value),
-                                // so they always use heap format like strings
-                                let is_always_heap = is_string || matches!(binding_type, AstType::Int64 | AstType::Float64);
+                                // Note: Int64, Float64, List, Dict, Set, and Named types cannot be packed,
+                                // so they always use heap format (i64 pointers)
+                                let is_always_heap = is_string || matches!(binding_type,
+                                    AstType::Int64 | AstType::Float64 |
+                                    AstType::List(_) | AstType::Dict(_, _) | AstType::Set(_) |
+                                    AstType::Named(_, _)
+                                );
                                 let field_val = if bindings.len() == 1 && !is_always_heap {
                                     // Single 32-bit field: detect format at runtime
                                     let min_addr = builder.ins().iconst(I64, 0x1000);
