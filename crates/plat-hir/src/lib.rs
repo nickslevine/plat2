@@ -512,9 +512,21 @@ impl TypeChecker {
             }
         }
 
-        // Collect all enum declarations
+        // Collect all enum declarations (two-phase to support recursive types)
+        // Phase 1: Register enum names with empty variants
         for enum_decl in &program.enums {
-            // Build enum info (simplified for now)
+            let enum_info = EnumInfo {
+                name: enum_decl.name.clone(),
+                type_params: enum_decl.type_params.clone(),
+                variants: HashMap::new(), // Empty for now
+                methods: HashMap::new(),
+                is_public: enum_decl.is_public,
+            };
+            global_symbols.register(&enum_decl.name, Symbol::Enum(enum_info));
+        }
+
+        // Phase 2: Now resolve variant field types (enums are registered, so recursive refs work)
+        for enum_decl in &program.enums {
             let mut variants = HashMap::new();
             for variant in &enum_decl.variants {
                 let field_types: Result<Vec<HirType>, _> = variant.fields.iter()
@@ -524,15 +536,18 @@ impl TypeChecker {
                 variants.insert(variant.name.clone(), field_types);
             }
 
-            let enum_info = EnumInfo {
-                name: enum_decl.name.clone(),
-                type_params: enum_decl.type_params.clone(),
-                variants,
-                methods: HashMap::new(), // Methods will be populated later
-                is_public: enum_decl.is_public,
+            // Update the enum with resolved variants
+            let qualified_name = if global_symbols.current_module.is_empty() {
+                enum_decl.name.clone()
+            } else {
+                format!("{}::{}", global_symbols.current_module, enum_decl.name)
             };
 
-            global_symbols.register(&enum_decl.name, Symbol::Enum(enum_info));
+            if let Some(Symbol::Enum(enum_info)) = global_symbols.global_symbols.get(&qualified_name) {
+                let mut updated_enum = enum_info.clone();
+                updated_enum.variants = variants;
+                global_symbols.register(&enum_decl.name, Symbol::Enum(updated_enum));
+            }
         }
 
         // Collect all class declarations
@@ -637,9 +652,15 @@ impl TypeChecker {
             self.collect_newtype(newtype)?;
         }
 
-        // First pass: collect all enum definitions
+        // First pass: register enum names (two-phase for recursive types)
+        // Phase 1: Register enum names with empty variants
         for enum_decl in &program.enums {
-            self.collect_enum_info(enum_decl)?;
+            self.register_enum_name(enum_decl)?;
+        }
+
+        // Phase 2: Resolve variant field types (enum names are now available)
+        for enum_decl in &program.enums {
+            self.collect_enum_variants(enum_decl)?;
         }
 
         // First phase: register all class names (without processing types)
@@ -840,7 +861,8 @@ impl TypeChecker {
         Ok(())
     }
 
-    fn collect_enum_info(&mut self, enum_decl: &EnumDecl) -> Result<(), DiagnosticError> {
+    /// Phase 1: Register enum name with empty variants (supports recursive types)
+    fn register_enum_name(&mut self, enum_decl: &EnumDecl) -> Result<(), DiagnosticError> {
         // Validate enum name follows TitleCase
         if !is_title_case(&enum_decl.name) {
             return Err(DiagnosticError::Type(
@@ -857,25 +879,46 @@ impl TypeChecker {
             }
         }
 
-        let mut variants = HashMap::new();
-        let mut methods = HashMap::new();
-
-        // Collect variant information
+        // Validate variant names (do this early before type resolution)
         for variant in &enum_decl.variants {
-            // Validate variant name follows TitleCase
             if !is_title_case(&variant.name) {
                 return Err(DiagnosticError::Type(
                     format!("Enum variant '{}' must be TitleCase", variant.name)
                 ));
             }
+        }
 
+        // Register enum with empty variants
+        let enum_info = EnumInfo {
+            name: enum_decl.name.clone(),
+            type_params: enum_decl.type_params.clone(),
+            variants: HashMap::new(), // Empty for now
+            methods: HashMap::new(),
+            is_public: enum_decl.is_public,
+        };
+
+        if self.enums.insert(enum_decl.name.clone(), enum_info).is_some() {
+            return Err(DiagnosticError::Type(
+                format!("Enum '{}' is defined multiple times", enum_decl.name)
+            ));
+        }
+
+        Ok(())
+    }
+
+    /// Phase 2: Resolve and populate enum variants (enum names are now available)
+    fn collect_enum_variants(&mut self, enum_decl: &EnumDecl) -> Result<(), DiagnosticError> {
+        let mut variants = HashMap::new();
+        let mut methods = HashMap::new();
+
+        // Collect variant information (can now reference the enum itself)
+        for variant in &enum_decl.variants {
             let field_types: Result<Vec<HirType>, DiagnosticError> = variant.fields
                 .iter()
                 .map(|field_type| self.ast_type_to_hir_type(field_type))
                 .collect();
 
             let field_types = field_types?;
-
             variants.insert(variant.name.clone(), field_types);
         }
 
@@ -896,7 +939,7 @@ impl TypeChecker {
                 .collect();
 
             let signature = FunctionSignature {
-                type_params: method.type_params.clone(), // Store generic type parameters
+                type_params: method.type_params.clone(),
                 params: param_types?,
                 default_values,
                 return_type,
@@ -907,18 +950,10 @@ impl TypeChecker {
             methods.insert(method.name.clone(), signature);
         }
 
-        let enum_info = EnumInfo {
-            name: enum_decl.name.clone(),
-            type_params: enum_decl.type_params.clone(),
-            variants,
-            methods,
-            is_public: enum_decl.is_public,
-        };
-
-        if self.enums.insert(enum_decl.name.clone(), enum_info).is_some() {
-            return Err(DiagnosticError::Type(
-                format!("Enum '{}' is defined multiple times", enum_decl.name)
-            ));
+        // Update the enum with resolved variants and methods
+        if let Some(enum_info) = self.enums.get_mut(&enum_decl.name) {
+            enum_info.variants = variants;
+            enum_info.methods = methods;
         }
 
         Ok(())

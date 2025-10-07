@@ -2468,6 +2468,127 @@ fn wrap_file_error(fd_result: Result<Int32, String>) -> Result<String, String> {
 
 ---
 
+## Recursive Enum Type Support (2025-10-07) - ✅ COMPLETE
+
+**Issue**: Forward Reference Problem with Recursive Enums
+
+While implementing Phase 4 (std::json), we discovered that the type checker couldn't handle recursive enum types where an enum references itself in its variant fields.
+
+### The Problem
+
+```plat
+pub enum JsonValue {
+  Null,
+  Bool(Bool),
+  Number(Float64),
+  String(String),
+  Array(List[JsonValue]),    // Recursive reference!
+  Object(Dict[String, JsonValue])  // Recursive reference!
+}
+```
+
+When the type checker tried to process this enum, it failed with "Unknown type 'JsonValue'" because:
+1. Enum variant field types were being resolved **before** the enum itself was registered
+2. `List[JsonValue]` couldn't be resolved because `JsonValue` wasn't in the type checker's enum map yet
+
+### The Solution: Two-Phase Registration
+
+We implemented two-phase registration for enums at **two levels**:
+
+#### Level 1: Global Symbol Table (`setup_global_symbols`)
+
+```rust
+// Phase 1: Register enum names with empty variants
+for enum_decl in &program.enums {
+    let enum_info = EnumInfo {
+        name: enum_decl.name.clone(),
+        type_params: enum_decl.type_params.clone(),
+        variants: HashMap::new(), // Empty for now
+        methods: HashMap::new(),
+        is_public: enum_decl.is_public,
+    };
+    global_symbols.register(&enum_decl.name, Symbol::Enum(enum_info));
+}
+
+// Phase 2: Resolve variant field types (enums are registered, so recursive refs work)
+for enum_decl in &program.enums {
+    let mut variants = HashMap::new();
+    for variant in &enum_decl.variants {
+        let field_types = variant.fields.iter()
+            .map(|f| self.ast_type_to_hir_type(f))  // Now JsonValue is known!
+            .collect();
+        variants.insert(variant.name.clone(), field_types);
+    }
+    // Update the enum with resolved variants
+    // ...
+}
+```
+
+#### Level 2: TypeChecker (`check_program`)
+
+```rust
+// Phase 1: Register enum names with empty variants
+for enum_decl in &program.enums {
+    self.register_enum_name(enum_decl)?;  // Just the name, empty variants
+}
+
+// Phase 2: Resolve variant field types (enum names are now available)
+for enum_decl in &program.enums {
+    self.collect_enum_variants(enum_decl)?;  // Resolve List[JsonValue], etc.
+}
+```
+
+### Key Benefits
+
+1. **Recursive Types Work**: Enums can reference themselves (e.g., tree structures, JSON)
+2. **Mutually Recursive Types**: Multiple enums can reference each other
+3. **Clean Error Messages**: If there's a real unknown type, the error is clear
+4. **No Performance Impact**: Two-phase is fast (just two passes over declarations)
+
+### Files Modified
+
+- `crates/plat-hir/src/lib.rs`:
+  - Updated `setup_global_symbols()` for global two-phase registration (lines 515-551)
+  - Split `collect_enum_info()` into:
+    - `register_enum_name()` - Phase 1: Register with empty variants
+    - `collect_enum_variants()` - Phase 2: Resolve and populate variants
+  - Updated `check_program()` to call both phases (lines 656-664)
+
+### What Now Works
+
+```plat
+// Recursive enum - JSON tree structure
+pub enum JsonValue {
+  Null,
+  Bool(Bool),
+  Number(Float64),
+  String(String),
+  Array(List[JsonValue]),              // ✅ Works!
+  Object(Dict[String, JsonValue])      // ✅ Works!
+}
+
+// Mutually recursive enums - Expression tree
+pub enum Expr {
+  Literal(Int32),
+  BinaryOp(Box[BinaryExpr])  // ✅ References BinaryExpr
+}
+
+pub enum BinaryExpr {
+  Add(Expr, Expr),   // ✅ References Expr back
+  Sub(Expr, Expr)
+}
+```
+
+### Success Criteria Met
+
+- ✅ std::json compiles without errors
+- ✅ Recursive enum types resolve correctly
+- ✅ No "Unknown type" errors for self-references
+- ✅ Existing tests still pass
+- ✅ Error messages for genuine unknown types remain clear
+
+---
+
 ## Next Steps
 
 1. ✅ ~~**Create Directory Structure**: `mkdir -p stdlib/std`~~ (Completed)
@@ -2476,16 +2597,16 @@ fn wrap_file_error(fd_result: Result<Int32, String>) -> Result<String, String> {
 4. ✅ ~~**Fix Type Checker**: Implement Option A (respect return type in generic constructor inference)~~ (Completed - 2025-10-07)
 5. ✅ ~~**Write std::io**: First real stdlib module (Phase 3)~~ (Completed - 2025-10-07)
 6. ✅ ~~**Fix Parser**: Support `var x: List<T>` syntax~~ (Completed - 2025-10-07, commit 4c3df07)
-7. ⏸️ **Finish std::json** (Phase 4) - 99% complete, ready to compile (may need recursive enum fix)
+7. ✅ ~~**Finish std::json** (Phase 4)~~ - COMPLETE! Recursive enum blocker fixed (2025-10-07)
 8. 🔧 **Add Caching** (Phase 2) - Dependencies added, implementation pending
 9. **Expand**: Add more modules (std::fs, std::net, std::http) based on user feedback
 
 ---
 
-**Status**: ⏸️ Phase 4 Ready - Parser Blocker Fixed, JSON Implementation Complete
+**Status**: ✅ Phase 4 COMPLETE - std::json is fully functional!
 **Start Date**: 2025-01-XX
 **Last Updated**: 2025-10-07
-**Current Phase**: Phase 4 ready to compile (std::json parser fix complete), Phase 2 started (caching deps added)
+**Current Phase**: Phase 4 complete (std::json compiles and works!), Phase 2 started (caching deps added)
 **Maintainer**: Plat Core Team
 
 ## Progress Summary
@@ -2498,7 +2619,7 @@ fn wrap_file_error(fd_result: Result<Int32, String>) -> Result<String, String> {
   - `read_file()`, `write_file()`, `append_file()` all functional
   - Comprehensive test suite with error handling
   - Discovered match expression limitation (no multi-statement blocks in arms)
-- ⏸️ **Phase 4 (std::json)**: READY TO COMPILE - Implementation 99% complete! (2025-10-07)
+- ✅ **Phase 4 (std::json)**: COMPLETE! (2025-10-07)
   - ✅ Complete recursive descent JSON parser implemented
   - ✅ Full stringify implementation
   - ✅ All parse methods: null, bool, number, string, array, object
@@ -2508,7 +2629,7 @@ fn wrap_file_error(fd_result: Result<Int32, String>) -> Result<String, String> {
   - ✅ Pure Plat implementation - no Rust FFI!
   - ✅ **FIXED (2025-10-07)**: Parser now supports `var` with generic types like `List<T>`! (commit 4c3df07)
   - ✅ **Parser accepts both syntaxes**: `List<T>` AND `List[T]`, `Dict<K,V>` AND `Dict[K,V]`, `Set<T>` AND `Set[T]`
-  - ⏸️ **Ready to compile**: May encounter recursive enum type issues, but parser blocker is resolved
+  - ✅ **FIXED (2025-10-07)**: Recursive enum types now supported! Two-phase registration prevents forward reference errors
 - 🔧 **Phase 2 (Module Caching)**: STARTED - Dependencies added (2025-10-07)
   - ✅ Added serde and bincode dependencies
   - ⏸️ Implementation pending (StdlibCache struct, cache directory, invalidation logic)
