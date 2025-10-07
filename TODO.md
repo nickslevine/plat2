@@ -1,12 +1,15 @@
 ## Next
+module caching
+json parser syntax issue. 
 
-
+ The JSON parser is 99% complete but has a syntax issue with mutable generic collections
+  (var elements: List<JsonValue>) that needs investigation into Plat's type system rules.
 
 ## stdlib
 
 * pathlib
 * colored printing 
-* logging package
+* logging package  
 * json, etc
 * caching
 * cli/tui framework
@@ -101,6 +104,7 @@ Linting
 * change return type of main. 
 * refactor stdlib. 
 * ai inference library
+* unify syntax (generic type params vs square brackets for List[Int], etc)
 
 
 

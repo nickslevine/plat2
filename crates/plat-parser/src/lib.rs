@@ -369,25 +369,49 @@ impl Parser {
 
     fn parse_type(&mut self) -> Result<Type, DiagnosticError> {
         if self.match_token(&Token::List) {
-            self.consume(Token::LeftBracket, "Expected '[' after 'List'")?;
+            // Accept both List[T] and List<T> syntax
+            let use_angle_brackets = self.match_token(&Token::Less);
+            if !use_angle_brackets {
+                self.consume(Token::LeftBracket, "Expected '[' or '<' after 'List'")?;
+            }
             let element_type = self.parse_type()?;
-            self.consume(Token::RightBracket, "Expected ']' after element type")?;
+            if use_angle_brackets {
+                self.consume(Token::Greater, "Expected '>' after element type")?;
+            } else {
+                self.consume(Token::RightBracket, "Expected ']' after element type")?;
+            }
             return Ok(Type::List(Box::new(element_type)));
         }
 
         if self.match_token(&Token::Dict) {
-            self.consume(Token::LeftBracket, "Expected '[' after 'Dict'")?;
+            // Accept both Dict[K, V] and Dict<K, V> syntax
+            let use_angle_brackets = self.match_token(&Token::Less);
+            if !use_angle_brackets {
+                self.consume(Token::LeftBracket, "Expected '[' or '<' after 'Dict'")?;
+            }
             let key_type = self.parse_type()?;
             self.consume(Token::Comma, "Expected ',' after key type")?;
             let value_type = self.parse_type()?;
-            self.consume(Token::RightBracket, "Expected ']' after value type")?;
+            if use_angle_brackets {
+                self.consume(Token::Greater, "Expected '>' after value type")?;
+            } else {
+                self.consume(Token::RightBracket, "Expected ']' after value type")?;
+            }
             return Ok(Type::Dict(Box::new(key_type), Box::new(value_type)));
         }
 
         if self.match_token(&Token::Set) {
-            self.consume(Token::LeftBracket, "Expected '[' after 'Set'")?;
+            // Accept both Set[T] and Set<T> syntax
+            let use_angle_brackets = self.match_token(&Token::Less);
+            if !use_angle_brackets {
+                self.consume(Token::LeftBracket, "Expected '[' or '<' after 'Set'")?;
+            }
             let element_type = self.parse_type()?;
-            self.consume(Token::RightBracket, "Expected ']' after element type")?;
+            if use_angle_brackets {
+                self.consume(Token::Greater, "Expected '>' after element type")?;
+            } else {
+                self.consume(Token::RightBracket, "Expected ']' after element type")?;
+            }
             return Ok(Type::Set(Box::new(element_type)));
         }
 
