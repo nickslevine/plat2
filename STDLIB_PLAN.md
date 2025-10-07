@@ -169,12 +169,37 @@ Final binary (minimal size, only includes what's used)
 
 ---
 
-### Phase 2: Module Caching (Performance)
+### Phase 2: Module Caching (Performance) 🔧 STARTED
 
 **Goal**: Cache compiled stdlib modules for fast rebuilds
 
+**Status**: Dependencies added, implementation pending
+
+**Progress** (2025-10-07):
+- ✅ Added `serde` to workspace dependencies (Cargo.toml)
+- ✅ Added `serde` and `bincode` to plat-hir crate
+- ⏸️ HIR serialization implementation pending
+- ⏸️ Cache directory structure not created
+- ⏸️ StdlibCache struct not implemented
+
+**Implementation Strategy** (Revised):
+Two approaches considered:
+1. **HIR Serialization** (original plan):
+   - Serialize type-checked HIR to disk
+   - Requires implementing Serialize/Deserialize for all HIR types
+   - Pros: Cache before codegen, faster recompilation
+   - Cons: Complex, requires extensive derive annotations
+
+2. **Object File Caching** (simpler alternative):
+   - Cache compiled `.o` files instead of HIR
+   - Use file modification time for invalidation
+   - Pros: Simpler, leverages existing build artifacts
+   - Cons: Still needs codegen on cache hit
+
+**Recommendation**: Start with object file caching for quick wins, upgrade to HIR caching later if needed.
+
 **Tasks**:
-1. Implement HIR serialization with serde
+1. Implement HIR serialization with serde (OR skip for object file approach)
 2. Add `target/stdlib-cache/` directory
 3. Create `StdlibCache` struct in `plat-modules`:
    - `fn get(module: &str) -> Option<CachedModule>`
@@ -188,6 +213,8 @@ Final binary (minimal size, only includes what's used)
 - First compilation: full stdlib compile
 - Second compilation: instant (loaded from cache)
 - Modifying stdlib module: only that module recompiles
+
+**Blocked By**: None - can be implemented independently
 
 ---
 
@@ -258,11 +285,11 @@ pub fn read_file(path: String) -> Result<String, String> {
 
 ---
 
-### Phase 4: std::json (Pure Plat Implementation!) ✅ COMPLETED
+### Phase 4: std::json (Pure Plat Implementation!) 🚧 BLOCKED
 
 **Goal**: JSON parser written entirely in Plat (no Rust!)
 
-**Status**: Complete - Full JSON parser and stringify implementation
+**Status**: 99% Complete - Implementation done, blocked by language limitation
 
 **Module**: `stdlib/std/json.plat`
 
@@ -289,13 +316,24 @@ pub fn read_file(path: String) -> Result<String, String> {
 - ❌ **No `!` operator**: Use `== false` instead
 - ❌ **No `break` statement**: Rewrote while loops with boolean continuation flags
 - ✅ **Else-if support added**: Now using clean `else if` syntax throughout
+- 🚫 **BLOCKER: `var` with generic types**: Parser doesn't support `var elements: List<JsonValue> = []`
+  - **Error**: "Expected '[' after 'List'" when using angle brackets in var declarations
+  - **Impact**: Cannot create mutable collections (arrays/dicts) that need to grow
+  - **Workaround Attempts**:
+    - ✗ Changing to `let` - Lists still need mutation (push/pop)
+    - ✗ Using square brackets `List[JsonValue]` - Wrong syntax for type annotations
+  - **Root Cause**: Plat's generic type syntax is inconsistent:
+    - Enum variant definitions: `Array(List[JsonValue])` (square brackets)
+    - Variable declarations: `let x: List<JsonValue>` (angle brackets)
+    - But `var` with angle brackets fails to parse!
 
 **Completed Work**:
-- ✅ Full recursive descent JSON parser
+- ✅ Full recursive descent JSON parser implemented
 - ✅ Complete stringify implementation with escape handling
 - ✅ All else-if chains converted to clean syntax
-- ⏸️ Comprehensive test suite (future work)
-- ⏸️ Error handling edge case tests (future work)
+- 🚫 **BLOCKED**: Cannot compile due to `var` + generic type syntax issue
+- ⏸️ Comprehensive test suite (blocked on compilation)
+- ⏸️ Error handling edge case tests (blocked on compilation)
 
 **Implementation Pattern Example** (now using clean else-if syntax):
 ```plat
@@ -326,11 +364,17 @@ if (ch == "n") {
 - Result-based error handling
 
 **Success Criteria**:
-- ✅ Parse valid JSON (objects, arrays, primitives)
-- ✅ Reject invalid JSON with error messages
-- ✅ stringify() converts JsonValue back to JSON string
-- ✅ Clean, readable code with else-if syntax
-- ⏸️ Comprehensive test coverage (future work)
+- ✅ Parse valid JSON (objects, arrays, primitives) - implementation complete
+- ✅ Reject invalid JSON with error messages - implementation complete
+- ✅ stringify() converts JsonValue back to JSON string - implementation complete
+- ✅ Clean, readable code with else-if syntax - implementation complete
+- 🚫 **Module compiles**: BLOCKED - needs parser fix for `var` + generic types
+- ⏸️ Comprehensive test coverage (blocked until compilation works)
+
+**Next Steps to Unblock**:
+1. Fix Plat parser to accept `var elements: List<JsonValue> = []` syntax
+2. Ensure consistency: both `let` and `var` should support generic types with angle brackets
+3. Once fixed, the JSON module should compile immediately
 
 ---
 
@@ -2433,16 +2477,17 @@ fn wrap_file_error(fd_result: Result<Int32, String>) -> Result<String, String> {
 3. ✅ ~~**Fix Cross-Module Codegen**: Phase 1 & Phase 2 complete~~ (Completed - commit a819495)
 4. ✅ ~~**Fix Type Checker**: Implement Option A (respect return type in generic constructor inference)~~ (Completed - 2025-10-07)
 5. ✅ ~~**Write std::io**: First real stdlib module (Phase 3)~~ (Completed - 2025-10-07)
-6. ✅ ~~**Write std::json**: Showcase pure Plat implementation (Phase 4)~~ (Completed - 2025-10-07)
-7. **Add Caching**: Optimize compilation performance (Module caching phase)
-8. **Expand**: Add more modules based on user feedback
+6. 🚫 **BLOCKED: Write std::json** (Phase 4) - 99% complete, blocked by parser issue with `var` + generic types
+7. 🔧 **Add Caching** (Phase 2) - Dependencies added, implementation pending
+8. **Fix Parser**: Support `var x: List<T>` syntax (unblocks std::json)
+9. **Expand**: Add more modules (std::fs, std::net, std::http) based on user feedback
 
 ---
 
-**Status**: ✅ Phase 4 Complete - JSON Parser Finished!
+**Status**: 🚫 Phase 4 Blocked - JSON Parser Implementation Complete, Parser Bug Preventing Compilation
 **Start Date**: 2025-01-XX
 **Last Updated**: 2025-10-07
-**Current Phase**: Phase 4 Complete (std::json), ready for Phase 5 (Additional Primitives) or Phase 2 (Module Caching)
+**Current Phase**: Phase 4 blocked (std::json needs parser fix), Phase 2 started (caching deps added)
 **Maintainer**: Plat Core Team
 
 ## Progress Summary
@@ -2455,14 +2500,23 @@ fn wrap_file_error(fd_result: Result<Int32, String>) -> Result<String, String> {
   - `read_file()`, `write_file()`, `append_file()` all functional
   - Comprehensive test suite with error handling
   - Discovered match expression limitation (no multi-statement blocks in arms)
-- ✅ **Phase 4 (std::json)**: COMPLETE - Full JSON parser and stringify! (2025-10-07)
+- 🚫 **Phase 4 (std::json)**: BLOCKED - Implementation 99% complete! (2025-10-07)
   - ✅ Complete recursive descent JSON parser implemented
   - ✅ Full stringify implementation
   - ✅ All parse methods: null, bool, number, string, array, object
   - ✅ Escape sequence handling
   - ✅ Worked around `||`, `&&`, `!`, `break` limitations
   - ✅ Clean else-if syntax throughout (after language feature added)
-  - Pure Plat implementation - no Rust FFI!
-- ⏸️ **Module Caching Phase**: Not started - optimization for future
+  - ✅ Pure Plat implementation - no Rust FFI!
+  - 🚫 **BLOCKED**: Parser doesn't support `var` with generic types like `List<T>`
+  - **Fix Required**: Update parser to accept `var elements: List<JsonValue> = []`
+- 🔧 **Phase 2 (Module Caching)**: STARTED - Dependencies added (2025-10-07)
+  - ✅ Added serde and bincode dependencies
+  - ⏸️ Implementation pending (StdlibCache struct, cache directory, invalidation logic)
 
-**Next Steps**: Phase 2 (Module Caching) or Phase 5 (Additional Primitives) or Phase 6 (More stdlib modules)
+**Critical Issue**: Parser bug blocking std::json - needs `var` + generic type syntax support
+
+**Next Steps**:
+1. **Priority**: Fix parser to support `var x: List<T>` (unblocks std::json)
+2. Implement module caching for performance
+3. Add more stdlib modules (std::fs, std::net, std::http)
