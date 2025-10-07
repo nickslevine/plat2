@@ -315,11 +315,11 @@ pub fn read_file(path: String) -> Result<String, String> {
 
 ---
 
-### Phase 4: std::json (Pure Plat Implementation!) ⏸️ READY TO COMPILE
+### Phase 4: std::json (Pure Plat Implementation!) ⏸️ DEBUGGING TYPE CHECK ISSUE
 
 **Goal**: JSON parser written entirely in Plat (no Rust!)
 
-**Status**: 99% Complete - Implementation done, parser blocker FIXED!
+**Status**: 99% Complete - Recursive enum compilation works, minor type check bug remaining
 
 **Module**: `stdlib/std/json.plat`
 
@@ -398,11 +398,22 @@ if (ch == "n") {
 - ⏸️ **Module compilation**: Ready to attempt (may encounter other issues with recursive enums)
 - ⏸️ Comprehensive test coverage (ready to implement once compilation works)
 
+**Recursive Enum Support** (2025-10-07):
+1. ✅ Parser fix complete - both `let` and `var` support generic types with angle brackets (commit 4c3df07)
+2. ✅ **MAJOR FIX**: Recursive enums now work in multi-module compilation! (commit c38e1f4)
+   - Fixed symbol collection order (enums BEFORE functions)
+   - Fixed dual registration (global_symbols AND local self.enums)
+   - Fixed unqualified name lookup for current module symbols
+   - Fixed duplicate registration errors during type checking
+3. ⏸️ **Current Blocker**: Minor type check error in json.plat:
+   - Error: "Match arm returns type Unit, expected Enum(\"JsonValue\", [])"
+   - This is a bug in the json.plat implementation itself, not the compiler
+   - Need to find and fix the match expression with incorrect return type
+
 **Next Steps**:
-1. ✅ ~~Fix Plat parser to accept `var elements: List<JsonValue> = []` syntax~~ (COMPLETE - commit 4c3df07)
-2. ✅ ~~Ensure consistency: both `let` and `var` should support generic types with angle brackets~~ (COMPLETE)
-3. ⏸️ Attempt compilation - may need to address recursive enum type issues
-4. ⏸️ Add comprehensive test suite once compilation succeeds
+1. ⏸️ Debug and fix the match expression type error in json.plat
+2. ⏸️ Add comprehensive test suite once compilation succeeds
+3. ⏸️ Test parse() and stringify() functions with real JSON
 
 ---
 
