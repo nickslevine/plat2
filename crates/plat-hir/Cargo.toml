@@ -8,6 +8,8 @@ license.workspace = true
 
 [dependencies]
 thiserror.workspace = true
+serde = { workspace = true, features = ["derive"] }
+bincode = "1.3"
 plat-ast = { path = "../plat-ast" }
 plat-diags = { path = "../plat-diags" }
 plat-modules = { path = "../plat-modules" }

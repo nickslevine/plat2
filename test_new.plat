@@ -1,0 +1,38 @@
+use std::io;
+
+fn main() -> Int32 {
+  print(value = "Testing std::io module...");
+
+  let write_result: Result<Bool, String> = io::write_file(
+    path = "test_hello.txt",
+    content = "Hello from Plat stdlib!"
+  );
+
+  match write_result {
+    Result::Ok(success: Bool) -> print(value = "✓ File written successfully"),
+    Result::Err(err: String) -> {
+      print(value = "✗ Write failed:");
+      print(value = err);
+      return 1;
+    }
+  };
+
+  let read_result: Result<String, String> = io::read_file(path = "test_hello.txt");
+
+  match read_result {
+    Result::Ok(content: String) -> {
+      print(value = "✓ Read file content:");
+      print(value = content);
+    },
+    Result::Err(err: String) -> {
+      print(value = "✗ Read failed:");
+      print(value = err);
+      return 1;
+    }
+  };
+
+  let delete_result: Result<Bool, String> = file_delete(path = "test_hello.txt");
+
+  print(value = "✅ std::io module working correctly!");
+  return 0;
+}

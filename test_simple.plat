@@ -1,0 +1,4 @@
+fn main() -> Int32 {
+  print(value = "Hello, world!");
+  return 0;
+}

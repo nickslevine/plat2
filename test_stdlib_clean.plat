@@ -1,0 +1,30 @@
+use std::io;
+
+fn main() -> Int32 {
+  print(value = "Testing std::io...");
+
+  let wr: Result<Bool, String> = io::write_file(path = "t.txt", content = "hello");
+
+  match wr {
+    Result::Ok(s: Bool) -> print(value = "wrote ok"),
+    Result::Err(e: String) -> {
+      print(value = e);
+      return 1;
+    }
+  };
+
+  let rr: Result<String, String> = io::read_file(path = "t.txt");
+
+  match rr {
+    Result::Ok(c: String) -> print(value = c),
+    Result::Err(e: String) -> {
+      print(value = e);
+      return 1;
+    }
+  };
+
+  let dr: Result<Bool, String> = file_delete(path = "t.txt");
+
+  print(value = "done!");
+  return 0;
+}

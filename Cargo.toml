@@ -38,6 +38,9 @@ object = "0.36"
 # GC support - using conservative GC
 gc = { version = "0.5", features = ["derive"] }
 
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+
 # Testing and utilities
 regex = "1.10"
 insta = { version = "1.40", features = ["yaml"] }
