@@ -1,0 +1,29 @@
+fn main() -> Int32 {
+  let text: String = "Hello, World!";
+
+  // Test substring
+  let sub1: String = text.substring(start_index = 0, end_index = 5);
+  print(value = "substring(0, 5): ${sub1}");  // Should print "Hello"
+
+  let sub2: String = text.substring(start_index = 7, end_index = 12);
+  print(value = "substring(7, 12): ${sub2}");  // Should print "World"
+
+  // Test char_at
+  let ch1: String = text.char_at(index = 0);
+  print(value = "char_at(0): ${ch1}");  // Should print "H"
+
+  let ch2: String = text.char_at(index = 7);
+  print(value = "char_at(7): ${ch2}");  // Should print "W"
+
+  let ch3: String = text.char_at(index = 12);
+  print(value = "char_at(12): ${ch3}");  // Should print "!"
+
+  // Test out of bounds (should return empty string)
+  let ch_invalid: String = text.char_at(index = 100);
+  print(value = "char_at(100) length: ${ch_invalid.length()}");  // Should print "0"
+
+  let sub_invalid: String = text.substring(start_index = 100, end_index = 200);
+  print(value = "substring(100, 200) length: ${sub_invalid.length()}");  // Should print "0"
+
+  return 0;
+}

@@ -269,7 +269,7 @@ class Parser {
     self.position = self.position + 1;
     self.skip_whitespace();
 
-    let elements: List<JsonValue> = [];
+    let elements: List[JsonValue] = [];
 
     if (self.position < self.input.length()) {
       if (self.peek() == "]") {
@@ -329,7 +329,7 @@ class Parser {
     self.position = self.position + 1;
     self.skip_whitespace();
 
-    var obj: Dict<String, JsonValue> = {};
+    var obj: Dict[String, JsonValue] = {};
 
     if (self.position < self.input.length()) {
       if (self.peek() == "}") {
@@ -591,12 +591,7 @@ fn stringify_object(obj: Dict<String, JsonValue>) -> String {
       result = result.concat(other = stringify_string(s = key));
       result = result.concat(other = ":");
 
-      let value_opt: Option<JsonValue> = obj[key];
-
-      let value: JsonValue = match value_opt {
-        Option::Some(v: JsonValue) -> v,
-        Option::None -> JsonValue::Null
-      };
+      let value: JsonValue = obj.get(key = key);
 
       result = result.concat(other = stringify(value = value));
 

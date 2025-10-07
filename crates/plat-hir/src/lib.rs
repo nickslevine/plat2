@@ -3181,6 +3181,35 @@ impl TypeChecker {
                         // Returns Result<Bool, String>
                         Ok(HirType::Enum("Result".to_string(), vec![HirType::Bool, HirType::String]))
                     }
+                    (HirType::String, "substring") => {
+                        if args.len() != 2 {
+                            return Err(DiagnosticError::Type(
+                                "substring() method takes exactly two arguments (start_index, end_index)".to_string()
+                            ));
+                        }
+                        let start_type = self.check_expression(&args[0].value, None)?;
+                        let end_type = self.check_expression(&args[1].value, None)?;
+                        if start_type != HirType::Int32 || end_type != HirType::Int32 {
+                            return Err(DiagnosticError::Type(
+                                format!("substring() method expects two Int32 arguments, got {:?} and {:?}", start_type, end_type)
+                            ));
+                        }
+                        Ok(HirType::String)
+                    }
+                    (HirType::String, "char_at") => {
+                        if args.len() != 1 {
+                            return Err(DiagnosticError::Type(
+                                "char_at() method takes exactly one argument (index)".to_string()
+                            ));
+                        }
+                        let index_type = self.check_expression(&args[0].value, None)?;
+                        if index_type != HirType::Int32 {
+                            return Err(DiagnosticError::Type(
+                                format!("char_at() method expects Int32 argument, got {:?}", index_type)
+                            ));
+                        }
+                        Ok(HirType::String)
+                    }
                     // Dict methods
                     (HirType::Dict(key_type, value_type), "get") => {
                         if args.len() != 1 {

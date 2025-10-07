@@ -417,16 +417,22 @@ if (ch == "n") {
    - **Additional Fixes**:
      - Made `skip_whitespace()` public (needed by `parse()` function)
      - Added `get_position()` public getter (field visibility enforcement)
-4. ⏸️ **Current Blocker**: Missing string methods:
-   - Error: "Type String has no method 'substring'" and "Type String has no method 'char_at'"
-   - **Issue**: STDLIB_PLAN.md documents 17 string methods including `substring()` and `char_at()` but they're not implemented
-   - **Available Methods**: length, concat, contains, starts_with, ends_with, trim, trim_left, trim_right, replace, replace_all, split, is_alpha, is_numeric, is_alphanumeric, parse_int, parse_int64, parse_float, parse_bool
-   - **Missing Methods**: substring, char_at, to_upper, to_lower, index_of
-   - **Impact**: Cannot implement JSON parser without character-level string access
-   - **Next**: Need to implement `substring()` and `char_at()` in plat-runtime and plat-hir
+4. ✅ **FIXED (2025-10-07)**: Missing string methods implemented:
+   - **Methods Added**: `substring(start_index: Int32, end_index: Int32) -> String` and `char_at(index: Int32) -> String`
+   - **Implementation**:
+     - Added runtime functions in `plat-runtime/src/ffi/string.rs`:
+       - `plat_string_substring()` - Extract substring by character indices (not bytes), returns empty string if out of bounds
+       - `plat_string_char_at()` - Get single character at index, returns empty string if out of bounds
+     - Added codegen support in `plat-codegen/src/lib.rs` (lines 3957-4006)
+     - Added type checker support in `plat-hir/src/lib.rs` (lines 3184-3212)
+   - **Testing**: Created test_string_methods.plat, all tests pass successfully
+5. ⏸️ **Current Blocker**: Type inference issue in json.plat:
+   - Error: "Cannot infer type of empty array literal. Use explicit type annotation."
+   - **Status**: Investigating - may need to find additional empty collection literals without type annotations
+   - **Also Fixed**: Changed `obj[key]` to `obj.get(key = key)` since Dict indexing with `[]` syntax expects Int32
 
 **Next Steps**:
-1. ⏸️ Implement missing string methods: `substring()` and `char_at()` (blocking json.plat)
+1. ⏸️ Fix remaining type inference issues in json.plat
 2. ⏸️ Add comprehensive test suite once compilation succeeds
 3. ⏸️ Test parse() and stringify() functions with real JSON
 

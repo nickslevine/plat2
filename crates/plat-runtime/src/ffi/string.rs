@@ -591,3 +591,123 @@ unsafe fn create_result_enum_err_string(error_msg: *const c_char) -> i64 {
     *msg_ptr = error_msg as i64;
     ptr as i64
 }
+
+/// Extract substring by character indices (not byte indices)
+/// Returns substring from start_idx (inclusive) to end_idx (exclusive)
+/// Returns empty string if indices are out of bounds or invalid
+#[no_mangle]
+pub extern "C" fn plat_string_substring(str_ptr: *const c_char, start_idx: i32, end_idx: i32) -> *const c_char {
+    if str_ptr.is_null() {
+        return std::ptr::null();
+    }
+
+    unsafe {
+        let str_val = match CStr::from_ptr(str_ptr).to_str() {
+            Ok(s) => s,
+            Err(_) => return std::ptr::null(),
+        };
+
+        // Handle negative indices or out-of-bounds
+        if start_idx < 0 || end_idx < 0 || start_idx > end_idx {
+            // Return empty string
+            let mut result_bytes = vec![0u8]; // Just null terminator
+            let size = result_bytes.len();
+            let gc_ptr = plat_gc_alloc_atomic(size);
+            if gc_ptr.is_null() {
+                return std::ptr::null();
+            }
+            std::ptr::copy_nonoverlapping(result_bytes.as_ptr(), gc_ptr, size);
+            return gc_ptr as *const c_char;
+        }
+
+        let chars: Vec<char> = str_val.chars().collect();
+        let len = chars.len() as i32;
+
+        // Clamp indices to string length
+        let start = start_idx.min(len) as usize;
+        let end = end_idx.min(len) as usize;
+
+        if start >= end {
+            // Return empty string
+            let mut result_bytes = vec![0u8]; // Just null terminator
+            let size = result_bytes.len();
+            let gc_ptr = plat_gc_alloc_atomic(size);
+            if gc_ptr.is_null() {
+                return std::ptr::null();
+            }
+            std::ptr::copy_nonoverlapping(result_bytes.as_ptr(), gc_ptr, size);
+            return gc_ptr as *const c_char;
+        }
+
+        // Extract substring by character indices
+        let substring: String = chars[start..end].iter().collect();
+        let mut result_bytes = substring.into_bytes();
+        result_bytes.push(0); // null terminator
+
+        let size = result_bytes.len();
+        let gc_ptr = plat_gc_alloc_atomic(size);
+
+        if gc_ptr.is_null() {
+            return std::ptr::null();
+        }
+
+        std::ptr::copy_nonoverlapping(result_bytes.as_ptr(), gc_ptr, size);
+        gc_ptr as *const c_char
+    }
+}
+
+/// Get character at index (character index, not byte index)
+/// Returns single-character string, or empty string if index is out of bounds
+#[no_mangle]
+pub extern "C" fn plat_string_char_at(str_ptr: *const c_char, index: i32) -> *const c_char {
+    if str_ptr.is_null() || index < 0 {
+        // Return empty string
+        unsafe {
+            let mut result_bytes = vec![0u8]; // Just null terminator
+            let size = result_bytes.len();
+            let gc_ptr = plat_gc_alloc_atomic(size);
+            if gc_ptr.is_null() {
+                return std::ptr::null();
+            }
+            std::ptr::copy_nonoverlapping(result_bytes.as_ptr(), gc_ptr, size);
+            return gc_ptr as *const c_char;
+        }
+    }
+
+    unsafe {
+        let str_val = match CStr::from_ptr(str_ptr).to_str() {
+            Ok(s) => s,
+            Err(_) => return std::ptr::null(),
+        };
+
+        let chars: Vec<char> = str_val.chars().collect();
+
+        if index >= chars.len() as i32 {
+            // Return empty string
+            let mut result_bytes = vec![0u8]; // Just null terminator
+            let size = result_bytes.len();
+            let gc_ptr = plat_gc_alloc_atomic(size);
+            if gc_ptr.is_null() {
+                return std::ptr::null();
+            }
+            std::ptr::copy_nonoverlapping(result_bytes.as_ptr(), gc_ptr, size);
+            return gc_ptr as *const c_char;
+        }
+
+        // Get the character at index
+        let ch = chars[index as usize];
+        let char_string = ch.to_string();
+        let mut result_bytes = char_string.into_bytes();
+        result_bytes.push(0); // null terminator
+
+        let size = result_bytes.len();
+        let gc_ptr = plat_gc_alloc_atomic(size);
+
+        if gc_ptr.is_null() {
+            return std::ptr::null();
+        }
+
+        std::ptr::copy_nonoverlapping(result_bytes.as_ptr(), gc_ptr, size);
+        gc_ptr as *const c_char
+    }
+}

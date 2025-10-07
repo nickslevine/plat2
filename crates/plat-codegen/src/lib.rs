@@ -3954,6 +3954,56 @@ impl CodeGenerator {
                         let call = builder.ins().call(func_ref, &[object_val]);
                         Ok(builder.inst_results(call)[0])
                     }
+                    "substring" => {
+                        if args.len() != 2 {
+                            return Err(CodegenError::UnsupportedFeature("substring() method takes exactly two arguments (start_index, end_index)".to_string()));
+                        }
+
+                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+                        let start_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+                        let end_val = Self::generate_expression_helper(builder, &args[1].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+
+                        let func_sig = {
+                            let mut sig = module.make_signature();
+                            sig.call_conv = CallConv::SystemV;
+                            sig.params.push(AbiParam::new(I64)); // string pointer
+                            sig.params.push(AbiParam::new(I32)); // start_index
+                            sig.params.push(AbiParam::new(I32)); // end_index
+                            sig.returns.push(AbiParam::new(I64)); // result string pointer
+                            sig
+                        };
+
+                        let func_id = module.declare_function("plat_string_substring", Linkage::Import, &func_sig)
+                            .map_err(CodegenError::ModuleError)?;
+                        let func_ref = module.declare_func_in_func(func_id, builder.func);
+
+                        let call = builder.ins().call(func_ref, &[object_val, start_val, end_val]);
+                        Ok(builder.inst_results(call)[0])
+                    }
+                    "char_at" => {
+                        if args.len() != 1 {
+                            return Err(CodegenError::UnsupportedFeature("char_at() method takes exactly one argument (index)".to_string()));
+                        }
+
+                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+                        let index_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+
+                        let func_sig = {
+                            let mut sig = module.make_signature();
+                            sig.call_conv = CallConv::SystemV;
+                            sig.params.push(AbiParam::new(I64)); // string pointer
+                            sig.params.push(AbiParam::new(I32)); // index
+                            sig.returns.push(AbiParam::new(I64)); // result string pointer (single char or empty)
+                            sig
+                        };
+
+                        let func_id = module.declare_function("plat_string_char_at", Linkage::Import, &func_sig)
+                            .map_err(CodegenError::ModuleError)?;
+                        let func_ref = module.declare_func_in_func(func_id, builder.func);
+
+                        let call = builder.ins().call(func_ref, &[object_val, index_val]);
+                        Ok(builder.inst_results(call)[0])
+                    }
                     // Array methods
                     "get" => {
                         if args.len() != 1 {
