@@ -2347,22 +2347,124 @@ There are two distinct issues:
 
 ---
 
+## Type Checker Limitation Discovery (2025-10-07)
+
+**Issue**: Generic Enum Constructor Type Inference
+
+While implementing Phase 3 (std::io), we discovered a fundamental type checker limitation that blocks stdlib development:
+
+### The Problem
+
+When constructing generic enum values (like `Result<T, E>`), the type checker **cannot infer type parameters from the function return type annotation**. Instead, it tries to infer from surrounding context, leading to type mismatches.
+
+**Example that fails:**
+```plat
+fn make_string_error(msg: String) -> Result<String, String> {
+  // Type checker infers Result<Int32, String> from `msg` instead of
+  // using the return type annotation Result<String, String>
+  return Result::Err(field0 = msg);  // ❌ Type error!
+}
+```
+
+**What works currently:**
+```plat
+// Only matching on Results returned by FFI works
+let fd_result: Result<Int32, String> = file_open(path = "test.txt", mode = "r");
+
+match fd_result {
+  Result::Ok(descriptor: Int32) -> descriptor,
+  Result::Err(err: String) -> {
+    // Can use the error here, but CANNOT construct new Result with different T
+    print(value = err);
+    return 1;
+  }
+};
+```
+
+**What doesn't work:**
+```plat
+pub fn read_file(path: String) -> Result<String, String> {
+  let fd_result: Result<Int32, String> = file_open(path = path, mode = "r");
+
+  match fd_result {
+    Result::Ok(fd: Int32) -> { /* ... */ },
+    Result::Err(msg: String) -> {
+      // Want to return Result<String, String> but type checker infers Result<Int32, String>
+      return Result::Err(field0 = msg);  // ❌ Type mismatch!
+    }
+  };
+}
+```
+
+### Why This Blocks stdlib
+
+**stdlib modules need to wrap FFI functions with ergonomic APIs:**
+- FFI returns `Result<Int32, String>` (file descriptor)
+- stdlib should return `Result<String, String>` (file content)
+- Cannot construct the wrapper's Result type from the FFI's error message
+
+**All attempted workarounds failed:**
+1. ❌ Explicit type annotations: `let error: Result<String, String> = Result::Err(...)`
+2. ❌ Helper functions: Still infers wrong type
+3. ❌ Dummy Ok values: Type context doesn't propagate
+4. ❌ Match expressions: Type inference still looks at wrong context
+
+### Solutions (Pick One)
+
+**Option A: Fix Type Inference (Recommended)**
+- Make type checker respect function return type annotation when inferring generic constructor types
+- This is the "correct" fix - return types should constrain local type inference
+- Implementation: In HIR type checker, pass down expected return type as context when checking return expressions
+
+**Option B: Explicit Type Parameters**
+- Add syntax for explicit type parameters: `Result::<String, String>::Err(field0 = msg)`
+- Workaround for the inference limitation
+- More verbose but unblocks stdlib immediately
+
+**Option C: ? Operator Enhancement**
+- Fully implement `?` operator with automatic type conversion
+- Would allow: `let fd = file_open(...)? as Result<String, String>;`
+- Longer-term solution, more complex
+
+### Impact
+
+**What's Working:**
+- ✅ Phase 1: Module resolution for `std::*` (complete)
+- ✅ Phase 2 (codegen): Cross-module function calls with correct signatures (complete)
+- ✅ stdlib architecture and infrastructure (complete)
+
+**What's Blocked:**
+- ⏸️ Phase 3: std::io - cannot wrap FFI functions
+- ⏸️ Phase 4: std::json - would need Result construction
+- ⏸️ All stdlib modules that use Result types
+
+### Temporary Workaround
+
+Until the type checker is fixed, stdlib modules can:
+1. Only wrap FFI functions that return the exact Result types needed (no conversion)
+2. Use print + panic for errors instead of returning Result
+3. Wait for the fix (recommended - should be straightforward)
+
+---
+
 ## Next Steps
 
 1. ✅ ~~**Create Directory Structure**: `mkdir -p stdlib/std`~~ (Completed)
 2. ✅ ~~**Implement Phase 1**: Module resolution for `std::*`~~ (Completed)
 3. ✅ ~~**Fix Cross-Module Codegen**: Phase 1 & Phase 2 complete~~ (Completed - commit a819495)
-4. **Write std::io**: First real stdlib module (Phase 3) - ready to implement with full type support!
-5. **Write std::json**: Showcase pure Plat implementation (Phase 4)
-6. **Add Caching**: Optimize compilation performance (Module caching phase)
-7. **Expand**: Add more modules based on user feedback
+4. ⏸️ **Fix Type Checker**: Implement Option A (respect return type in generic constructor inference) - **BLOCKER**
+5. **Write std::io**: First real stdlib module (Phase 3) - blocked by type checker
+6. **Write std::json**: Showcase pure Plat implementation (Phase 4)
+7. **Add Caching**: Optimize compilation performance (Module caching phase)
+8. **Expand**: Add more modules based on user feedback
 
 ---
 
-**Status**: ✅ Phase 1 Complete - All Codegen Issues Resolved!
+**Status**: ⏸️ Phase 3 Blocked - Type Checker Fix Needed
 **Start Date**: 2025-01-XX
-**Last Updated**: 2025-10-06
-**Current Phase**: Phase 1 (Complete) → Codegen Fix (Complete) → String Interpolation Fix (Complete) → Ready for Phase 3 (std::io)
+**Last Updated**: 2025-10-07
+**Current Phase**: Phase 1 (Complete) → Phase 2/Codegen (Complete) → Phase 3 (Blocked by type checker)
+**Blocker**: Generic enum constructor type inference doesn't respect function return types
 **Maintainer**: Plat Core Team
 
 ## Progress Summary
@@ -2371,7 +2473,12 @@ There are two distinct issues:
 - ✅ **Codegen Fix Phase 1**: Method detection fixed - no more incorrect self parameters (commit 1ec9636)
 - ✅ **Codegen Fix Phase 2**: Signature resolution complete - symbol table threaded through codegen (commit a819495)
 - ⏸️ **Module Caching Phase**: Not started - optimization for future
-- 📝 **Phase 3 (std::io)**: Ready to implement - no blockers, full type support available!
-- 📝 **Phase 4 (std::json)**: Ready to implement - no blockers
+- ⏸️ **Phase 3 (std::io)**: BLOCKED - cannot construct Result with different type parameters than FFI returns
+- ⏸️ **Phase 4 (std::json)**: BLOCKED - same type inference issue
 
-**Blockers**: ~~Cross-module function calls with non-i64 return types~~ **RESOLVED!** ~~Variable type inference for Int8/Int16~~ **RESOLVED!** No current blockers for stdlib development.
+**Blockers**:
+- ❌ **ACTIVE BLOCKER**: Generic enum constructor type inference doesn't respect function return type annotations
+  - Type checker infers `Result<T, E>` type parameters from surrounding context instead of from return type
+  - Makes it impossible to wrap FFI functions that return different Result types
+  - **Fix needed**: Pass expected return type as context down to return expression type checking
+  - See "Type Checker Limitation Discovery" section above for details and solutions
