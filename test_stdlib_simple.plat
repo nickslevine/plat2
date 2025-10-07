@@ -1,9 +1,0 @@
-// Test cross-module function calls with Int32 return
-use std::test;
-
-fn main() -> Int32 {
-  // This should fail with current codegen - std::test::add returns Int32 but codegen assumes Int64
-  let sum: Int32 = std::test::add(x = 5, y = 10);
-  print(value = "Sum: ${sum}");
-  return 0;
-}

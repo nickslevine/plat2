@@ -1,0 +1,237 @@
+mod std::io;
+
+// ============================================================================
+// Simple File Reading/Writing (High-Level Wrappers)
+// ============================================================================
+
+/// Read entire file as string (convenience wrapper)
+pub fn read_file(path: String) -> Result<String, String> {
+  let fd_result: Result<Int32, String> = file_open(path = path, mode = "r");
+
+  let has_error: Bool = match fd_result {
+    Result::Ok(fd: Int32) -> false,
+    Result::Err(err: String) -> true
+  };
+
+  if (has_error) {
+    return match fd_result {
+      Result::Ok(fd: Int32) -> Result::Err(field0 = "impossible"),
+      Result::Err(err: String) -> Result::Err(field0 = err)
+    };
+  }
+
+  let fd: Int32 = match fd_result {
+    Result::Ok(descriptor: Int32) -> descriptor,
+    Result::Err(err: String) -> -1
+  };
+
+  let content: Result<String, String> = file_read(fd = fd, max_bytes = 10485760);
+  let close_result: Result<Bool, String> = file_close(fd = fd);
+  return content;
+}
+
+/// Write entire file as string (convenience wrapper, overwrites existing)
+pub fn write_file(path: String, content: String) -> Result<Bool, String> {
+  let fd_result: Result<Int32, String> = file_open(path = path, mode = "w");
+
+  let has_error: Bool = match fd_result {
+    Result::Ok(fd: Int32) -> false,
+    Result::Err(err: String) -> true
+  };
+
+  if (has_error) {
+    return match fd_result {
+      Result::Ok(fd: Int32) -> Result::Err(field0 = "impossible"),
+      Result::Err(err: String) -> Result::Err(field0 = err)
+    };
+  }
+
+  let fd: Int32 = match fd_result {
+    Result::Ok(descriptor: Int32) -> descriptor,
+    Result::Err(err: String) -> -1
+  };
+
+  let write_result: Result<Int32, String> = file_write(fd = fd, data = content);
+  let close_result: Result<Bool, String> = file_close(fd = fd);
+
+  return match write_result {
+    Result::Ok(bytes: Int32) -> Result::Ok(field0 = true),
+    Result::Err(err: String) -> Result::Err(field0 = err)
+  };
+}
+
+/// Append to file (creates if doesn't exist)
+pub fn append_file(path: String, content: String) -> Result<Bool, String> {
+  let fd_result: Result<Int32, String> = file_open(path = path, mode = "a");
+
+  let has_error: Bool = match fd_result {
+    Result::Ok(fd: Int32) -> false,
+    Result::Err(err: String) -> true
+  };
+
+  if (has_error) {
+    return match fd_result {
+      Result::Ok(fd: Int32) -> Result::Err(field0 = "impossible"),
+      Result::Err(err: String) -> Result::Err(field0 = err)
+    };
+  }
+
+  let fd: Int32 = match fd_result {
+    Result::Ok(descriptor: Int32) -> descriptor,
+    Result::Err(err: String) -> -1
+  };
+
+  let write_result: Result<Int32, String> = file_write(fd = fd, data = content);
+  let close_result: Result<Bool, String> = file_close(fd = fd);
+
+  return match write_result {
+    Result::Ok(bytes: Int32) -> Result::Ok(field0 = true),
+    Result::Err(err: String) -> Result::Err(field0 = err)
+  };
+}
+
+// ============================================================================
+// Buffered Reader (Future Enhancement)
+// ============================================================================
+
+/// Buffered file reader for efficient line-by-line reading
+pub class Reader {
+  let fd: Int32;
+  var buffer: String;
+  var position: Int32;
+  let buffer_size: Int32;
+
+  pub fn read_line() -> Result<String, String> {
+    // TODO: Implement buffered line reading
+    // Need string slicing and better buffer management
+    return Result::Err(field0 = "Not implemented");
+  }
+
+  pub fn close() -> Result<Bool, String> {
+    return file_close(fd = self.fd);
+  }
+}
+
+// ============================================================================
+// Buffered Writer (Future Enhancement)
+// ============================================================================
+
+/// Buffered file writer for efficient batched writing
+pub class Writer {
+  let fd: Int32;
+  var buffer: String;
+  let buffer_size: Int32;
+
+  pub fn write(data: String) -> Result<Bool, String> {
+    // TODO: Implement buffered writing
+    // Accumulate in buffer, flush when full
+    return Result::Err(field0 = "Not implemented");
+  }
+
+  pub fn flush() -> Result<Bool, String> {
+    // TODO: Write buffer to disk and clear it
+    return Result::Err(field0 = "Not implemented");
+  }
+
+  pub fn close() -> Result<Bool, String> {
+    let flush_result: Result<Bool, String> = self.flush();
+    return file_close(fd = self.fd);
+  }
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+test io_operations {
+  fn test_write_and_read_file() {
+    let test_path: String = "test_io_temp.txt";
+    let test_content: String = "Hello from std::io!";
+
+    // Write file
+    let write_result: Result<Bool, String> = write_file(path = test_path, content = test_content);
+
+    match write_result {
+      Result::Ok(success: Bool) -> {
+        assert(condition = success, message = "Write should succeed");
+      },
+      Result::Err(err: String) -> {
+        print(value = "Write failed: ${err}");
+        assert(condition = false, message = "Write should not fail");
+        return;
+      }
+    };
+
+    // Read file
+    let read_result: Result<String, String> = read_file(path = test_path);
+
+    match read_result {
+      Result::Ok(data: String) -> {
+        assert(condition = data == test_content, message = "Content should match");
+      },
+      Result::Err(err: String) -> {
+        print(value = "Read failed: ${err}");
+        assert(condition = false, message = "Read should not fail");
+        return;
+      }
+    };
+
+    // Cleanup
+    let delete_result: Result<Bool, String> = file_delete(path = test_path);
+  }
+
+  fn test_append_file() {
+    let test_path: String = "test_io_append.txt";
+
+    // Write initial content
+    let write1: Result<Bool, String> = write_file(path = test_path, content = "Line 1\n");
+
+    // Append more content
+    let append1: Result<Bool, String> = append_file(path = test_path, content = "Line 2\n");
+    let append2: Result<Bool, String> = append_file(path = test_path, content = "Line 3\n");
+
+    // Read back
+    let read_result: Result<String, String> = read_file(path = test_path);
+
+    match read_result {
+      Result::Ok(data: String) -> {
+        // Check that all lines are present
+        assert(condition = data.contains(substring = "Line 1"), message = "Should contain Line 1");
+        assert(condition = data.contains(substring = "Line 2"), message = "Should contain Line 2");
+        assert(condition = data.contains(substring = "Line 3"), message = "Should contain Line 3");
+      },
+      Result::Err(err: String) -> {
+        print(value = "Read failed: ${err}");
+        assert(condition = false, message = "Read should not fail");
+        return;
+      }
+    };
+
+    // Cleanup
+    let delete_result: Result<Bool, String> = file_delete(path = test_path);
+  }
+
+  fn test_read_nonexistent_file() {
+    let read_result: Result<String, String> = read_file(path = "nonexistent_file_xyz.txt");
+
+    let is_error: Bool = match read_result {
+      Result::Ok(content: String) -> false,
+      Result::Err(err: String) -> true
+    };
+
+    assert(condition = is_error, message = "Reading nonexistent file should return error");
+  }
+
+  fn test_write_to_invalid_path() {
+    // Try to write to a path that definitely won't work (directory doesn't exist)
+    let invalid_path: String = "/nonexistent_dir_xyz/test.txt";
+    let write_result: Result<Bool, String> = write_file(path = invalid_path, content = "test");
+
+    let is_error: Bool = match write_result {
+      Result::Ok(success: Bool) -> false,
+      Result::Err(err: String) -> true
+    };
+
+    assert(condition = is_error, message = "Writing to invalid path should return error");
+  }
+}
