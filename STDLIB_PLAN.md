@@ -468,15 +468,28 @@ if (ch == "n") {
       - **Fix**: Added qualified enum variant detection in `check_expression` for Identifier case
       - **Location**: `plat-hir/src/lib.rs:1690-1715`
     - **Result**: Stdlib enums now properly discovered, loaded, and type-checked! ✨
-12. ⏸️ **Current Issue**: Codegen error in std::json module
-    - **Error**: Code generation fails for `stringify()` function
-    - **Status**: Type checking passes, codegen fails on complex match expressions
-    - **Next**: Investigate codegen issue (separate from symbol loading)
+12. ✅ **FIXED (2025-10-07)**: Same-module function calls in stdlib
+    - **Bug**: Functions calling other functions in same module (e.g., `stringify()` calling `float_to_string()`) caused `UndefinedFunction` errors
+    - **Root Cause**: Codegen looked up simple names in functions map, but map stored mangled names like `std::json::float_to_string`
+    - **Fix**: Added fallback lookup to search for mangled name by suffix when simple name not found
+    - **Location**: `plat-codegen/src/lib.rs:3475-3486`
+    - **Commit**: b897c2b
+13. ✅ **FIXED (2025-10-07)**: Enum variant extraction for complex types
+    - **Bug**: Extracting List/Dict/Set/Named types from enum variants produced i32 instead of i64
+    - **Root Cause**: Match expression variant binding code fell through to default case, treating all non-primitive types as i32
+    - **Fix**: Added explicit cases for List, Dict, Set, and Named types to use i64 pointers
+    - **Locations**: `plat-codegen/src/lib.rs:5365-5368` and `5377-5381`
+    - **Result**: `stringify()` and `stringify_array()` now compile successfully! ✨
+14. ⏸️ **Current Issue**: Type mismatch in `stringify_object()` function
+    - **Error**: Verifier error "arg 1 (v41) has type i64, expected i32" in function call
+    - **Status**: Likely related to loop variable `i` being widened from Int32 to i64 in while loop
+    - **Next**: Investigate loop variable type handling in codegen
 
 **Next Steps**:
-1. ⏸️ Debug codegen issue in json.plat (likely unrelated to symbol loading)
-2. ⏸️ Add comprehensive test suite once compilation succeeds
-3. ⏸️ Test parse() and stringify() functions with real JSON
+1. ⏸️ Fix loop variable type handling in stringify_object (i32 vs i64 issue)
+2. ⏸️ Complete json.plat compilation
+3. ⏸️ Add comprehensive test suite once compilation succeeds
+4. ⏸️ Test parse() and stringify() functions with real JSON
 
 ---
 
