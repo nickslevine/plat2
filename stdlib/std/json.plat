@@ -13,6 +13,10 @@ class Parser {
   let input: String;
   var position: Int32;
 
+  pub fn get_position() -> Int32 {
+    return self.position;
+  }
+
   pub fn parse_value() -> Result<JsonValue, String> {
     self.skip_whitespace();
 
@@ -277,11 +281,21 @@ class Parser {
     while (self.position < self.input.length()) {
       let value_result: Result<JsonValue, String> = self.parse_value();
 
+      let has_error: Bool = match value_result {
+        Result::Ok(v: JsonValue) -> false,
+        Result::Err(err: String) -> true
+      };
+
+      if (has_error) {
+        return match value_result {
+          Result::Ok(v: JsonValue) -> Result::Err(field0 = "impossible"),
+          Result::Err(err: String) -> Result::Err(field0 = err)
+        };
+      }
+
       let value: JsonValue = match value_result {
         Result::Ok(v: JsonValue) -> v,
-        Result::Err(err: String) -> {
-          return Result::Err(field0 = err);
-        }
+        Result::Err(err: String) -> JsonValue::Null
       };
 
       elements.push(value = value);
@@ -333,11 +347,21 @@ class Parser {
 
       let key_result: Result<String, String> = self.parse_string();
 
+      let has_key_error: Bool = match key_result {
+        Result::Ok(k: String) -> false,
+        Result::Err(err: String) -> true
+      };
+
+      if (has_key_error) {
+        return match key_result {
+          Result::Ok(k: String) -> Result::Err(field0 = "impossible"),
+          Result::Err(err: String) -> Result::Err(field0 = err)
+        };
+      }
+
       let key: String = match key_result {
         Result::Ok(k: String) -> k,
-        Result::Err(err: String) -> {
-          return Result::Err(field0 = err);
-        }
+        Result::Err(err: String) -> ""
       };
 
       self.skip_whitespace();
@@ -355,11 +379,21 @@ class Parser {
 
       let value_result: Result<JsonValue, String> = self.parse_value();
 
+      let has_value_error: Bool = match value_result {
+        Result::Ok(v: JsonValue) -> false,
+        Result::Err(err: String) -> true
+      };
+
+      if (has_value_error) {
+        return match value_result {
+          Result::Ok(v: JsonValue) -> Result::Err(field0 = "impossible"),
+          Result::Err(err: String) -> Result::Err(field0 = err)
+        };
+      }
+
       let value: JsonValue = match value_result {
         Result::Ok(v: JsonValue) -> v,
-        Result::Err(err: String) -> {
-          return Result::Err(field0 = err);
-        }
+        Result::Err(err: String) -> JsonValue::Null
       };
 
       obj.insert(key = key, value = value);
@@ -385,7 +419,7 @@ class Parser {
     return Result::Err(field0 = "Unterminated object");
   }
 
-  fn skip_whitespace() {
+  pub fn skip_whitespace() {
     while (self.position < self.input.length()) {
       let ch: String = self.peek();
       var is_whitespace: Bool = false;
@@ -415,7 +449,7 @@ class Parser {
     if (self.position >= self.input.length()) {
       return "";
     }
-    return self.input.char_at(index = self.position);
+    return self.input.substring(start = self.position, end = self.position + 1);
   }
 
   fn is_digit(ch: String) -> Bool {
@@ -435,16 +469,26 @@ pub fn parse(input: String) -> Result<JsonValue, String> {
   let parser: Parser = Parser.init(input = input, position = 0);
   let result: Result<JsonValue, String> = parser.parse_value();
 
+  let has_error: Bool = match result {
+    Result::Ok(v: JsonValue) -> false,
+    Result::Err(err: String) -> true
+  };
+
+  if (has_error) {
+    return match result {
+      Result::Ok(v: JsonValue) -> Result::Err(field0 = "impossible"),
+      Result::Err(err: String) -> Result::Err(field0 = err)
+    };
+  }
+
   let value: JsonValue = match result {
     Result::Ok(v: JsonValue) -> v,
-    Result::Err(err: String) -> {
-      return Result::Err(field0 = err);
-    }
+    Result::Err(err: String) -> JsonValue::Null
   };
 
   parser.skip_whitespace();
 
-  if (parser.position < input.length()) {
+  if (parser.get_position() < input.length()) {
     return Result::Err(field0 = "Unexpected characters after JSON value");
   }
 
@@ -454,25 +498,11 @@ pub fn parse(input: String) -> Result<JsonValue, String> {
 pub fn stringify(value: JsonValue) -> String {
   return match value {
     JsonValue::Null -> "null",
-    JsonValue::Bool(b: Bool) -> {
-      if (b) {
-        return "true";
-      } else {
-        return "false";
-      }
-    },
-    JsonValue::Number(n: Float64) -> {
-      return float_to_string(f = n);
-    },
-    JsonValue::String(s: String) -> {
-      return stringify_string(s = s);
-    },
-    JsonValue::Array(arr: List<JsonValue>) -> {
-      return stringify_array(arr = arr);
-    },
-    JsonValue::Object(obj: Dict<String, JsonValue>) -> {
-      return stringify_object(obj = obj);
-    }
+    JsonValue::Bool(b: Bool) -> if (b) { "true" } else { "false" },
+    JsonValue::Number(n: Float64) -> float_to_string(f = n),
+    JsonValue::String(s: String) -> stringify_string(s = s),
+    JsonValue::Array(arr: List<JsonValue>) -> stringify_array(arr = arr),
+    JsonValue::Object(obj: Dict<String, JsonValue>) -> stringify_object(obj = obj)
   };
 }
 
@@ -492,7 +522,7 @@ fn stringify_string(s: String) -> String {
   var i: Int32 = 0;
 
   while (i < s.length()) {
-    let ch: String = s.char_at(index = i);
+    let ch: String = s.substring(start = i, end = i + 1);
 
     if (ch == "\"") {
       result = result.concat(other = "\\\"");

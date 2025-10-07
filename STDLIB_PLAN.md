@@ -405,13 +405,28 @@ if (ch == "n") {
    - Fixed dual registration (global_symbols AND local self.enums)
    - Fixed unqualified name lookup for current module symbols
    - Fixed duplicate registration errors during type checking
-3. ⏸️ **Current Blocker**: Minor type check error in json.plat:
-   - Error: "Match arm returns type Unit, expected Enum(\"JsonValue\", [])"
-   - This is a bug in the json.plat implementation itself, not the compiler
-   - Need to find and fix the match expression with incorrect return type
+3. ✅ **FIXED (2025-10-07)**: Match arm type error in json.plat:
+   - **Bug**: "Match arm returns type Unit, expected Enum(\"JsonValue\", [])"
+   - **Root Cause**: Using `return` inside match arm blocks causes type checker to see Unit type
+   - **Fix**: Applied workaround pattern (check error → early return → extract value)
+   - **Locations Fixed**:
+     - `parse_array()` - line 278-285 (value extraction from parse_value)
+     - `parse_object()` - lines 336-341 (key extraction) and 358-363 (value extraction)
+     - `parse()` - lines 468-473 (value extraction from parser.parse_value)
+     - `stringify()` - lines 457-463 (removed return from match arms)
+   - **Additional Fixes**:
+     - Made `skip_whitespace()` public (needed by `parse()` function)
+     - Added `get_position()` public getter (field visibility enforcement)
+4. ⏸️ **Current Blocker**: Missing string methods:
+   - Error: "Type String has no method 'substring'" and "Type String has no method 'char_at'"
+   - **Issue**: STDLIB_PLAN.md documents 17 string methods including `substring()` and `char_at()` but they're not implemented
+   - **Available Methods**: length, concat, contains, starts_with, ends_with, trim, trim_left, trim_right, replace, replace_all, split, is_alpha, is_numeric, is_alphanumeric, parse_int, parse_int64, parse_float, parse_bool
+   - **Missing Methods**: substring, char_at, to_upper, to_lower, index_of
+   - **Impact**: Cannot implement JSON parser without character-level string access
+   - **Next**: Need to implement `substring()` and `char_at()` in plat-runtime and plat-hir
 
 **Next Steps**:
-1. ⏸️ Debug and fix the match expression type error in json.plat
+1. ⏸️ Implement missing string methods: `substring()` and `char_at()` (blocking json.plat)
 2. ⏸️ Add comprehensive test suite once compilation succeeds
 3. ⏸️ Test parse() and stringify() functions with real JSON
 

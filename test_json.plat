@@ -1,6 +1,6 @@
 use std::json;
 
 fn main() -> Int32 {
-  print(value = "Testing std::json module");
+  let result: Result<Int32, String> = json::parse(input = "null");
   return 0;
 }
