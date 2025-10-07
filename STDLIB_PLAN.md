@@ -285,11 +285,11 @@ pub fn read_file(path: String) -> Result<String, String> {
 
 ---
 
-### Phase 4: std::json (Pure Plat Implementation!) 🚧 BLOCKED
+### Phase 4: std::json (Pure Plat Implementation!) ⏸️ READY TO COMPILE
 
 **Goal**: JSON parser written entirely in Plat (no Rust!)
 
-**Status**: 99% Complete - Implementation done, blocked by language limitation
+**Status**: 99% Complete - Implementation done, parser blocker FIXED!
 
 **Module**: `stdlib/std/json.plat`
 
@@ -316,24 +316,20 @@ pub fn read_file(path: String) -> Result<String, String> {
 - ❌ **No `!` operator**: Use `== false` instead
 - ❌ **No `break` statement**: Rewrote while loops with boolean continuation flags
 - ✅ **Else-if support added**: Now using clean `else if` syntax throughout
-- 🚫 **BLOCKER: `var` with generic types**: Parser doesn't support `var elements: List<JsonValue> = []`
-  - **Error**: "Expected '[' after 'List'" when using angle brackets in var declarations
-  - **Impact**: Cannot create mutable collections (arrays/dicts) that need to grow
-  - **Workaround Attempts**:
-    - ✗ Changing to `let` - Lists still need mutation (push/pop)
-    - ✗ Using square brackets `List[JsonValue]` - Wrong syntax for type annotations
-  - **Root Cause**: Plat's generic type syntax is inconsistent:
-    - Enum variant definitions: `Array(List[JsonValue])` (square brackets)
-    - Variable declarations: `let x: List<JsonValue>` (angle brackets)
-    - But `var` with angle brackets fails to parse!
+- ✅ **FIXED (2025-10-07): `var` with generic types**: Parser now accepts both angle brackets AND square brackets!
+  - **Previous Error**: "Expected '[' after 'List'" when using angle brackets
+  - **Fix**: Parser updated to accept BOTH `List<T>` and `List[T]` syntax
+  - **Now Works**: `var elements: List<JsonValue> = []` ✅
+  - **Now Works**: `var obj: Dict<String, JsonValue> = {}` ✅
+  - **Commit**: 4c3df07 - "fix: Accept both angle brackets and square brackets for List/Dict/Set types"
 
 **Completed Work**:
 - ✅ Full recursive descent JSON parser implemented
 - ✅ Complete stringify implementation with escape handling
 - ✅ All else-if chains converted to clean syntax
-- 🚫 **BLOCKED**: Cannot compile due to `var` + generic type syntax issue
-- ⏸️ Comprehensive test suite (blocked on compilation)
-- ⏸️ Error handling edge case tests (blocked on compilation)
+- ✅ **Parser blocker FIXED**: Can now use `var` with generic types!
+- ⏸️ Comprehensive test suite (ready to implement once compilation works)
+- ⏸️ Error handling edge case tests (ready to implement once compilation works)
 
 **Implementation Pattern Example** (now using clean else-if syntax):
 ```plat
@@ -368,13 +364,15 @@ if (ch == "n") {
 - ✅ Reject invalid JSON with error messages - implementation complete
 - ✅ stringify() converts JsonValue back to JSON string - implementation complete
 - ✅ Clean, readable code with else-if syntax - implementation complete
-- 🚫 **Module compiles**: BLOCKED - needs parser fix for `var` + generic types
-- ⏸️ Comprehensive test coverage (blocked until compilation works)
+- ✅ **Parser fix complete**: Both `let` and `var` now support generic types with angle brackets
+- ⏸️ **Module compilation**: Ready to attempt (may encounter other issues with recursive enums)
+- ⏸️ Comprehensive test coverage (ready to implement once compilation works)
 
-**Next Steps to Unblock**:
-1. Fix Plat parser to accept `var elements: List<JsonValue> = []` syntax
-2. Ensure consistency: both `let` and `var` should support generic types with angle brackets
-3. Once fixed, the JSON module should compile immediately
+**Next Steps**:
+1. ✅ ~~Fix Plat parser to accept `var elements: List<JsonValue> = []` syntax~~ (COMPLETE - commit 4c3df07)
+2. ✅ ~~Ensure consistency: both `let` and `var` should support generic types with angle brackets~~ (COMPLETE)
+3. ⏸️ Attempt compilation - may need to address recursive enum type issues
+4. ⏸️ Add comprehensive test suite once compilation succeeds
 
 ---
 
@@ -2477,17 +2475,17 @@ fn wrap_file_error(fd_result: Result<Int32, String>) -> Result<String, String> {
 3. ✅ ~~**Fix Cross-Module Codegen**: Phase 1 & Phase 2 complete~~ (Completed - commit a819495)
 4. ✅ ~~**Fix Type Checker**: Implement Option A (respect return type in generic constructor inference)~~ (Completed - 2025-10-07)
 5. ✅ ~~**Write std::io**: First real stdlib module (Phase 3)~~ (Completed - 2025-10-07)
-6. 🚫 **BLOCKED: Write std::json** (Phase 4) - 99% complete, blocked by parser issue with `var` + generic types
-7. 🔧 **Add Caching** (Phase 2) - Dependencies added, implementation pending
-8. **Fix Parser**: Support `var x: List<T>` syntax (unblocks std::json)
+6. ✅ ~~**Fix Parser**: Support `var x: List<T>` syntax~~ (Completed - 2025-10-07, commit 4c3df07)
+7. ⏸️ **Finish std::json** (Phase 4) - 99% complete, ready to compile (may need recursive enum fix)
+8. 🔧 **Add Caching** (Phase 2) - Dependencies added, implementation pending
 9. **Expand**: Add more modules (std::fs, std::net, std::http) based on user feedback
 
 ---
 
-**Status**: 🚫 Phase 4 Blocked - JSON Parser Implementation Complete, Parser Bug Preventing Compilation
+**Status**: ⏸️ Phase 4 Ready - Parser Blocker Fixed, JSON Implementation Complete
 **Start Date**: 2025-01-XX
 **Last Updated**: 2025-10-07
-**Current Phase**: Phase 4 blocked (std::json needs parser fix), Phase 2 started (caching deps added)
+**Current Phase**: Phase 4 ready to compile (std::json parser fix complete), Phase 2 started (caching deps added)
 **Maintainer**: Plat Core Team
 
 ## Progress Summary
@@ -2500,7 +2498,7 @@ fn wrap_file_error(fd_result: Result<Int32, String>) -> Result<String, String> {
   - `read_file()`, `write_file()`, `append_file()` all functional
   - Comprehensive test suite with error handling
   - Discovered match expression limitation (no multi-statement blocks in arms)
-- 🚫 **Phase 4 (std::json)**: BLOCKED - Implementation 99% complete! (2025-10-07)
+- ⏸️ **Phase 4 (std::json)**: READY TO COMPILE - Implementation 99% complete! (2025-10-07)
   - ✅ Complete recursive descent JSON parser implemented
   - ✅ Full stringify implementation
   - ✅ All parse methods: null, bool, number, string, array, object
@@ -2508,15 +2506,17 @@ fn wrap_file_error(fd_result: Result<Int32, String>) -> Result<String, String> {
   - ✅ Worked around `||`, `&&`, `!`, `break` limitations
   - ✅ Clean else-if syntax throughout (after language feature added)
   - ✅ Pure Plat implementation - no Rust FFI!
-  - 🚫 **BLOCKED**: Parser doesn't support `var` with generic types like `List<T>`
-  - **Fix Required**: Update parser to accept `var elements: List<JsonValue> = []`
+  - ✅ **FIXED (2025-10-07)**: Parser now supports `var` with generic types like `List<T>`! (commit 4c3df07)
+  - ✅ **Parser accepts both syntaxes**: `List<T>` AND `List[T]`, `Dict<K,V>` AND `Dict[K,V]`, `Set<T>` AND `Set[T]`
+  - ⏸️ **Ready to compile**: May encounter recursive enum type issues, but parser blocker is resolved
 - 🔧 **Phase 2 (Module Caching)**: STARTED - Dependencies added (2025-10-07)
   - ✅ Added serde and bincode dependencies
   - ⏸️ Implementation pending (StdlibCache struct, cache directory, invalidation logic)
 
-**Critical Issue**: Parser bug blocking std::json - needs `var` + generic type syntax support
+**Parser Fix Complete!** The blocker preventing std::json compilation has been resolved.
 
 **Next Steps**:
-1. **Priority**: Fix parser to support `var x: List<T>` (unblocks std::json)
-2. Implement module caching for performance
-3. Add more stdlib modules (std::fs, std::net, std::http)
+1. ✅ ~~Fix parser to support `var x: List<T>`~~ (COMPLETE - commit 4c3df07)
+2. Attempt std::json compilation (may need recursive enum type support)
+3. Implement module caching for performance
+4. Add more stdlib modules (std::fs, std::net, std::http)
