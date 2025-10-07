@@ -5583,6 +5583,9 @@ impl CodeGenerator {
             )?;
                 builder.ins().jump(cont_block, &[then_val]);
 
+                // Get the result type from the then branch
+                let result_type = builder.func.dfg.value_type(then_val);
+
                 // Generate else branch (or default to unit value)
                 builder.switch_to_block(else_block);
                 builder.seal_block(else_block);
@@ -5591,14 +5594,14 @@ impl CodeGenerator {
                         builder, else_expr, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table
             )?
                 } else {
-                    // If no else branch, default to 0 (unit value represented as i32)
-                    builder.ins().iconst(I32, 0)
+                    // If no else branch, default to 0 with the correct type
+                    builder.ins().iconst(result_type, 0)
                 };
                 builder.ins().jump(cont_block, &[else_val]);
 
-                // Continue block - add parameter for the result
+                // Continue block - add parameter for the result using the inferred type
                 builder.switch_to_block(cont_block);
-                builder.append_block_param(cont_block, I32);
+                builder.append_block_param(cont_block, result_type);
                 builder.seal_block(cont_block);
 
                 let result = builder.block_params(cont_block)[0];

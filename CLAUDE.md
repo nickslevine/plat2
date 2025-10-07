@@ -59,7 +59,8 @@
 - **Works With**: Functions, methods, and constructors all support default arguments
 
 ### Control Flow
-- **If-Expressions**: `let max: Int32 = if (x > y) { x } else { y }`
+- **If-Statements**: `if (condition) { ... } else if (condition2) { ... } else { ... }`
+- **If-Expressions**: `let max: Int32 = if (x > y) { x } else if (x == y) { x } else { y }`
 - **Range Loops**: `for (i: Int32 in 0..10)` (exclusive), `for (i: Int32 in 0..=10)` (inclusive)
 - **For-Each**: `for (item: Type in array)` works with arrays and custom classes (type annotation required)
 
@@ -438,6 +439,44 @@ fn main() -> Int32 {
   let x: Int32 = identity(value = 10);
   let name: String = identity(value = "hello");
   return x;
+}
+```
+
+### If-Statements and If-Expressions with Else If
+```plat
+// If-statement with else if
+fn test_grade(score: Int32) -> String {
+  if (score >= 90) {
+    return "A";
+  } else if (score >= 80) {
+    return "B";
+  } else if (score >= 70) {
+    return "C";
+  } else if (score >= 60) {
+    return "D";
+  } else {
+    return "F";
+  }
+}
+
+fn main() -> Int32 {
+  let grade: String = test_grade(score = 85);
+  print(value = "Grade: ${grade}");  // Grade: B
+
+  // If-expression with else if
+  let status: String = if (grade == "A") {
+    "Excellent"
+  } else if (grade == "B") {
+    "Good"
+  } else if (grade == "C") {
+    "Average"
+  } else {
+    "Needs improvement"
+  };
+
+  print(value = "Status: ${status}");  // Status: Good
+
+  return 0;
 }
 ```
 

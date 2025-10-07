@@ -534,7 +534,25 @@ impl Parser {
         let then_branch = self.parse_block()?;
 
         let else_branch = if self.match_token(&Token::Else) {
-            Some(self.parse_block()?)
+            // Check for 'else if' pattern
+            if self.match_token(&Token::If) {
+                // Parse the 'if' statement recursively
+                let nested_if_start = self.previous_span().start;
+                let nested_if = self.parse_if_statement()?;
+                let nested_if_end = match &nested_if {
+                    Statement::If { span, .. } => span.end,
+                    _ => unreachable!(),
+                };
+
+                // Wrap the nested if statement in a block
+                Some(Block {
+                    statements: vec![nested_if],
+                    span: Span::new(nested_if_start, nested_if_end),
+                })
+            } else {
+                // Regular else block
+                Some(self.parse_block()?)
+            }
         } else {
             None
         };
@@ -1328,8 +1346,15 @@ impl Parser {
         let then_branch = Box::new(self.parse_block_expression()?);
 
         let else_branch = if self.match_token(&Token::Else) {
-            self.consume(Token::LeftBrace, "Expected '{' for if-expression else branch")?;
-            Some(Box::new(self.parse_block_expression()?))
+            // Check for 'else if' pattern
+            if self.match_token(&Token::If) {
+                // Parse the nested if-expression recursively (no braces needed)
+                Some(Box::new(self.parse_if_expression()?))
+            } else {
+                // Regular else block
+                self.consume(Token::LeftBrace, "Expected '{' for if-expression else branch")?;
+                Some(Box::new(self.parse_block_expression()?))
+            }
         } else {
             None
         };
