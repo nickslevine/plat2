@@ -1,0 +1,583 @@
+mod std::json;
+
+pub enum JsonValue {
+  Null,
+  Bool(Bool),
+  Number(Float64),
+  String(String),
+  Array(List[JsonValue]),
+  Object(Dict[String, JsonValue])
+}
+
+class Parser {
+  let input: String;
+  var position: Int32;
+
+  pub fn parse_value() -> Result<JsonValue, String> {
+    self.skip_whitespace();
+
+    if (self.position >= self.input.length()) {
+      return Result::Err(field0 = "Unexpected end of input");
+    }
+
+    let ch: String = self.peek();
+
+    if (ch == "n") {
+      return self.parse_null();
+    } else if (ch == "t") {
+      return self.parse_bool();
+    } else if (ch == "f") {
+      return self.parse_bool();
+    } else if (ch == "\"") {
+      let str_result: Result<String, String> = self.parse_string();
+      return match str_result {
+        Result::Ok(s: String) -> Result::Ok(field0 = JsonValue::String(field0 = s)),
+        Result::Err(err: String) -> Result::Err(field0 = err)
+      };
+    } else if (ch == "[") {
+      return self.parse_array();
+    } else if (ch == "{") {
+      return self.parse_object();
+    } else if (ch == "-") {
+      return self.parse_number();
+    } else if (self.is_digit(ch = ch)) {
+      return self.parse_number();
+    } else {
+      return Result::Err(field0 = "Unexpected character: ${ch}");
+    }
+  }
+
+  fn parse_null() -> Result<JsonValue, String> {
+    if (self.position + 4 > self.input.length()) {
+      return Result::Err(field0 = "Unexpected end of input while parsing null");
+    }
+
+    let substr: String = self.input.substring(start = self.position, end = self.position + 4);
+    if (substr == "null") {
+      self.position = self.position + 4;
+      return Result::Ok(field0 = JsonValue::Null);
+    } else {
+      return Result::Err(field0 = "Expected 'null'");
+    }
+  }
+
+  fn parse_bool() -> Result<JsonValue, String> {
+    let ch: String = self.peek();
+
+    if (ch == "t") {
+      if (self.position + 4 > self.input.length()) {
+        return Result::Err(field0 = "Unexpected end of input while parsing true");
+      }
+
+      let substr: String = self.input.substring(start = self.position, end = self.position + 4);
+      if (substr == "true") {
+        self.position = self.position + 4;
+        return Result::Ok(field0 = JsonValue::Bool(field0 = true));
+      } else {
+        return Result::Err(field0 = "Expected 'true'");
+      }
+    } else if (ch == "f") {
+      if (self.position + 5 > self.input.length()) {
+        return Result::Err(field0 = "Unexpected end of input while parsing false");
+      }
+
+      let substr: String = self.input.substring(start = self.position, end = self.position + 5);
+      if (substr == "false") {
+        self.position = self.position + 5;
+        return Result::Ok(field0 = JsonValue::Bool(field0 = false));
+      } else {
+        return Result::Err(field0 = "Expected 'false'");
+      }
+    } else {
+      return Result::Err(field0 = "Expected boolean value");
+    }
+  }
+
+  fn parse_number() -> Result<JsonValue, String> {
+    let start: Int32 = self.position;
+
+    if (self.peek() == "-") {
+      self.position = self.position + 1;
+    }
+
+    if (self.position >= self.input.length()) {
+      return Result::Err(field0 = "Invalid number format");
+    }
+
+    if (self.is_digit(ch = self.peek()) == false) {
+      return Result::Err(field0 = "Invalid number format");
+    }
+
+    var should_continue: Bool = true;
+    while (should_continue) {
+      if (self.position >= self.input.length()) {
+        should_continue = false;
+      } else {
+        if (self.is_digit(ch = self.peek())) {
+          self.position = self.position + 1;
+        } else {
+          should_continue = false;
+        }
+      }
+    }
+
+    if (self.position < self.input.length()) {
+      if (self.peek() == ".") {
+        self.position = self.position + 1;
+
+        if (self.position >= self.input.length()) {
+          return Result::Err(field0 = "Invalid number format: expected digit after decimal point");
+        }
+
+        if (self.is_digit(ch = self.peek()) == false) {
+          return Result::Err(field0 = "Invalid number format: expected digit after decimal point");
+        }
+
+        var continue_decimal: Bool = true;
+        while (continue_decimal) {
+          if (self.position >= self.input.length()) {
+            continue_decimal = false;
+          } else {
+            if (self.is_digit(ch = self.peek())) {
+              self.position = self.position + 1;
+            } else {
+              continue_decimal = false;
+            }
+          }
+        }
+      }
+    }
+
+    var has_exponent: Bool = false;
+
+    if (self.position < self.input.length()) {
+      let ch: String = self.peek();
+      if (ch == "e") {
+        has_exponent = true;
+      }
+      if (ch == "E") {
+        has_exponent = true;
+      }
+    }
+
+    if (has_exponent) {
+      self.position = self.position + 1;
+
+      if (self.position < self.input.length()) {
+        let sign_ch: String = self.peek();
+        if (sign_ch == "+") {
+          self.position = self.position + 1;
+        }
+        if (sign_ch == "-") {
+          self.position = self.position + 1;
+        }
+      }
+
+      if (self.position >= self.input.length()) {
+        return Result::Err(field0 = "Invalid number format: expected digit in exponent");
+      }
+
+      if (self.is_digit(ch = self.peek()) == false) {
+        return Result::Err(field0 = "Invalid number format: expected digit in exponent");
+      }
+
+      var continue_exponent: Bool = true;
+      while (continue_exponent) {
+        if (self.position >= self.input.length()) {
+          continue_exponent = false;
+        } else {
+          if (self.is_digit(ch = self.peek())) {
+            self.position = self.position + 1;
+          } else {
+            continue_exponent = false;
+          }
+        }
+      }
+    }
+
+    let num_str: String = self.input.substring(start = start, end = self.position);
+    let parse_result: Result<Float64, String> = num_str.parse_float();
+
+    return match parse_result {
+      Result::Ok(num: Float64) -> Result::Ok(field0 = JsonValue::Number(field0 = num)),
+      Result::Err(err: String) -> Result::Err(field0 = "Failed to parse number: ${err}")
+    };
+  }
+
+  fn parse_string() -> Result<String, String> {
+    if (self.peek() != "\"") {
+      return Result::Err(field0 = "Expected opening quote");
+    }
+
+    self.position = self.position + 1;
+    let start: Int32 = self.position;
+    var result: String = "";
+
+    while (self.position < self.input.length()) {
+      let ch: String = self.peek();
+
+      if (ch == "\"") {
+        self.position = self.position + 1;
+        return Result::Ok(field0 = result);
+      } else if (ch == "\\") {
+        self.position = self.position + 1;
+
+        if (self.position >= self.input.length()) {
+          return Result::Err(field0 = "Unexpected end of input in string escape");
+        }
+
+        let escaped: String = self.peek();
+        self.position = self.position + 1;
+
+        if (escaped == "\"") {
+          result = result.concat(other = "\"");
+        } else if (escaped == "\\") {
+          result = result.concat(other = "\\");
+        } else if (escaped == "/") {
+          result = result.concat(other = "/");
+        } else if (escaped == "n") {
+          result = result.concat(other = "\n");
+        } else if (escaped == "r") {
+          result = result.concat(other = "\r");
+        } else if (escaped == "t") {
+          result = result.concat(other = "\t");
+        } else if (escaped == "b") {
+          result = result.concat(other = "\b");
+        } else if (escaped == "f") {
+          result = result.concat(other = "\f");
+        } else {
+          return Result::Err(field0 = "Invalid escape sequence: \\${escaped}");
+        }
+      } else {
+        result = result.concat(other = ch);
+        self.position = self.position + 1;
+      }
+    }
+
+    return Result::Err(field0 = "Unterminated string");
+  }
+
+  fn parse_array() -> Result<JsonValue, String> {
+    if (self.peek() != "[") {
+      return Result::Err(field0 = "Expected opening bracket");
+    }
+
+    self.position = self.position + 1;
+    self.skip_whitespace();
+
+    var elements: List[JsonValue] = [];
+
+    if (self.position < self.input.length()) {
+      if (self.peek() == "]") {
+        self.position = self.position + 1;
+        return Result::Ok(field0 = JsonValue::Array(field0 = elements));
+      }
+    }
+
+    while (self.position < self.input.length()) {
+      let value_result: Result<JsonValue, String> = self.parse_value();
+
+      let value: JsonValue = match value_result {
+        Result::Ok(v: JsonValue) -> v,
+        Result::Err(err: String) -> {
+          return Result::Err(field0 = err);
+        }
+      };
+
+      elements.push(value = value);
+      self.skip_whitespace();
+
+      if (self.position >= self.input.length()) {
+        return Result::Err(field0 = "Unexpected end of input in array");
+      }
+
+      let ch: String = self.peek();
+
+      if (ch == "]") {
+        self.position = self.position + 1;
+        return Result::Ok(field0 = JsonValue::Array(field0 = elements));
+      } else if (ch == ",") {
+        self.position = self.position + 1;
+        self.skip_whitespace();
+      } else {
+        return Result::Err(field0 = "Expected ',' or ']' in array");
+      }
+    }
+
+    return Result::Err(field0 = "Unterminated array");
+  }
+
+  fn parse_object() -> Result<JsonValue, String> {
+    if (self.peek() != "{") {
+      return Result::Err(field0 = "Expected opening brace");
+    }
+
+    self.position = self.position + 1;
+    self.skip_whitespace();
+
+    var obj: Dict[String, JsonValue] = {};
+
+    if (self.position < self.input.length()) {
+      if (self.peek() == "}") {
+        self.position = self.position + 1;
+        return Result::Ok(field0 = JsonValue::Object(field0 = obj));
+      }
+    }
+
+    while (self.position < self.input.length()) {
+      self.skip_whitespace();
+
+      if (self.peek() != "\"") {
+        return Result::Err(field0 = "Expected string key in object");
+      }
+
+      let key_result: Result<String, String> = self.parse_string();
+
+      let key: String = match key_result {
+        Result::Ok(k: String) -> k,
+        Result::Err(err: String) -> {
+          return Result::Err(field0 = err);
+        }
+      };
+
+      self.skip_whitespace();
+
+      if (self.position >= self.input.length()) {
+        return Result::Err(field0 = "Expected ':' after object key");
+      }
+
+      if (self.peek() != ":") {
+        return Result::Err(field0 = "Expected ':' after object key");
+      }
+
+      self.position = self.position + 1;
+      self.skip_whitespace();
+
+      let value_result: Result<JsonValue, String> = self.parse_value();
+
+      let value: JsonValue = match value_result {
+        Result::Ok(v: JsonValue) -> v,
+        Result::Err(err: String) -> {
+          return Result::Err(field0 = err);
+        }
+      };
+
+      obj.insert(key = key, value = value);
+      self.skip_whitespace();
+
+      if (self.position >= self.input.length()) {
+        return Result::Err(field0 = "Unexpected end of input in object");
+      }
+
+      let ch: String = self.peek();
+
+      if (ch == "}") {
+        self.position = self.position + 1;
+        return Result::Ok(field0 = JsonValue::Object(field0 = obj));
+      } else if (ch == ",") {
+        self.position = self.position + 1;
+        self.skip_whitespace();
+      } else {
+        return Result::Err(field0 = "Expected ',' or '}' in object");
+      }
+    }
+
+    return Result::Err(field0 = "Unterminated object");
+  }
+
+  fn skip_whitespace() {
+    while (self.position < self.input.length()) {
+      let ch: String = self.peek();
+      var is_whitespace: Bool = false;
+
+      if (ch == " ") {
+        is_whitespace = true;
+      }
+      if (ch == "\n") {
+        is_whitespace = true;
+      }
+      if (ch == "\r") {
+        is_whitespace = true;
+      }
+      if (ch == "\t") {
+        is_whitespace = true;
+      }
+
+      if (is_whitespace) {
+        self.position = self.position + 1;
+      } else {
+        return;
+      }
+    }
+  }
+
+  fn peek() -> String {
+    if (self.position >= self.input.length()) {
+      return "";
+    }
+    return self.input.char_at(index = self.position);
+  }
+
+  fn is_digit(ch: String) -> Bool {
+    if (ch.length() != 1) {
+      return false;
+    }
+
+    let code_result: Result<Int32, String> = ch.parse_int();
+    return match code_result {
+      Result::Ok(_: Int32) -> true,
+      Result::Err(_: String) -> false
+    };
+  }
+}
+
+pub fn parse(input: String) -> Result<JsonValue, String> {
+  let parser: Parser = Parser.init(input = input, position = 0);
+  let result: Result<JsonValue, String> = parser.parse_value();
+
+  let value: JsonValue = match result {
+    Result::Ok(v: JsonValue) -> v,
+    Result::Err(err: String) -> {
+      return Result::Err(field0 = err);
+    }
+  };
+
+  parser.skip_whitespace();
+
+  if (parser.position < input.length()) {
+    return Result::Err(field0 = "Unexpected characters after JSON value");
+  }
+
+  return Result::Ok(field0 = value);
+}
+
+pub fn stringify(value: JsonValue) -> String {
+  return match value {
+    JsonValue::Null -> "null",
+    JsonValue::Bool(b: Bool) -> {
+      if (b) {
+        return "true";
+      } else {
+        return "false";
+      }
+    },
+    JsonValue::Number(n: Float64) -> {
+      return float_to_string(f = n);
+    },
+    JsonValue::String(s: String) -> {
+      return stringify_string(s = s);
+    },
+    JsonValue::Array(arr: List[JsonValue]) -> {
+      return stringify_array(arr = arr);
+    },
+    JsonValue::Object(obj: Dict[String, JsonValue]) -> {
+      return stringify_object(obj = obj);
+    }
+  };
+}
+
+fn float_to_string(f: Float64) -> String {
+  let as_int: Int64 = cast(value = f, target = Int64);
+  let back_to_float: Float64 = cast(value = as_int, target = Float64);
+
+  if (back_to_float == f) {
+    return "${as_int}";
+  } else {
+    return "${f}";
+  }
+}
+
+fn stringify_string(s: String) -> String {
+  var result: String = "\"";
+  var i: Int32 = 0;
+
+  while (i < s.length()) {
+    let ch: String = s.char_at(index = i);
+
+    if (ch == "\"") {
+      result = result.concat(other = "\\\"");
+    } else if (ch == "\\") {
+      result = result.concat(other = "\\\\");
+    } else if (ch == "\n") {
+      result = result.concat(other = "\\n");
+    } else if (ch == "\r") {
+      result = result.concat(other = "\\r");
+    } else if (ch == "\t") {
+      result = result.concat(other = "\\t");
+    } else if (ch == "\b") {
+      result = result.concat(other = "\\b");
+    } else if (ch == "\f") {
+      result = result.concat(other = "\\f");
+    } else {
+      result = result.concat(other = ch);
+    }
+
+    i = i + 1;
+  }
+
+  result = result.concat(other = "\"");
+  return result;
+}
+
+fn stringify_array(arr: List[JsonValue]) -> String {
+  var result: String = "[";
+  var i: Int32 = 0;
+
+  while (i < arr.length()) {
+    let elem_opt: Option[JsonValue] = arr[i];
+
+    let elem: JsonValue = match elem_opt {
+      Option::Some(e: JsonValue) -> e,
+      Option::None -> JsonValue::Null
+    };
+
+    result = result.concat(other = stringify(value = elem));
+
+    if (i < arr.length() - 1) {
+      result = result.concat(other = ",");
+    }
+
+    i = i + 1;
+  }
+
+  result = result.concat(other = "]");
+  return result;
+}
+
+fn stringify_object(obj: Dict[String, JsonValue]) -> String {
+  var result: String = "{";
+  let keys: List[String] = obj.keys();
+  var i: Int32 = 0;
+
+  while (i < keys.length()) {
+    let key_opt: Option[String] = keys[i];
+
+    let key: String = match key_opt {
+      Option::Some(k: String) -> k,
+      Option::None -> ""
+    };
+
+    if (key.length() > 0) {
+      result = result.concat(other = stringify_string(s = key));
+      result = result.concat(other = ":");
+
+      let value_opt: Option[JsonValue] = obj[key];
+
+      let value: JsonValue = match value_opt {
+        Option::Some(v: JsonValue) -> v,
+        Option::None -> JsonValue::Null
+      };
+
+      result = result.concat(other = stringify(value = value));
+
+      if (i < keys.length() - 1) {
+        result = result.concat(other = ",");
+      }
+    }
+
+    i = i + 1;
+  }
+
+  result = result.concat(other = "}");
+  return result;
+}

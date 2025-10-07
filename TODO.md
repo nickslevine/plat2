@@ -1,12 +1,8 @@
 ## Next
 
 
-There's a remaining issue with variable type
-  inference for call expressions, but that's a separate problem from the cross-module function signature resolution which has
-  been fixed.
 
 ## stdlib
-* set up stdlib. 
 
 * pathlib
 * colored printing 
@@ -101,6 +97,10 @@ Linting
 * fuzz testing, parameterized testing. 
 * `plat add` 
 * plat check without build for speed. 
+* wasm compiler/interpreter for
+* change return type of main. 
+* refactor stdlib. 
+* ai inference library
 
 
 
@@ -115,3 +115,9 @@ Linting
   3. Benchmark Suite - Once plat bench command
   is working, run full performance tests
 
+
+
+  📝 Key Learning
+
+  - Plat doesn't support blocks with multiple statements in match arms - only single expressions
+  - Match patterns with early returns require careful structuring to avoid type checker confusion

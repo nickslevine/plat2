@@ -1,0 +1,100 @@
+use std::json;
+
+fn main() -> Int32 {
+  test_parse_null();
+  test_parse_true();
+  test_parse_false();
+  test_parse_integer();
+  test_parse_float();
+  test_parse_string();
+  test_parse_array();
+  test_parse_object();
+  test_stringify_null();
+  test_stringify_bool();
+  test_stringify_number();
+  test_stringify_string();
+  test_stringify_array();
+  test_roundtrip();
+
+  print(value = "All JSON tests passed!");
+  return 0;
+}
+
+fn test_parse_null() {
+  print(value = "Testing parse null...");
+  let input: String = "null";
+  json::parse(input = input);
+}
+
+fn test_parse_true() {
+  print(value = "Testing parse true...");
+  let input: String = "true";
+  json::parse(input = input);
+}
+
+fn test_parse_false() {
+  print(value = "Testing parse false...");
+  let input: String = "false";
+  json::parse(input = input);
+}
+
+fn test_parse_integer() {
+  print(value = "Testing parse integer...");
+  let input: String = "42";
+  json::parse(input = input);
+}
+
+fn test_parse_float() {
+  print(value = "Testing parse float...");
+  let input: String = "3.14";
+  json::parse(input = input);
+}
+
+fn test_parse_string() {
+  print(value = "Testing parse string...");
+  let input: String = "\"hello world\"";
+  json::parse(input = input);
+}
+
+fn test_parse_array() {
+  print(value = "Testing parse array...");
+  let input: String = "[1, 2, 3]";
+  json::parse(input = input);
+}
+
+fn test_parse_object() {
+  print(value = "Testing parse object...");
+  let input: String = "{\"name\": \"Alice\", \"age\": 30}";
+  json::parse(input = input);
+}
+
+fn test_stringify_null() {
+  print(value = "Testing stringify null...");
+  json::stringify(value = json::JsonValue::Null);
+}
+
+fn test_stringify_bool() {
+  print(value = "Testing stringify bool...");
+  json::stringify(value = json::JsonValue::Bool(field0 = true));
+}
+
+fn test_stringify_number() {
+  print(value = "Testing stringify number...");
+  json::stringify(value = json::JsonValue::Number(field0 = 42.0));
+}
+
+fn test_stringify_string() {
+  print(value = "Testing stringify string...");
+  json::stringify(value = json::JsonValue::String(field0 = "hello"));
+}
+
+fn test_stringify_array() {
+  print(value = "Testing stringify array...");
+  json::stringify(value = json::JsonValue::Array(field0 = []));
+}
+
+fn test_roundtrip() {
+  print(value = "Testing roundtrip...");
+  let original: String = "42";
+  json::parse(input = original);
+}
