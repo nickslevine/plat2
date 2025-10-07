@@ -4074,6 +4074,62 @@ impl CodeGenerator {
                         let zero = builder.ins().iconst(I32, 0);
                         Ok(zero)
                     }
+                    "push" => {
+                        if args.len() != 1 {
+                            return Err(CodegenError::UnsupportedFeature("push() method takes exactly one argument".to_string()));
+                        }
+
+                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+                        let value_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+
+                        // Convert value to i64 if needed
+                        let value_64 = if builder.func.dfg.value_type(value_val) == I32 {
+                            builder.ins().uextend(I64, value_val)
+                        } else {
+                            value_val
+                        };
+
+                        let func_sig = {
+                            let mut sig = module.make_signature();
+                            sig.call_conv = CallConv::SystemV;
+                            sig.params.push(AbiParam::new(I64)); // array pointer (mutable)
+                            sig.params.push(AbiParam::new(I64)); // value
+                            sig.returns.push(AbiParam::new(I32)); // success (bool)
+                            sig
+                        };
+
+                        let func_id = module.declare_function("plat_array_append", Linkage::Import, &func_sig)
+                            .map_err(CodegenError::ModuleError)?;
+                        let func_ref = module.declare_func_in_func(func_id, builder.func);
+
+                        let _call = builder.ins().call(func_ref, &[object_val, value_64]);
+                        // Returns success as i32, but we're treating this as void operation for now
+                        let zero = builder.ins().iconst(I32, 0);
+                        Ok(zero)
+                    }
+                    "pop" => {
+                        if !args.is_empty() {
+                            return Err(CodegenError::UnsupportedFeature("pop() method takes no arguments".to_string()));
+                        }
+
+                        let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+
+                        let func_sig = {
+                            let mut sig = module.make_signature();
+                            sig.call_conv = CallConv::SystemV;
+                            sig.params.push(AbiParam::new(I64)); // array pointer (mutable)
+                            sig.returns.push(AbiParam::new(I64)); // Option<T> (pointer to Option enum)
+                            sig
+                        };
+
+                        let func_id = module.declare_function("plat_array_pop", Linkage::Import, &func_sig)
+                            .map_err(CodegenError::ModuleError)?;
+                        let func_ref = module.declare_func_in_func(func_id, builder.func);
+
+                        let result = builder.ins().call(func_ref, &[object_val]);
+                        let result = builder.inst_results(result)[0];
+                        Ok(result)
+                    }
                     "append" => {
                         if args.len() != 1 {
                             return Err(CodegenError::UnsupportedFeature("append() method takes exactly one argument".to_string()));
@@ -4412,6 +4468,38 @@ impl CodeGenerator {
                             "set" => {
                                 if args.len() != 2 {
                                     return Err(CodegenError::UnsupportedFeature("Dict.set() method takes exactly two arguments".to_string()));
+                                }
+
+                                let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+                                let key_val = Self::generate_expression_helper(builder, &args[0].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+                                let value_val = Self::generate_expression_helper(builder, &args[1].value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+
+                                // Determine value type
+                                let value_type = Self::get_dict_value_type(&args[1].value, variable_types);
+
+                                let func_sig = {
+                                    let mut sig = module.make_signature();
+                                    sig.call_conv = CallConv::SystemV;
+                                    sig.params.push(AbiParam::new(I64)); // dict pointer
+                                    sig.params.push(AbiParam::new(I64)); // key pointer
+                                    sig.params.push(AbiParam::new(I64)); // value
+                                    sig.params.push(AbiParam::new(I32)); // value type
+                                    sig.returns.push(AbiParam::new(I32)); // success
+                                    sig
+                                };
+
+                                let func_id = module.declare_function("plat_dict_set", Linkage::Import, &func_sig)
+                                    .map_err(CodegenError::ModuleError)?;
+                                let func_ref = module.declare_func_in_func(func_id, builder.func);
+
+                                let value_type_const = builder.ins().iconst(I32, value_type as i64);
+                                let call = builder.ins().call(func_ref, &[object_val, key_val, value_val, value_type_const]);
+                                Ok(builder.inst_results(call)[0])
+                            }
+                            "insert" => {
+                                // insert() is an alias for set()
+                                if args.len() != 2 {
+                                    return Err(CodegenError::UnsupportedFeature("Dict.insert() method takes exactly two arguments".to_string()));
                                 }
 
                                 let object_val = Self::generate_expression_helper(builder, object, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;

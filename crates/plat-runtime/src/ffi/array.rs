@@ -402,6 +402,65 @@ pub extern "C" fn plat_array_append(array_ptr: *mut RuntimeArray, value: i64) ->
     }
 }
 
+/// Remove and return the last element from the array
+/// Returns Option<T>: Some(value) if array is non-empty, None if empty
+/// Option encoding: discriminant in high 32 bits, value in low 32 bits (for i32/i64)
+#[no_mangle]
+pub extern "C" fn plat_array_pop(array_ptr: *mut RuntimeArray) -> i64 {
+    if array_ptr.is_null() {
+        // Return Option::None (discriminant = 1, shifted left by 32)
+        return 1i64 << 32;
+    }
+
+    unsafe {
+        let array = &mut *array_ptr;
+
+        // If array is empty, return Option::None
+        if array.length == 0 {
+            return 1i64 << 32;
+        }
+
+        // Decrease length first
+        array.length -= 1;
+        let last_index = array.length;
+
+        // Get the last element value
+        let value: i64 = match array.element_type {
+            ARRAY_TYPE_I32 => {
+                let data_ptr = array.data as *const i32;
+                *data_ptr.add(last_index) as i64
+            },
+            ARRAY_TYPE_I64 => {
+                let data_ptr = array.data as *const i64;
+                *data_ptr.add(last_index)
+            },
+            ARRAY_TYPE_BOOL => {
+                let data_ptr = array.data as *const bool;
+                if *data_ptr.add(last_index) { 1 } else { 0 }
+            },
+            ARRAY_TYPE_STRING => {
+                let data_ptr = array.data as *const *const c_char;
+                *data_ptr.add(last_index) as i64
+            },
+            ARRAY_TYPE_CLASS => {
+                let data_ptr = array.data as *const *const u8;
+                *data_ptr.add(last_index) as i64
+            },
+            _ => {
+                // Unsupported type, restore length and return None
+                array.length += 1;
+                return 1i64 << 32;
+            }
+        };
+
+        // Return Option::Some(value) - discriminant = 0, value in appropriate position
+        // For pointers/i64: value is the pointer itself
+        // For i32: value goes in low 32 bits, discriminant in high 32 bits
+        // Since we return i64, we return the value directly (which represents Some(value))
+        value
+    }
+}
+
 /// Insert element at specific index (shifts elements right)
 #[no_mangle]
 pub extern "C" fn plat_array_insert_at(array_ptr: *mut RuntimeArray, index: i32, value: i64) -> bool {

@@ -415,7 +415,17 @@ impl Parser {
             return Ok(Type::Set(Box::new(element_type)));
         }
 
-        let type_name = self.consume_identifier("Expected type name")?;
+        // Parse type name, which may be qualified (e.g., json::JsonValue)
+        let mut type_name_parts = vec![self.consume_identifier("Expected type name")?];
+
+        // Check for module qualification (e.g., json::JsonValue)
+        while self.check(&Token::DoubleColon) {
+            self.advance();
+            type_name_parts.push(self.consume_identifier("Expected type name after '::'")?);
+        }
+
+        // Build the full type name (join with ::)
+        let type_name = type_name_parts.join("::");
 
         // Check for generic type parameters
         if self.match_token(&Token::Less) {
@@ -1796,9 +1806,10 @@ impl Parser {
         // Skip the opening brace (we've already consumed it)
         // Look for pattern: (string|ident) : expr
         if self.is_at_end() || self.check(&Token::RightBrace) {
-            // Empty braces could be either, assume it's a block
+            // Empty braces: treat as empty dict literal
+            // (blocks require statements, dicts can be empty)
             self.current = saved_current;
-            return false;
+            return true;
         }
 
         // Check if we have a key-like token followed by ':'

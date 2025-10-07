@@ -315,11 +315,11 @@ pub fn read_file(path: String) -> Result<String, String> {
 
 ---
 
-### Phase 4: std::json (Pure Plat Implementation!) ⏸️ DEBUGGING TYPE CHECK ISSUE
+### Phase 4: std::json (Pure Plat Implementation!) ⏸️ SYMBOL LOADING ISSUE
 
 **Goal**: JSON parser written entirely in Plat (no Rust!)
 
-**Status**: 99% Complete - Recursive enum compilation works, minor type check bug remaining
+**Status**: 95% Complete - Implementation done, symbol resolution issue remaining
 
 **Module**: `stdlib/std/json.plat`
 
@@ -426,13 +426,46 @@ if (ch == "n") {
      - Added codegen support in `plat-codegen/src/lib.rs` (lines 3957-4006)
      - Added type checker support in `plat-hir/src/lib.rs` (lines 3184-3212)
    - **Testing**: Created test_string_methods.plat, all tests pass successfully
-5. ⏸️ **Current Blocker**: Type inference issue in json.plat:
-   - Error: "Cannot infer type of empty array literal. Use explicit type annotation."
-   - **Status**: Investigating - may need to find additional empty collection literals without type annotations
-   - **Also Fixed**: Changed `obj[key]` to `obj.get(key = key)` since Dict indexing with `[]` syntax expects Int32
+5. ✅ **FIXED (2025-10-07)**: Empty collection type inference:
+   - **Bug**: "Cannot infer type of empty array literal" for `let elements: List[JsonValue] = []`
+   - **Root Cause**: `check_literal()` didn't use expected type parameter for empty collections
+   - **Fix**: Modified `check_literal()` to accept `expected_type` parameter and use it for empty List/Dict/Set literals
+   - **Result**: Empty collections now work with explicit type annotations
+6. ✅ **FIXED (2025-10-07)**: Qualified type names in generic parameters:
+   - **Bug**: Parser error "Expected '>' after type parameters" for `Result<json::JsonValue, String>`
+   - **Root Cause**: Parser's `parse_type()` didn't support qualified names (`::`) in type positions
+   - **Fix**: Extended `parse_type()` to parse qualified type names by checking for `DoubleColon` tokens
+   - **Result**: Can now use `Result<json::JsonValue, String>` and other qualified types in generics
+7. ✅ **FIXED (2025-10-07)**: Empty braces ambiguity:
+   - **Bug**: `var obj: Dict[String, JsonValue] = {}` treated `{}` as empty block (Unit type)
+   - **Root Cause**: Parser's `is_dict_literal()` defaulted empty braces to blocks
+   - **Fix**: Changed default to treat `{}` as empty dict literal (blocks require statements)
+   - **Result**: `{}` now correctly creates empty Dict literals
+8. ✅ **ADDED (2025-10-07)**: Missing List methods:
+   - **Methods**: `push(value: T)` and `pop() -> Option<T>`
+   - **Implementation**:
+     - Type checker: Added method signatures for List
+     - Codegen: `push` calls `plat_array_append`, `pop` calls new `plat_array_pop`
+     - Runtime: Implemented `plat_array_pop()` returning Option<T> with proper encoding
+   - **Result**: List now has complete stack-like operations
+9. ✅ **ADDED (2025-10-07)**: Missing Dict method:
+   - **Method**: `insert(key: K, value: V) -> Bool` (alias for `set`)
+   - **Implementation**: Added to type checker and codegen (calls `plat_dict_set`)
+   - **Result**: Dict now supports both `set()` and `insert()` methods
+10. ✅ **ADDED (2025-10-07)**: Qualified type name resolution through imports:
+    - **Feature**: Resolve `json::JsonValue` to `std::json::JsonValue` based on `use std::json`
+    - **Implementation**: Added `resolve_qualified_type_name()` helper in type checker
+    - **Logic**: Matches first component of qualified name against imported module paths
+    - **Result**: Can use short aliases like `json::JsonValue` in code
+11. ⏸️ **Current Blocker**: Symbol loading issue:
+    - **Error**: "Unknown type 'json::JsonValue' (resolved to 'std::json::JsonValue')"
+    - **Issue**: Enum symbols from stdlib not being loaded into type checker's local maps
+    - **Status**: Type name resolution works, but enum lookup fails
+    - **Hypothesis**: Multi-module compilation flow may not be collecting stdlib symbols before type-checking user code
+    - **Next**: Need to investigate `build_multi_module()` and symbol collection order
 
 **Next Steps**:
-1. ⏸️ Fix remaining type inference issues in json.plat
+1. ⏸️ Debug symbol loading in multi-module compilation (stdlib → user code)
 2. ⏸️ Add comprehensive test suite once compilation succeeds
 3. ⏸️ Test parse() and stringify() functions with real JSON
 

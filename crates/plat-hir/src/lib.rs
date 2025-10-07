@@ -418,6 +418,41 @@ impl TypeChecker {
         }
     }
 
+    /// Resolve a qualified type name through imports
+    /// Example: json::JsonValue -> std::json::JsonValue (if "use std::json" was imported)
+    fn resolve_qualified_type_name(&self, type_name: &str) -> String {
+        if !type_name.contains("::") {
+            return type_name.to_string();
+        }
+
+        // Split into parts: json::JsonValue -> ["json", "JsonValue"]
+        let parts: Vec<&str> = type_name.split("::").collect();
+        if parts.is_empty() {
+            return type_name.to_string();
+        }
+
+        let first_part = parts[0];
+
+        // Try to find a matching import
+        for import in &self.module_table.imports {
+            // Check if this import ends with the first part
+            // e.g., "std::json" ends with "json"
+            if import == first_part || import.ends_with(&format!("::{}", first_part)) {
+                // Replace the first part with the full import path
+                // json::JsonValue -> std::json::JsonValue
+                let remaining_parts = &parts[1..];
+                if remaining_parts.is_empty() {
+                    return import.clone();
+                } else {
+                    return format!("{}::{}", import, remaining_parts.join("::"));
+                }
+            }
+        }
+
+        // No matching import found, return as-is
+        type_name.to_string()
+    }
+
     /// Collect all top-level symbols from a program into the module symbol table
     pub fn collect_symbols_from_program(
         &mut self,
@@ -1639,7 +1674,7 @@ impl TypeChecker {
 
     fn check_expression(&mut self, expression: &Expression, expected_type: Option<&HirType>) -> Result<HirType, DiagnosticError> {
         match expression {
-            Expression::Literal(literal) => self.check_literal(literal),
+            Expression::Literal(literal) => self.check_literal(literal, expected_type),
             Expression::Identifier { name, span } => {
                 self.lookup_variable(name).map_err(|_| {
                     DiagnosticError::Rich(
@@ -2829,6 +2864,29 @@ impl TypeChecker {
                         }
                         Ok(HirType::Unit)
                     }
+                    (HirType::List(element_type), "push") => {
+                        if args.len() != 1 {
+                            return Err(DiagnosticError::Type(
+                                "push() method takes exactly one argument".to_string()
+                            ));
+                        }
+                        let value_type = self.check_expression(&args[0].value, None)?;
+                        if value_type != **element_type {
+                            return Err(DiagnosticError::Type(
+                                format!("push() method expects value of type {:?}, got {:?}", element_type, value_type)
+                            ));
+                        }
+                        Ok(HirType::Unit)
+                    }
+                    (HirType::List(element_type), "pop") => {
+                        if !args.is_empty() {
+                            return Err(DiagnosticError::Type(
+                                "pop() method takes no arguments".to_string()
+                            ));
+                        }
+                        // Returns Option<T> where T is the element type
+                        Ok(HirType::Enum("Option".to_string(), vec![(**element_type).clone()]))
+                    }
                     (HirType::List(element_type), "append") => {
                         if args.len() != 1 {
                             return Err(DiagnosticError::Type(
@@ -3241,6 +3299,27 @@ impl TypeChecker {
                         if value_arg_type != **value_type {
                             return Err(DiagnosticError::Type(
                                 format!("set() method expects value of type {:?}, got {:?}", value_type, value_arg_type)
+                            ));
+                        }
+                        Ok(HirType::Bool)  // Returns true on success
+                    }
+                    (HirType::Dict(key_type, value_type), "insert") => {
+                        // insert() is an alias for set()
+                        if args.len() != 2 {
+                            return Err(DiagnosticError::Type(
+                                "insert() method takes exactly two arguments".to_string()
+                            ));
+                        }
+                        let key_arg_type = self.check_expression(&args[0].value, None)?;
+                        if key_arg_type != **key_type {
+                            return Err(DiagnosticError::Type(
+                                format!("insert() method expects key of type {:?}, got {:?}", key_type, key_arg_type)
+                            ));
+                        }
+                        let value_arg_type = self.check_expression(&args[1].value, None)?;
+                        if value_arg_type != **value_type {
+                            return Err(DiagnosticError::Type(
+                                format!("insert() method expects value of type {:?}, got {:?}", value_type, value_arg_type)
                             ));
                         }
                         Ok(HirType::Bool)  // Returns true on success
@@ -4256,7 +4335,7 @@ impl TypeChecker {
         Ok(None)
     }
 
-    fn check_literal(&mut self, literal: &Literal) -> Result<HirType, DiagnosticError> {
+    fn check_literal(&mut self, literal: &Literal, expected_type: Option<&HirType>) -> Result<HirType, DiagnosticError> {
         match literal {
             Literal::Bool(_, _) => Ok(HirType::Bool),
             Literal::Integer(_, int_type, _) => {
@@ -4279,6 +4358,10 @@ impl TypeChecker {
             Literal::InterpolatedString(_, _) => Ok(HirType::String),
             Literal::Array(elements, _) => {
                 if elements.is_empty() {
+                    // If we have an expected type annotation, use it
+                    if let Some(HirType::List(element_type)) = expected_type {
+                        return Ok(HirType::List(element_type.clone()));
+                    }
                     return Err(DiagnosticError::Type(
                         "Cannot infer type of empty array literal. Use explicit type annotation.".to_string()
                     ));
@@ -4301,6 +4384,10 @@ impl TypeChecker {
             }
             Literal::Dict(pairs, _) => {
                 if pairs.is_empty() {
+                    // If we have an expected type annotation, use it
+                    if let Some(HirType::Dict(key_type, value_type)) = expected_type {
+                        return Ok(HirType::Dict(key_type.clone(), value_type.clone()));
+                    }
                     return Err(DiagnosticError::Type(
                         "Cannot infer type of empty dict literal. Use explicit type annotation.".to_string()
                     ));
@@ -4333,6 +4420,10 @@ impl TypeChecker {
             }
             Literal::Set(elements, _) => {
                 if elements.is_empty() {
+                    // If we have an expected type annotation, use it
+                    if let Some(HirType::Set(element_type)) = expected_type {
+                        return Ok(HirType::Set(element_type.clone()));
+                    }
                     return Err(DiagnosticError::Type(
                         "Cannot infer type of empty set literal. Use explicit type annotation.".to_string()
                     ));
@@ -4523,13 +4614,34 @@ impl TypeChecker {
                     }
                     Ok(HirType::TypeParameter(name.clone()))
                 }
-                // Check if this is a known enum
+                // Check if this is a known enum (try both as-is and with import resolution)
                 else if self.enums.contains_key(name) {
                     let type_args: Result<Vec<HirType>, DiagnosticError> = type_params
                         .iter()
                         .map(|param| self.ast_type_to_hir_type(param))
                         .collect();
                     Ok(HirType::Enum(name.clone(), type_args?))
+                }
+                // Try to resolve qualified name through imports (e.g., json::JsonValue -> std::json::JsonValue)
+                else if name.contains("::") {
+                    let resolved_name = self.resolve_qualified_type_name(name);
+                    if self.enums.contains_key(&resolved_name) {
+                        let type_args: Result<Vec<HirType>, DiagnosticError> = type_params
+                            .iter()
+                            .map(|param| self.ast_type_to_hir_type(param))
+                            .collect();
+                        Ok(HirType::Enum(resolved_name, type_args?))
+                    } else if self.classes.contains_key(&resolved_name) {
+                        let type_args: Result<Vec<HirType>, DiagnosticError> = type_params
+                            .iter()
+                            .map(|param| self.ast_type_to_hir_type(param))
+                            .collect();
+                        Ok(HirType::Class(resolved_name, type_args?))
+                    } else {
+                        Err(DiagnosticError::Type(
+                            format!("Unknown type '{}' (resolved to '{}')", name, resolved_name)
+                        ))
+                    }
                 }
                 // Check if this is a known class
                 else if self.classes.contains_key(name) {
@@ -4667,7 +4779,7 @@ impl TypeChecker {
             }
             Pattern::Literal(literal) => {
                 // Check literal type matches expected type
-                let literal_type = self.check_literal(literal)?;
+                let literal_type = self.check_literal(literal, Some(expected_type))?;
                 if literal_type != *expected_type {
                     return Err(DiagnosticError::Type(
                         format!("Literal pattern has type {:?}, expected {:?}", literal_type, expected_type)
