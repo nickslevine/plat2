@@ -1,11 +1,12 @@
 use clap::{Parser, Subcommand};
 use colored::*;
 use globset::{Glob, GlobSet, GlobSetBuilder};
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{self, Command};
 use anyhow::{Context, Result};
-use plat_modules::{ModuleResolver, ModuleError};
+use plat_modules::ModuleResolver;
 use plat_diags::{DiagnosticError, Span};
 
 #[derive(Parser)]
@@ -278,9 +279,11 @@ fn build_multi_module(ordered_files: &[PathBuf]) -> Result<()> {
     stdlib_cache.init()
         .with_context(|| "Failed to initialize stdlib cache")?;
 
-    // Phase 1: Parse all modules
+    // Phase 1: Parse all user modules
     println!("\n  {} Parsing all modules...", "→".cyan());
     let mut modules = Vec::new();
+    let mut stdlib_imports = HashSet::new();
+
     for file in ordered_files {
         let source = fs::read_to_string(file)
             .with_context(|| format!("Failed to read file: {}", file.display()))?;
@@ -290,10 +293,44 @@ fn build_multi_module(ordered_files: &[PathBuf]) -> Result<()> {
         let program = parser.parse()
             .with_context(|| "Failed to parse program")?;
 
+        // Collect stdlib imports from this module
+        for use_decl in &program.use_decls {
+            let import_path = use_decl.path.join("::");
+            if import_path.starts_with("std::") {
+                stdlib_imports.insert(import_path);
+            }
+        }
+
         modules.push((file.clone(), program));
     }
 
-    // Phase 2: Build global symbol table from all modules
+    // Phase 1.5: Discover and parse stdlib modules
+    if !stdlib_imports.is_empty() {
+        println!("  {} Discovering stdlib modules...", "→".cyan());
+        let stdlib_root = get_stdlib_root();
+        let current_dir = std::env::current_dir()
+            .with_context(|| "Failed to get current directory")?;
+        let mut resolver = plat_modules::ModuleResolver::new(current_dir, stdlib_root);
+
+        for stdlib_module in &stdlib_imports {
+            let module_id = resolver.discover_stdlib_module(stdlib_module)
+                .with_context(|| format!("Failed to discover stdlib module: {}", stdlib_module))?;
+
+            // Parse the stdlib module
+            let source = fs::read_to_string(&module_id.file_path)
+                .with_context(|| format!("Failed to read stdlib module: {}", module_id.file_path.display()))?;
+
+            let parser = plat_parser::Parser::new(&source)
+                .with_context(|| "Failed to create parser for stdlib module")?;
+            let program = parser.parse()
+                .with_context(|| format!("Failed to parse stdlib module: {}", stdlib_module))?;
+
+            println!("    {} Loaded {}", "→".cyan(), stdlib_module);
+            modules.push((module_id.file_path.clone(), program));
+        }
+    }
+
+    // Phase 2: Build global symbol table from all modules (including stdlib)
     println!("  {} Building global symbol table...", "→".cyan());
     let mut global_symbols = plat_hir::ModuleSymbolTable::new(String::new());
 

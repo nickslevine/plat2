@@ -323,10 +323,11 @@ impl TypeChecker {
         for (qualified_name, symbol) in &self.module_table.global_symbols {
             // Check if this symbol is from the current module or an imported module
             let should_load = if current_module.is_empty() {
-                // Root module: load all unqualified symbols
+                // Root module: load all unqualified symbols AND imported modules
                 !qualified_name.contains("::")
+                    || imports.iter().any(|imp| qualified_name.starts_with(&format!("{}::", imp)))
             } else {
-                // Check if symbol is from current module or imported modules
+                // Non-root module: check if symbol is from current module or imported modules
                 qualified_name.starts_with(&format!("{}::", current_module))
                     || imports.iter().any(|imp| qualified_name.starts_with(&format!("{}::", imp)))
             };
@@ -1676,6 +1677,34 @@ impl TypeChecker {
         match expression {
             Expression::Literal(literal) => self.check_literal(literal, expected_type),
             Expression::Identifier { name, span } => {
+                // Check if this is an enum variant constructor (e.g., json::JsonValue::Null)
+                if let Some(last_sep) = name.rfind("::") {
+                    let enum_path = &name[..last_sep];
+                    let variant_name = &name[last_sep + 2..];
+
+                    // Resolve the enum path through imports
+                    let resolved_enum = self.resolve_qualified_type_name(enum_path);
+
+                    // Check if this is an enum variant
+                    if let Some(enum_info) = self.enums.get(&resolved_enum) {
+                        if enum_info.variants.contains_key(variant_name) {
+                            // This is an enum variant constructor - treat it like EnumConstructor expression
+                            let field_types = enum_info.variants.get(variant_name).unwrap();
+
+                            // Zero-argument variant (unit variant)
+                            if field_types.is_empty() {
+                                return Ok(HirType::Enum(resolved_enum, vec![]));
+                            } else {
+                                return Err(DiagnosticError::Type(
+                                    format!("Enum variant '{}::{}' requires {} field(s), but was used without arguments",
+                                        resolved_enum, variant_name, field_types.len())
+                                ));
+                            }
+                        }
+                    }
+                }
+
+                // Not an enum variant, try variable lookup
                 self.lookup_variable(name).map_err(|_| {
                     DiagnosticError::Rich(
                         Diagnostic::undefined_symbol(

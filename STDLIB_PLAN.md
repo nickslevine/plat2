@@ -457,15 +457,24 @@ if (ch == "n") {
     - **Implementation**: Added `resolve_qualified_type_name()` helper in type checker
     - **Logic**: Matches first component of qualified name against imported module paths
     - **Result**: Can use short aliases like `json::JsonValue` in code
-11. ⏸️ **Current Blocker**: Symbol loading issue:
-    - **Error**: "Unknown type 'json::JsonValue' (resolved to 'std::json::JsonValue')"
-    - **Issue**: Enum symbols from stdlib not being loaded into type checker's local maps
-    - **Status**: Type name resolution works, but enum lookup fails
-    - **Hypothesis**: Multi-module compilation flow may not be collecting stdlib symbols before type-checking user code
-    - **Next**: Need to investigate `build_multi_module()` and symbol collection order
+11. ✅ **FIXED (2025-10-07)**: Symbol loading issue RESOLVED!
+    - **Bug #1**: `build_multi_module()` didn't discover stdlib modules
+      - **Fix**: Added Phase 1.5 to discover and parse stdlib modules from imports
+      - **Implementation**: Scan user modules for `std::*` imports, use ModuleResolver to discover stdlib files
+    - **Bug #2**: Root module (empty current_module) didn't load symbols from imports
+      - **Fix**: Modified `load_symbols_from_module_table()` to check imports for both root and non-root modules
+      - **Location**: `plat-hir/src/lib.rs:330-333`
+    - **Bug #3**: Qualified enum variants (`json::JsonValue::Null`) treated as variables
+      - **Fix**: Added qualified enum variant detection in `check_expression` for Identifier case
+      - **Location**: `plat-hir/src/lib.rs:1690-1715`
+    - **Result**: Stdlib enums now properly discovered, loaded, and type-checked! ✨
+12. ⏸️ **Current Issue**: Codegen error in std::json module
+    - **Error**: Code generation fails for `stringify()` function
+    - **Status**: Type checking passes, codegen fails on complex match expressions
+    - **Next**: Investigate codegen issue (separate from symbol loading)
 
 **Next Steps**:
-1. ⏸️ Debug symbol loading in multi-module compilation (stdlib → user code)
+1. ⏸️ Debug codegen issue in json.plat (likely unrelated to symbol loading)
 2. ⏸️ Add comprehensive test suite once compilation succeeds
 3. ⏸️ Test parse() and stringify() functions with real JSON
 
