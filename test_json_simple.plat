@@ -1,0 +1,53 @@
+use std::json;
+
+fn main() -> Int32 {
+  print(value = "Testing JSON parser...");
+
+  print(value = "");
+  print(value = "1. Parsing null...");
+  json::parse(input = "null");
+  print(value = "   ✓ Compiles successfully");
+
+  print(value = "");
+  print(value = "2. Parsing boolean...");
+  json::parse(input = "true");
+  print(value = "   ✓ Compiles successfully");
+
+  print(value = "");
+  print(value = "3. Parsing number...");
+  json::parse(input = "42");
+  print(value = "   ✓ Compiles successfully");
+
+  print(value = "");
+  print(value = "4. Parsing string...");
+  json::parse(input = "\"hello\"");
+  print(value = "   ✓ Compiles successfully");
+
+  print(value = "");
+  print(value = "5. Parsing array...");
+  json::parse(input = "[1, 2, 3]");
+  print(value = "   ✓ Compiles successfully");
+
+  print(value = "");
+  print(value = "6. Parsing object...");
+  json::parse(input = "{\"name\": \"Alice\", \"age\": 30}");
+  print(value = "   ✓ Compiles successfully");
+
+  print(value = "");
+  print(value = "7. Stringifying null...");
+  json::stringify(value = json::JsonValue::Null);
+  print(value = "   ✓ Compiles successfully");
+
+  print(value = "");
+  print(value = "8. Stringifying number...");
+  json::stringify(value = json::JsonValue::Number(field0 = 42.0));
+  print(value = "   ✓ Compiles successfully");
+
+  print(value = "");
+  print(value = "========================================");
+  print(value = "✅ JSON parser smoke test passed!");
+  print(value = "   (All functions compile and link correctly)");
+  print(value = "========================================");
+
+  return 0;
+}

@@ -1,0 +1,7 @@
+use std::json;
+
+fn main() -> Int32 {
+  print(value = "JSON Parser Smoke Test");
+  print(value = "Module loaded successfully");
+  return 0;
+}

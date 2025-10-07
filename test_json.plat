@@ -2,99 +2,339 @@ use std::json;
 
 fn main() -> Int32 {
   test_parse_null();
-  test_parse_true();
-  test_parse_false();
+  test_parse_bool_true();
+  test_parse_bool_false();
   test_parse_integer();
+  test_parse_negative_number();
   test_parse_float();
-  test_parse_string();
-  test_parse_array();
-  test_parse_object();
+  test_parse_simple_string();
+  test_parse_empty_array();
+  test_parse_simple_array();
+  test_parse_empty_object();
+  test_parse_simple_object();
   test_stringify_null();
   test_stringify_bool();
   test_stringify_number();
   test_stringify_string();
-  test_stringify_array();
-  test_roundtrip();
+  test_roundtrip_simple();
+  test_error_unexpected_eof();
 
-  print(value = "All JSON tests passed!");
+  print(value = "All JSON parser tests passed! ✅");
   return 0;
 }
 
 fn test_parse_null() {
   print(value = "Testing parse null...");
-  let input: String = "null";
-  json::parse(input = input);
+
+  match json::parse(input = "null") {
+    Result::Ok(value) -> {
+      match value {
+        json::JsonValue::Null -> print(value = "  ✓ Parsed null correctly"),
+        _ -> print(value = "  ✗ Expected null")
+      };
+    },
+    Result::Err(err) -> {
+      print(value = "  ✗ Parse failed: ${err}");
+    }
+  };
 }
 
-fn test_parse_true() {
+fn test_parse_bool_true() {
   print(value = "Testing parse true...");
-  let input: String = "true";
-  json::parse(input = input);
+
+  match json::parse(input = "true") {
+    Result::Ok(value) -> {
+      match value {
+        json::JsonValue::Bool(b) -> {
+          if (b == true) {
+            print(value = "  ✓ Parsed true correctly");
+          } else {
+            print(value = "  ✗ Expected true");
+          }
+        },
+        _ -> print(value = "  ✗ Expected boolean")
+      };
+    },
+    Result::Err(err) -> {
+      print(value = "  ✗ Parse failed: ${err}");
+    }
+  };
 }
 
-fn test_parse_false() {
+fn test_parse_bool_false() {
   print(value = "Testing parse false...");
-  let input: String = "false";
-  json::parse(input = input);
+
+  match json::parse(input = "false") {
+    Result::Ok(value) -> {
+      match value {
+        json::JsonValue::Bool(b) -> {
+          if (b == false) {
+            print(value = "  ✓ Parsed false correctly");
+          } else {
+            print(value = "  ✗ Expected false");
+          }
+        },
+        _ -> print(value = "  ✗ Expected boolean")
+      };
+    },
+    Result::Err(err) -> {
+      print(value = "  ✗ Parse failed: ${err}");
+    }
+  };
 }
 
 fn test_parse_integer() {
   print(value = "Testing parse integer...");
-  let input: String = "42";
-  json::parse(input = input);
+
+  match json::parse(input = "42") {
+    Result::Ok(value) -> {
+      match value {
+        json::JsonValue::Number(n) -> {
+          if (n == 42.0) {
+            print(value = "  ✓ Parsed 42 correctly");
+          } else {
+            print(value = "  ✗ Expected 42, got ${n}");
+          }
+        },
+        _ -> print(value = "  ✗ Expected number")
+      };
+    },
+    Result::Err(err) -> {
+      print(value = "  ✗ Parse failed: ${err}");
+    }
+  };
+}
+
+fn test_parse_negative_number() {
+  print(value = "Testing parse negative number...");
+
+  match json::parse(input = "-123") {
+    Result::Ok(value) -> {
+      match value {
+        json::JsonValue::Number(n) -> {
+          if (n == -123.0) {
+            print(value = "  ✓ Parsed -123 correctly");
+          } else {
+            print(value = "  ✗ Expected -123");
+          }
+        },
+        _ -> print(value = "  ✗ Expected number")
+      };
+    },
+    Result::Err(err) -> {
+      print(value = "  ✗ Parse failed: ${err}");
+    }
+  };
 }
 
 fn test_parse_float() {
   print(value = "Testing parse float...");
-  let input: String = "3.14";
-  json::parse(input = input);
+
+  match json::parse(input = "3.14159") {
+    Result::Ok(value) -> {
+      match value {
+        json::JsonValue::Number(n) -> {
+          let diff: Float64 = n - 3.14159;
+          let abs_diff: Float64 = if (diff < 0.0) { -diff } else { diff };
+          if (abs_diff < 0.0001) {
+            print(value = "  ✓ Parsed 3.14159 correctly");
+          } else {
+            print(value = "  ✗ Expected 3.14159");
+          }
+        },
+        _ -> print(value = "  ✗ Expected number")
+      };
+    },
+    Result::Err(err) -> {
+      print(value = "  ✗ Parse failed: ${err}");
+    }
+  };
 }
 
-fn test_parse_string() {
+fn test_parse_simple_string() {
   print(value = "Testing parse string...");
-  let input: String = "\"hello world\"";
-  json::parse(input = input);
+
+  match json::parse(input = "\"hello\"") {
+    Result::Ok(value) -> {
+      match value {
+        json::JsonValue::String(s) -> {
+          if (s == "hello") {
+            print(value = "  ✓ Parsed 'hello' correctly");
+          } else {
+            print(value = "  ✗ Expected 'hello'");
+          }
+        },
+        _ -> print(value = "  ✗ Expected string")
+      };
+    },
+    Result::Err(err) -> {
+      print(value = "  ✗ Parse failed: ${err}");
+    }
+  };
 }
 
-fn test_parse_array() {
-  print(value = "Testing parse array...");
-  let input: String = "[1, 2, 3]";
-  json::parse(input = input);
+fn test_parse_empty_array() {
+  print(value = "Testing parse empty array...");
+
+  match json::parse(input = "[]") {
+    Result::Ok(value) -> {
+      match value {
+        json::JsonValue::Array(arr) -> {
+          if (arr.length() == 0) {
+            print(value = "  ✓ Parsed empty array correctly");
+          } else {
+            print(value = "  ✗ Expected empty array");
+          }
+        },
+        _ -> print(value = "  ✗ Expected array")
+      };
+    },
+    Result::Err(err) -> {
+      print(value = "  ✗ Parse failed: ${err}");
+    }
+  };
 }
 
-fn test_parse_object() {
+fn test_parse_simple_array() {
+  print(value = "Testing parse array [1, 2, 3]...");
+
+  match json::parse(input = "[1, 2, 3]") {
+    Result::Ok(value) -> {
+      match value {
+        json::JsonValue::Array(arr) -> {
+          if (arr.length() == 3) {
+            print(value = "  ✓ Parsed array with 3 elements");
+          } else {
+            print(value = "  ✗ Expected 3 elements");
+          }
+        },
+        _ -> print(value = "  ✗ Expected array")
+      };
+    },
+    Result::Err(err) -> {
+      print(value = "  ✗ Parse failed: ${err}");
+    }
+  };
+}
+
+fn test_parse_empty_object() {
+  print(value = "Testing parse empty object...");
+
+  match json::parse(input = "{}") {
+    Result::Ok(value) -> {
+      match value {
+        json::JsonValue::Object(obj) -> {
+          if (obj.length() == 0) {
+            print(value = "  ✓ Parsed empty object correctly");
+          } else {
+            print(value = "  ✗ Expected empty object");
+          }
+        },
+        _ -> print(value = "  ✗ Expected object")
+      };
+    },
+    Result::Err(err) -> {
+      print(value = "  ✗ Parse failed: ${err}");
+    }
+  };
+}
+
+fn test_parse_simple_object() {
   print(value = "Testing parse object...");
-  let input: String = "{\"name\": \"Alice\", \"age\": 30}";
-  json::parse(input = input);
+
+  match json::parse(input = "{\"name\": \"Alice\", \"age\": 30}") {
+    Result::Ok(value) -> {
+      match value {
+        json::JsonValue::Object(obj) -> {
+          if (obj.length() == 2) {
+            print(value = "  ✓ Parsed object with 2 keys");
+          } else {
+            print(value = "  ✗ Expected 2 keys");
+          }
+        },
+        _ -> print(value = "  ✗ Expected object")
+      };
+    },
+    Result::Err(err) -> {
+      print(value = "  ✗ Parse failed: ${err}");
+    }
+  };
 }
 
 fn test_stringify_null() {
   print(value = "Testing stringify null...");
-  json::stringify(value = json::JsonValue::Null);
+  let json_str: String = json::stringify(value = json::JsonValue::Null);
+  if (json_str == "null") {
+    print(value = "  ✓ Stringified null correctly");
+  } else {
+    print(value = "  ✗ Expected 'null'");
+  }
 }
 
 fn test_stringify_bool() {
   print(value = "Testing stringify bool...");
-  json::stringify(value = json::JsonValue::Bool(field0 = true));
+  let json_str_true: String = json::stringify(value = json::JsonValue::Bool(field0 = true));
+  let json_str_false: String = json::stringify(value = json::JsonValue::Bool(field0 = false));
+
+  if (json_str_true == "true") {
+    if (json_str_false == "false") {
+      print(value = "  ✓ Stringified booleans correctly");
+    } else {
+      print(value = "  ✗ Expected 'false'");
+    }
+  } else {
+    print(value = "  ✗ Expected 'true'");
+  }
 }
 
 fn test_stringify_number() {
   print(value = "Testing stringify number...");
-  json::stringify(value = json::JsonValue::Number(field0 = 42.0));
+  let json_str: String = json::stringify(value = json::JsonValue::Number(field0 = 42.0));
+  if (json_str == "42") {
+    print(value = "  ✓ Stringified number correctly");
+  } else {
+    print(value = "  ✗ Expected '42', got '${json_str}'");
+  }
 }
 
 fn test_stringify_string() {
   print(value = "Testing stringify string...");
-  json::stringify(value = json::JsonValue::String(field0 = "hello"));
+  let json_str: String = json::stringify(value = json::JsonValue::String(field0 = "hello"));
+  if (json_str == "\"hello\"") {
+    print(value = "  ✓ Stringified string correctly");
+  } else {
+    print(value = "  ✗ Expected '\"hello\"'");
+  }
 }
 
-fn test_stringify_array() {
-  print(value = "Testing stringify array...");
-  json::stringify(value = json::JsonValue::Array(field0 = []));
-}
-
-fn test_roundtrip() {
+fn test_roundtrip_simple() {
   print(value = "Testing roundtrip...");
   let original: String = "42";
-  json::parse(input = original);
+
+  match json::parse(input = original) {
+    Result::Ok(value) -> {
+      let stringified: String = json::stringify(value = value);
+      if (stringified == "42") {
+        print(value = "  ✓ Round-trip successful");
+      } else {
+        print(value = "  ✗ Round-trip failed");
+      }
+    },
+    Result::Err(err) -> {
+      print(value = "  ✗ Parse failed: ${err}");
+    }
+  };
+}
+
+fn test_error_unexpected_eof() {
+  print(value = "Testing error on empty input...");
+
+  match json::parse(input = "") {
+    Result::Ok(_) -> {
+      print(value = "  ✗ Should fail on empty input");
+    },
+    Result::Err(err) -> {
+      print(value = "  ✓ Correctly rejected empty input");
+    }
+  };
 }

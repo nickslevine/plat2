@@ -265,7 +265,7 @@ class Parser {
     self.position = self.position + 1;
     self.skip_whitespace();
 
-    var elements: List[JsonValue] = [];
+    let elements: List<JsonValue> = [];
 
     if (self.position < self.input.length()) {
       if (self.peek() == "]") {
@@ -315,7 +315,7 @@ class Parser {
     self.position = self.position + 1;
     self.skip_whitespace();
 
-    var obj: Dict[String, JsonValue] = {};
+    var obj: Dict<String, JsonValue> = {};
 
     if (self.position < self.input.length()) {
       if (self.peek() == "}") {
@@ -467,10 +467,10 @@ pub fn stringify(value: JsonValue) -> String {
     JsonValue::String(s: String) -> {
       return stringify_string(s = s);
     },
-    JsonValue::Array(arr: List[JsonValue]) -> {
+    JsonValue::Array(arr: List<JsonValue>) -> {
       return stringify_array(arr = arr);
     },
-    JsonValue::Object(obj: Dict[String, JsonValue]) -> {
+    JsonValue::Object(obj: Dict<String, JsonValue>) -> {
       return stringify_object(obj = obj);
     }
   };
@@ -519,12 +519,12 @@ fn stringify_string(s: String) -> String {
   return result;
 }
 
-fn stringify_array(arr: List[JsonValue]) -> String {
+fn stringify_array(arr: List<JsonValue>) -> String {
   var result: String = "[";
   var i: Int32 = 0;
 
   while (i < arr.length()) {
-    let elem_opt: Option[JsonValue] = arr[i];
+    let elem_opt: Option<JsonValue> = arr[i];
 
     let elem: JsonValue = match elem_opt {
       Option::Some(e: JsonValue) -> e,
@@ -544,13 +544,13 @@ fn stringify_array(arr: List[JsonValue]) -> String {
   return result;
 }
 
-fn stringify_object(obj: Dict[String, JsonValue]) -> String {
+fn stringify_object(obj: Dict<String, JsonValue>) -> String {
   var result: String = "{";
-  let keys: List[String] = obj.keys();
+  let keys: List<String> = obj.keys();
   var i: Int32 = 0;
 
   while (i < keys.length()) {
-    let key_opt: Option[String] = keys[i];
+    let key_opt: Option<String> = keys[i];
 
     let key: String = match key_opt {
       Option::Some(k: String) -> k,
@@ -561,7 +561,7 @@ fn stringify_object(obj: Dict[String, JsonValue]) -> String {
       result = result.concat(other = stringify_string(s = key));
       result = result.concat(other = ":");
 
-      let value_opt: Option[JsonValue] = obj[key];
+      let value_opt: Option<JsonValue> = obj[key];
 
       let value: JsonValue = match value_opt {
         Option::Some(v: JsonValue) -> v,
