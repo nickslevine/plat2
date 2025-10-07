@@ -1289,7 +1289,7 @@ impl TypeChecker {
         for (param, (_, param_type)) in function.params.iter().zip(param_types.iter()) {
             if let Some(default_expr) = &param.default_value {
                 // Check that the default value type matches the parameter type
-                let default_type = self.check_expression(default_expr)?;
+                let default_type = self.check_expression(default_expr, None)?;
                 if !self.is_assignable(param_type, &default_type) {
                     return Err(DiagnosticError::Type(
                         format!("Default value for parameter '{}' has type {:?}, expected {:?}",
@@ -1378,10 +1378,11 @@ impl TypeChecker {
                     ));
                 }
 
-                let value_type = self.check_expression(value)?;
-
-                // Type annotation is mandatory - convert to HIR type
+                // Type annotation is mandatory - convert to HIR type first
                 let explicit_hir_type = self.ast_type_to_hir_type(ty)?;
+
+                // Check value with expected type to guide inference
+                let value_type = self.check_expression(value, Some(&explicit_hir_type))?;
 
                 // Check if value type is compatible with explicit type (allows upcasting)
                 if !self.is_assignable(&explicit_hir_type, &value_type) {
@@ -1426,10 +1427,11 @@ impl TypeChecker {
                     ));
                 }
 
-                let value_type = self.check_expression(value)?;
-
-                // Type annotation is mandatory - convert to HIR type
+                // Type annotation is mandatory - convert to HIR type first
                 let explicit_hir_type = self.ast_type_to_hir_type(ty)?;
+
+                // Check value with expected type to guide inference
+                let value_type = self.check_expression(value, Some(&explicit_hir_type))?;
 
                 // Check if value type is compatible with explicit type (allows upcasting)
                 if !self.is_assignable(&explicit_hir_type, &value_type) {
@@ -1461,25 +1463,26 @@ impl TypeChecker {
                 self.scopes.last_mut().unwrap().insert(name.clone(), explicit_hir_type);
             }
             Statement::Expression(expr) => {
-                self.check_expression(expr)?;
+                self.check_expression(expr, None)?;
             }
             Statement::Return { value, .. } => {
+                let expected_return_type = self.current_function_return_type.as_ref()
+                    .ok_or_else(|| DiagnosticError::Type("Return statement outside function".to_string()))?
+                    .clone();
+
                 let return_type = match value {
-                    Some(expr) => self.check_expression(expr)?,
+                    Some(expr) => self.check_expression(expr, Some(&expected_return_type))?,
                     None => HirType::Unit,
                 };
 
-                let expected_return_type = self.current_function_return_type.as_ref()
-                    .ok_or_else(|| DiagnosticError::Type("Return statement outside function".to_string()))?;
-
-                if return_type != *expected_return_type {
+                if return_type != expected_return_type {
                     return Err(DiagnosticError::Type(
                         format!("Return type mismatch: expected {:?}, found {:?}", expected_return_type, return_type)
                     ));
                 }
             }
             Statement::If { condition, then_branch, else_branch, .. } => {
-                let condition_type = self.check_expression(condition)?;
+                let condition_type = self.check_expression(condition, None)?;
                 if condition_type != HirType::Bool {
                     return Err(DiagnosticError::Type(
                         format!("If condition must be boolean, found {:?}", condition_type)
@@ -1497,7 +1500,7 @@ impl TypeChecker {
                 }
             }
             Statement::While { condition, body, .. } => {
-                let condition_type = self.check_expression(condition)?;
+                let condition_type = self.check_expression(condition, None)?;
                 if condition_type != HirType::Bool {
                     return Err(DiagnosticError::Type(
                         format!("While condition must be boolean, found {:?}", condition_type)
@@ -1522,11 +1525,11 @@ impl TypeChecker {
                 // Check if the iterable is a Range expression
                 let element_type = if let Expression::Range { .. } = iterable {
                     // Range expressions yield integers, get the type from the range
-                    let range_type = self.check_expression(iterable)?;
+                    let range_type = self.check_expression(iterable, None)?;
                     range_type // The range returns its element type (I32 or I64)
                 } else {
                     // Regular collection iteration
-                    let iterable_type = self.check_expression(iterable)?;
+                    let iterable_type = self.check_expression(iterable, None)?;
 
                     // Extract element type from List
                     match iterable_type {
@@ -1559,7 +1562,7 @@ impl TypeChecker {
                 self.pop_scope();
             }
             Statement::Print { value, .. } => {
-                let value_type = self.check_expression(value)?;
+                let value_type = self.check_expression(value, None)?;
                 // Print accepts any type (will be converted to string)
                 match value_type {
                     HirType::Bool | HirType::Int8 | HirType::Int16 | HirType::Int32 | HirType::Int64 | HirType::Float8 | HirType::Float16 | HirType::Float32 | HirType::Float64 | HirType::String => {},
@@ -1585,7 +1588,7 @@ impl TypeChecker {
         Ok(())
     }
 
-    fn check_expression(&mut self, expression: &Expression) -> Result<HirType, DiagnosticError> {
+    fn check_expression(&mut self, expression: &Expression, expected_type: Option<&HirType>) -> Result<HirType, DiagnosticError> {
         match expression {
             Expression::Literal(literal) => self.check_literal(literal),
             Expression::Identifier { name, span } => {
@@ -1601,12 +1604,12 @@ impl TypeChecker {
                 })
             }
             Expression::Binary { left, op, right, .. } => {
-                let left_type = self.check_expression(left)?;
-                let right_type = self.check_expression(right)?;
+                let left_type = self.check_expression(left, None)?;
+                let right_type = self.check_expression(right, None)?;
                 self.check_binary_op(op, &left_type, &right_type)
             }
             Expression::Unary { op, operand, .. } => {
-                let operand_type = self.check_expression(operand)?;
+                let operand_type = self.check_expression(operand, None)?;
                 self.check_unary_op(op, &operand_type)
             }
             Expression::Call { function, args, .. } => {
@@ -1626,7 +1629,7 @@ impl TypeChecker {
                             "assert requires a 'condition' parameter".to_string()
                         ))?;
 
-                    let condition_type = self.check_expression(&condition_arg.value)?;
+                    let condition_type = self.check_expression(&condition_arg.value, None)?;
                     if condition_type != HirType::Bool {
                         return Err(DiagnosticError::Type(
                             format!("assert 'condition' parameter must be Bool, got {:?}", condition_type)
@@ -1635,7 +1638,7 @@ impl TypeChecker {
 
                     // Check optional 'message' parameter
                     if let Some(message_arg) = args.iter().find(|arg| arg.name == "message") {
-                        let message_type = self.check_expression(&message_arg.value)?;
+                        let message_type = self.check_expression(&message_arg.value, None)?;
                         if message_type != HirType::String {
                             return Err(DiagnosticError::Type(
                                 format!("assert 'message' parameter must be String, got {:?}", message_type)
@@ -1695,8 +1698,8 @@ impl TypeChecker {
                     let port_arg = args.iter().find(|arg| arg.name == "port")
                         .ok_or_else(|| DiagnosticError::Type("tcp_listen requires a 'port' parameter".to_string()))?;
 
-                    let host_type = self.check_expression(&host_arg.value)?;
-                    let port_type = self.check_expression(&port_arg.value)?;
+                    let host_type = self.check_expression(&host_arg.value, None)?;
+                    let port_type = self.check_expression(&port_arg.value, None)?;
 
                     if host_type != HirType::String {
                         return Err(DiagnosticError::Type(
@@ -1724,7 +1727,7 @@ impl TypeChecker {
                     let listener_arg = args.iter().find(|arg| arg.name == "listener")
                         .ok_or_else(|| DiagnosticError::Type("tcp_accept requires a 'listener' parameter".to_string()))?;
 
-                    let listener_type = self.check_expression(&listener_arg.value)?;
+                    let listener_type = self.check_expression(&listener_arg.value, None)?;
                     if listener_type != HirType::Int32 {
                         return Err(DiagnosticError::Type(
                             format!("tcp_accept 'listener' parameter must be Int32, got {:?}", listener_type)
@@ -1748,8 +1751,8 @@ impl TypeChecker {
                     let port_arg = args.iter().find(|arg| arg.name == "port")
                         .ok_or_else(|| DiagnosticError::Type("tcp_connect requires a 'port' parameter".to_string()))?;
 
-                    let host_type = self.check_expression(&host_arg.value)?;
-                    let port_type = self.check_expression(&port_arg.value)?;
+                    let host_type = self.check_expression(&host_arg.value, None)?;
+                    let port_type = self.check_expression(&port_arg.value, None)?;
 
                     if host_type != HirType::String {
                         return Err(DiagnosticError::Type(
@@ -1779,8 +1782,8 @@ impl TypeChecker {
                     let max_bytes_arg = args.iter().find(|arg| arg.name == "max_bytes")
                         .ok_or_else(|| DiagnosticError::Type("tcp_read requires a 'max_bytes' parameter".to_string()))?;
 
-                    let socket_type = self.check_expression(&socket_arg.value)?;
-                    let max_bytes_type = self.check_expression(&max_bytes_arg.value)?;
+                    let socket_type = self.check_expression(&socket_arg.value, None)?;
+                    let max_bytes_type = self.check_expression(&max_bytes_arg.value, None)?;
 
                     if socket_type != HirType::Int32 {
                         return Err(DiagnosticError::Type(
@@ -1810,8 +1813,8 @@ impl TypeChecker {
                     let data_arg = args.iter().find(|arg| arg.name == "data")
                         .ok_or_else(|| DiagnosticError::Type("tcp_write requires a 'data' parameter".to_string()))?;
 
-                    let socket_type = self.check_expression(&socket_arg.value)?;
-                    let data_type = self.check_expression(&data_arg.value)?;
+                    let socket_type = self.check_expression(&socket_arg.value, None)?;
+                    let data_type = self.check_expression(&data_arg.value, None)?;
 
                     if socket_type != HirType::Int32 {
                         return Err(DiagnosticError::Type(
@@ -1839,7 +1842,7 @@ impl TypeChecker {
                     let socket_arg = args.iter().find(|arg| arg.name == "socket")
                         .ok_or_else(|| DiagnosticError::Type("tcp_close requires a 'socket' parameter".to_string()))?;
 
-                    let socket_type = self.check_expression(&socket_arg.value)?;
+                    let socket_type = self.check_expression(&socket_arg.value, None)?;
                     if socket_type != HirType::Int32 {
                         return Err(DiagnosticError::Type(
                             format!("tcp_close 'socket' parameter must be Int32, got {:?}", socket_type)
@@ -1863,8 +1866,8 @@ impl TypeChecker {
                     let mode_arg = args.iter().find(|arg| arg.name == "mode")
                         .ok_or_else(|| DiagnosticError::Type("file_open requires a 'mode' parameter".to_string()))?;
 
-                    let path_type = self.check_expression(&path_arg.value)?;
-                    let mode_type = self.check_expression(&mode_arg.value)?;
+                    let path_type = self.check_expression(&path_arg.value, None)?;
+                    let mode_type = self.check_expression(&mode_arg.value, None)?;
 
                     if path_type != HirType::String {
                         return Err(DiagnosticError::Type(
@@ -1894,8 +1897,8 @@ impl TypeChecker {
                     let max_bytes_arg = args.iter().find(|arg| arg.name == "max_bytes")
                         .ok_or_else(|| DiagnosticError::Type("file_read requires a 'max_bytes' parameter".to_string()))?;
 
-                    let fd_type = self.check_expression(&fd_arg.value)?;
-                    let max_bytes_type = self.check_expression(&max_bytes_arg.value)?;
+                    let fd_type = self.check_expression(&fd_arg.value, None)?;
+                    let max_bytes_type = self.check_expression(&max_bytes_arg.value, None)?;
 
                     if fd_type != HirType::Int32 {
                         return Err(DiagnosticError::Type(
@@ -1925,8 +1928,8 @@ impl TypeChecker {
                     let data_arg = args.iter().find(|arg| arg.name == "data")
                         .ok_or_else(|| DiagnosticError::Type("file_write requires a 'data' parameter".to_string()))?;
 
-                    let fd_type = self.check_expression(&fd_arg.value)?;
-                    let data_type = self.check_expression(&data_arg.value)?;
+                    let fd_type = self.check_expression(&fd_arg.value, None)?;
+                    let data_type = self.check_expression(&data_arg.value, None)?;
 
                     if fd_type != HirType::Int32 {
                         return Err(DiagnosticError::Type(
@@ -1954,7 +1957,7 @@ impl TypeChecker {
                     let fd_arg = args.iter().find(|arg| arg.name == "fd")
                         .ok_or_else(|| DiagnosticError::Type("file_close requires a 'fd' parameter".to_string()))?;
 
-                    let fd_type = self.check_expression(&fd_arg.value)?;
+                    let fd_type = self.check_expression(&fd_arg.value, None)?;
 
                     if fd_type != HirType::Int32 {
                         return Err(DiagnosticError::Type(
@@ -1977,7 +1980,7 @@ impl TypeChecker {
                     let path_arg = args.iter().find(|arg| arg.name == "path")
                         .ok_or_else(|| DiagnosticError::Type("file_exists requires a 'path' parameter".to_string()))?;
 
-                    let path_type = self.check_expression(&path_arg.value)?;
+                    let path_type = self.check_expression(&path_arg.value, None)?;
 
                     if path_type != HirType::String {
                         return Err(DiagnosticError::Type(
@@ -2000,7 +2003,7 @@ impl TypeChecker {
                     let path_arg = args.iter().find(|arg| arg.name == "path")
                         .ok_or_else(|| DiagnosticError::Type("file_size requires a 'path' parameter".to_string()))?;
 
-                    let path_type = self.check_expression(&path_arg.value)?;
+                    let path_type = self.check_expression(&path_arg.value, None)?;
 
                     if path_type != HirType::String {
                         return Err(DiagnosticError::Type(
@@ -2023,7 +2026,7 @@ impl TypeChecker {
                     let path_arg = args.iter().find(|arg| arg.name == "path")
                         .ok_or_else(|| DiagnosticError::Type("file_is_dir requires a 'path' parameter".to_string()))?;
 
-                    let path_type = self.check_expression(&path_arg.value)?;
+                    let path_type = self.check_expression(&path_arg.value, None)?;
 
                     if path_type != HirType::String {
                         return Err(DiagnosticError::Type(
@@ -2046,7 +2049,7 @@ impl TypeChecker {
                     let path_arg = args.iter().find(|arg| arg.name == "path")
                         .ok_or_else(|| DiagnosticError::Type("file_delete requires a 'path' parameter".to_string()))?;
 
-                    let path_type = self.check_expression(&path_arg.value)?;
+                    let path_type = self.check_expression(&path_arg.value, None)?;
 
                     if path_type != HirType::String {
                         return Err(DiagnosticError::Type(
@@ -2072,8 +2075,8 @@ impl TypeChecker {
                     let new_path_arg = args.iter().find(|arg| arg.name == "new_path")
                         .ok_or_else(|| DiagnosticError::Type("file_rename requires a 'new_path' parameter".to_string()))?;
 
-                    let old_path_type = self.check_expression(&old_path_arg.value)?;
-                    let new_path_type = self.check_expression(&new_path_arg.value)?;
+                    let old_path_type = self.check_expression(&old_path_arg.value, None)?;
+                    let new_path_type = self.check_expression(&new_path_arg.value, None)?;
 
                     if old_path_type != HirType::String {
                         return Err(DiagnosticError::Type(
@@ -2102,7 +2105,7 @@ impl TypeChecker {
                     let path_arg = args.iter().find(|arg| arg.name == "path")
                         .ok_or_else(|| DiagnosticError::Type("dir_create requires a 'path' parameter".to_string()))?;
 
-                    let path_type = self.check_expression(&path_arg.value)?;
+                    let path_type = self.check_expression(&path_arg.value, None)?;
                     if path_type != HirType::String {
                         return Err(DiagnosticError::Type(
                             format!("dir_create 'path' parameter must be String, got {:?}", path_type)
@@ -2124,7 +2127,7 @@ impl TypeChecker {
                     let path_arg = args.iter().find(|arg| arg.name == "path")
                         .ok_or_else(|| DiagnosticError::Type("dir_create_all requires a 'path' parameter".to_string()))?;
 
-                    let path_type = self.check_expression(&path_arg.value)?;
+                    let path_type = self.check_expression(&path_arg.value, None)?;
                     if path_type != HirType::String {
                         return Err(DiagnosticError::Type(
                             format!("dir_create_all 'path' parameter must be String, got {:?}", path_type)
@@ -2146,7 +2149,7 @@ impl TypeChecker {
                     let path_arg = args.iter().find(|arg| arg.name == "path")
                         .ok_or_else(|| DiagnosticError::Type("dir_remove requires a 'path' parameter".to_string()))?;
 
-                    let path_type = self.check_expression(&path_arg.value)?;
+                    let path_type = self.check_expression(&path_arg.value, None)?;
                     if path_type != HirType::String {
                         return Err(DiagnosticError::Type(
                             format!("dir_remove 'path' parameter must be String, got {:?}", path_type)
@@ -2168,7 +2171,7 @@ impl TypeChecker {
                     let path_arg = args.iter().find(|arg| arg.name == "path")
                         .ok_or_else(|| DiagnosticError::Type("dir_list requires a 'path' parameter".to_string()))?;
 
-                    let path_type = self.check_expression(&path_arg.value)?;
+                    let path_type = self.check_expression(&path_arg.value, None)?;
                     if path_type != HirType::String {
                         return Err(DiagnosticError::Type(
                             format!("dir_list 'path' parameter must be String, got {:?}", path_type)
@@ -2192,8 +2195,8 @@ impl TypeChecker {
                     let max_bytes_arg = args.iter().find(|arg| arg.name == "max_bytes")
                         .ok_or_else(|| DiagnosticError::Type("file_read_binary requires a 'max_bytes' parameter".to_string()))?;
 
-                    let fd_type = self.check_expression(&fd_arg.value)?;
-                    let max_bytes_type = self.check_expression(&max_bytes_arg.value)?;
+                    let fd_type = self.check_expression(&fd_arg.value, None)?;
+                    let max_bytes_type = self.check_expression(&max_bytes_arg.value, None)?;
 
                     if fd_type != HirType::Int32 {
                         return Err(DiagnosticError::Type(
@@ -2223,8 +2226,8 @@ impl TypeChecker {
                     let data_arg = args.iter().find(|arg| arg.name == "data")
                         .ok_or_else(|| DiagnosticError::Type("file_write_binary requires a 'data' parameter".to_string()))?;
 
-                    let fd_type = self.check_expression(&fd_arg.value)?;
-                    let data_type = self.check_expression(&data_arg.value)?;
+                    let fd_type = self.check_expression(&fd_arg.value, None)?;
+                    let data_type = self.check_expression(&data_arg.value, None)?;
 
                     if fd_type != HirType::Int32 {
                         return Err(DiagnosticError::Type(
@@ -2257,9 +2260,9 @@ impl TypeChecker {
                     let whence_arg = args.iter().find(|arg| arg.name == "whence")
                         .ok_or_else(|| DiagnosticError::Type("file_seek requires a 'whence' parameter".to_string()))?;
 
-                    let fd_type = self.check_expression(&fd_arg.value)?;
-                    let offset_type = self.check_expression(&offset_arg.value)?;
-                    let whence_type = self.check_expression(&whence_arg.value)?;
+                    let fd_type = self.check_expression(&fd_arg.value, None)?;
+                    let offset_type = self.check_expression(&offset_arg.value, None)?;
+                    let whence_type = self.check_expression(&whence_arg.value, None)?;
 
                     if fd_type != HirType::Int32 {
                         return Err(DiagnosticError::Type(
@@ -2292,7 +2295,7 @@ impl TypeChecker {
                     let fd_arg = args.iter().find(|arg| arg.name == "fd")
                         .ok_or_else(|| DiagnosticError::Type("file_tell requires a 'fd' parameter".to_string()))?;
 
-                    let fd_type = self.check_expression(&fd_arg.value)?;
+                    let fd_type = self.check_expression(&fd_arg.value, None)?;
 
                     if fd_type != HirType::Int32 {
                         return Err(DiagnosticError::Type(
@@ -2315,7 +2318,7 @@ impl TypeChecker {
                     let fd_arg = args.iter().find(|arg| arg.name == "fd")
                         .ok_or_else(|| DiagnosticError::Type("file_rewind requires a 'fd' parameter".to_string()))?;
 
-                    let fd_type = self.check_expression(&fd_arg.value)?;
+                    let fd_type = self.check_expression(&fd_arg.value, None)?;
 
                     if fd_type != HirType::Int32 {
                         return Err(DiagnosticError::Type(
@@ -2341,8 +2344,8 @@ impl TypeChecker {
                     let mode_arg = args.iter().find(|arg| arg.name == "mode")
                         .ok_or_else(|| DiagnosticError::Type("file_chmod requires a 'mode' parameter".to_string()))?;
 
-                    let path_type = self.check_expression(&path_arg.value)?;
-                    let mode_type = self.check_expression(&mode_arg.value)?;
+                    let path_type = self.check_expression(&path_arg.value, None)?;
+                    let mode_type = self.check_expression(&mode_arg.value, None)?;
 
                     if path_type != HirType::String {
                         return Err(DiagnosticError::Type(
@@ -2371,7 +2374,7 @@ impl TypeChecker {
                     let path_arg = args.iter().find(|arg| arg.name == "path")
                         .ok_or_else(|| DiagnosticError::Type("file_get_permissions requires a 'path' parameter".to_string()))?;
 
-                    let path_type = self.check_expression(&path_arg.value)?;
+                    let path_type = self.check_expression(&path_arg.value, None)?;
 
                     if path_type != HirType::String {
                         return Err(DiagnosticError::Type(
@@ -2394,7 +2397,7 @@ impl TypeChecker {
                     let path_arg = args.iter().find(|arg| arg.name == "path")
                         .ok_or_else(|| DiagnosticError::Type("file_modified_time requires a 'path' parameter".to_string()))?;
 
-                    let path_type = self.check_expression(&path_arg.value)?;
+                    let path_type = self.check_expression(&path_arg.value, None)?;
 
                     if path_type != HirType::String {
                         return Err(DiagnosticError::Type(
@@ -2417,7 +2420,7 @@ impl TypeChecker {
                     let path_arg = args.iter().find(|arg| arg.name == "path")
                         .ok_or_else(|| DiagnosticError::Type("file_created_time requires a 'path' parameter".to_string()))?;
 
-                    let path_type = self.check_expression(&path_arg.value)?;
+                    let path_type = self.check_expression(&path_arg.value, None)?;
 
                     if path_type != HirType::String {
                         return Err(DiagnosticError::Type(
@@ -2443,8 +2446,8 @@ impl TypeChecker {
                     let link_arg = args.iter().find(|arg| arg.name == "link")
                         .ok_or_else(|| DiagnosticError::Type("symlink_create requires a 'link' parameter".to_string()))?;
 
-                    let target_type = self.check_expression(&target_arg.value)?;
-                    let link_type = self.check_expression(&link_arg.value)?;
+                    let target_type = self.check_expression(&target_arg.value, None)?;
+                    let link_type = self.check_expression(&link_arg.value, None)?;
 
                     if target_type != HirType::String {
                         return Err(DiagnosticError::Type(
@@ -2473,7 +2476,7 @@ impl TypeChecker {
                     let path_arg = args.iter().find(|arg| arg.name == "path")
                         .ok_or_else(|| DiagnosticError::Type("symlink_read requires a 'path' parameter".to_string()))?;
 
-                    let path_type = self.check_expression(&path_arg.value)?;
+                    let path_type = self.check_expression(&path_arg.value, None)?;
 
                     if path_type != HirType::String {
                         return Err(DiagnosticError::Type(
@@ -2496,7 +2499,7 @@ impl TypeChecker {
                     let path_arg = args.iter().find(|arg| arg.name == "path")
                         .ok_or_else(|| DiagnosticError::Type("file_is_symlink requires a 'path' parameter".to_string()))?;
 
-                    let path_type = self.check_expression(&path_arg.value)?;
+                    let path_type = self.check_expression(&path_arg.value, None)?;
 
                     if path_type != HirType::String {
                         return Err(DiagnosticError::Type(
@@ -2519,7 +2522,7 @@ impl TypeChecker {
                     let path_arg = args.iter().find(|arg| arg.name == "path")
                         .ok_or_else(|| DiagnosticError::Type("symlink_delete requires a 'path' parameter".to_string()))?;
 
-                    let path_type = self.check_expression(&path_arg.value)?;
+                    let path_type = self.check_expression(&path_arg.value, None)?;
 
                     if path_type != HirType::String {
                         return Err(DiagnosticError::Type(
@@ -2542,7 +2545,7 @@ impl TypeChecker {
                     let capacity_arg = args.iter().find(|arg| arg.name == "capacity")
                         .ok_or_else(|| DiagnosticError::Type("channel_init requires a 'capacity' parameter".to_string()))?;
 
-                    let capacity_type = self.check_expression(&capacity_arg.value)?;
+                    let capacity_type = self.check_expression(&capacity_arg.value, None)?;
                     if capacity_type != HirType::Int32 {
                         return Err(DiagnosticError::Type(
                             format!("channel_init 'capacity' parameter must be Int32, got {:?}", capacity_type)
@@ -2615,7 +2618,7 @@ impl TypeChecker {
                             format!("Function '{}' has no parameter named '{}'", function, arg.name)
                         ))?;
 
-                    let arg_type = self.check_expression(&arg.value)?;
+                    let arg_type = self.check_expression(&arg.value, None)?;
                     if arg_type != param.1 {
                         return Err(DiagnosticError::Type(
                             format!("Function '{}' parameter '{}' expects type {:?}, got {:?}", function, arg.name, param.1, arg_type)
@@ -2626,7 +2629,7 @@ impl TypeChecker {
                 Ok(signature.return_type)
             }
             Expression::Assignment { target, value, .. } => {
-                let value_type = self.check_expression(value)?;
+                let value_type = self.check_expression(value, None)?;
 
                 match target.as_ref() {
                     Expression::Identifier { name, .. } => {
@@ -2641,7 +2644,7 @@ impl TypeChecker {
                     }
                     Expression::MemberAccess { object, member, .. } => {
                         // Check if we're assigning to a field of a class instance
-                        let object_type = self.check_expression(object)?;
+                        let object_type = self.check_expression(object, None)?;
 
                         match &object_type {
                             HirType::Class(class_name, _) => {
@@ -2700,8 +2703,8 @@ impl TypeChecker {
                 Ok(HirType::Unit)
             }
             Expression::Index { object, index, .. } => {
-                let object_type = self.check_expression(object)?;
-                let index_type = self.check_expression(index)?;
+                let object_type = self.check_expression(object, None)?;
+                let index_type = self.check_expression(index, None)?;
 
                 // Index must be i32
                 if index_type != HirType::Int32 {
@@ -2722,7 +2725,7 @@ impl TypeChecker {
                 }
             }
             Expression::MethodCall { object, method, args, .. } => {
-                let object_type = self.check_expression(object)?;
+                let object_type = self.check_expression(object, None)?;
 
                 match (&object_type, method.as_str()) {
                     // Array methods
@@ -2748,7 +2751,7 @@ impl TypeChecker {
                                 "get() method takes exactly one argument".to_string()
                             ));
                         }
-                        let index_type = self.check_expression(&args[0].value)?;
+                        let index_type = self.check_expression(&args[0].value, None)?;
                         if index_type != HirType::Int32 {
                             return Err(DiagnosticError::Type(
                                 format!("get() method expects i32 index, got {:?}", index_type)
@@ -2763,8 +2766,8 @@ impl TypeChecker {
                                 "set() method takes exactly two arguments".to_string()
                             ));
                         }
-                        let index_type = self.check_expression(&args[0].value)?;
-                        let value_type = self.check_expression(&args[1].value)?;
+                        let index_type = self.check_expression(&args[0].value, None)?;
+                        let value_type = self.check_expression(&args[1].value, None)?;
                         if index_type != HirType::Int32 {
                             return Err(DiagnosticError::Type(
                                 format!("set() method expects i32 index, got {:?}", index_type)
@@ -2783,7 +2786,7 @@ impl TypeChecker {
                                 "append() method takes exactly one argument".to_string()
                             ));
                         }
-                        let value_type = self.check_expression(&args[0].value)?;
+                        let value_type = self.check_expression(&args[0].value, None)?;
                         if value_type != **element_type {
                             return Err(DiagnosticError::Type(
                                 format!("append() method expects value of type {:?}, got {:?}", element_type, value_type)
@@ -2797,8 +2800,8 @@ impl TypeChecker {
                                 "insert_at() method takes exactly two arguments".to_string()
                             ));
                         }
-                        let index_type = self.check_expression(&args[0].value)?;
-                        let value_type = self.check_expression(&args[1].value)?;
+                        let index_type = self.check_expression(&args[0].value, None)?;
+                        let value_type = self.check_expression(&args[1].value, None)?;
                         if index_type != HirType::Int32 {
                             return Err(DiagnosticError::Type(
                                 format!("insert_at() method expects i32 index, got {:?}", index_type)
@@ -2817,7 +2820,7 @@ impl TypeChecker {
                                 "remove_at() method takes exactly one argument".to_string()
                             ));
                         }
-                        let index_type = self.check_expression(&args[0].value)?;
+                        let index_type = self.check_expression(&args[0].value, None)?;
                         if index_type != HirType::Int32 {
                             return Err(DiagnosticError::Type(
                                 format!("remove_at() method expects i32 index, got {:?}", index_type)
@@ -2840,7 +2843,7 @@ impl TypeChecker {
                                 "contains() method takes exactly one argument".to_string()
                             ));
                         }
-                        let value_type = self.check_expression(&args[0].value)?;
+                        let value_type = self.check_expression(&args[0].value, None)?;
                         if value_type != **element_type {
                             return Err(DiagnosticError::Type(
                                 format!("contains() method expects value of type {:?}, got {:?}", element_type, value_type)
@@ -2854,7 +2857,7 @@ impl TypeChecker {
                                 "index_of() method takes exactly one argument".to_string()
                             ));
                         }
-                        let value_type = self.check_expression(&args[0].value)?;
+                        let value_type = self.check_expression(&args[0].value, None)?;
                         if value_type != **element_type {
                             return Err(DiagnosticError::Type(
                                 format!("index_of() method expects value of type {:?}, got {:?}", element_type, value_type)
@@ -2869,7 +2872,7 @@ impl TypeChecker {
                                 "count() method takes exactly one argument".to_string()
                             ));
                         }
-                        let value_type = self.check_expression(&args[0].value)?;
+                        let value_type = self.check_expression(&args[0].value, None)?;
                         if value_type != **element_type {
                             return Err(DiagnosticError::Type(
                                 format!("count() method expects value of type {:?}, got {:?}", element_type, value_type)
@@ -2883,8 +2886,8 @@ impl TypeChecker {
                                 "slice() method takes exactly two arguments".to_string()
                             ));
                         }
-                        let start_type = self.check_expression(&args[0].value)?;
-                        let end_type = self.check_expression(&args[1].value)?;
+                        let start_type = self.check_expression(&args[0].value, None)?;
+                        let end_type = self.check_expression(&args[1].value, None)?;
                         if start_type != HirType::Int32 {
                             return Err(DiagnosticError::Type(
                                 format!("slice() method expects i32 start index, got {:?}", start_type)
@@ -2904,7 +2907,7 @@ impl TypeChecker {
                                 "concat() method takes exactly one argument".to_string()
                             ));
                         }
-                        let other_type = self.check_expression(&args[0].value)?;
+                        let other_type = self.check_expression(&args[0].value, None)?;
                         match other_type {
                             HirType::List(other_element_type) if *other_element_type == **element_type => {
                                 Ok(HirType::List(element_type.clone()))
@@ -2922,7 +2925,7 @@ impl TypeChecker {
                         }
                         // For now, accept any function - in a more advanced type system,
                         // we'd check that it's a function T -> bool
-                        let _predicate_type = self.check_expression(&args[0].value)?;
+                        let _predicate_type = self.check_expression(&args[0].value, None)?;
                         Ok(HirType::Bool)
                     }
                     (HirType::List(_element_type), "any") => {
@@ -2933,7 +2936,7 @@ impl TypeChecker {
                         }
                         // For now, accept any function - in a more advanced type system,
                         // we'd check that it's a function T -> bool
-                        let _predicate_type = self.check_expression(&args[0].value)?;
+                        let _predicate_type = self.check_expression(&args[0].value, None)?;
                         Ok(HirType::Bool)
                     }
                     // String methods
@@ -2951,7 +2954,7 @@ impl TypeChecker {
                                 "concat() method takes exactly one argument".to_string()
                             ));
                         }
-                        let arg_type = self.check_expression(&args[0].value)?;
+                        let arg_type = self.check_expression(&args[0].value, None)?;
                         if arg_type != HirType::String {
                             return Err(DiagnosticError::Type(
                                 format!("concat() method expects string argument, got {:?}", arg_type)
@@ -2965,7 +2968,7 @@ impl TypeChecker {
                                 "contains() method takes exactly one argument".to_string()
                             ));
                         }
-                        let arg_type = self.check_expression(&args[0].value)?;
+                        let arg_type = self.check_expression(&args[0].value, None)?;
                         if arg_type != HirType::String {
                             return Err(DiagnosticError::Type(
                                 format!("contains() method expects string argument, got {:?}", arg_type)
@@ -2979,7 +2982,7 @@ impl TypeChecker {
                                 "starts_with() method takes exactly one argument".to_string()
                             ));
                         }
-                        let arg_type = self.check_expression(&args[0].value)?;
+                        let arg_type = self.check_expression(&args[0].value, None)?;
                         if arg_type != HirType::String {
                             return Err(DiagnosticError::Type(
                                 format!("starts_with() method expects string argument, got {:?}", arg_type)
@@ -2993,7 +2996,7 @@ impl TypeChecker {
                                 "ends_with() method takes exactly one argument".to_string()
                             ));
                         }
-                        let arg_type = self.check_expression(&args[0].value)?;
+                        let arg_type = self.check_expression(&args[0].value, None)?;
                         if arg_type != HirType::String {
                             return Err(DiagnosticError::Type(
                                 format!("ends_with() method expects string argument, got {:?}", arg_type)
@@ -3031,8 +3034,8 @@ impl TypeChecker {
                                 "replace() method takes exactly two arguments".to_string()
                             ));
                         }
-                        let from_type = self.check_expression(&args[0].value)?;
-                        let to_type = self.check_expression(&args[1].value)?;
+                        let from_type = self.check_expression(&args[0].value, None)?;
+                        let to_type = self.check_expression(&args[1].value, None)?;
                         if from_type != HirType::String || to_type != HirType::String {
                             return Err(DiagnosticError::Type(
                                 format!("replace() method expects two string arguments, got {:?} and {:?}", from_type, to_type)
@@ -3046,8 +3049,8 @@ impl TypeChecker {
                                 "replace_all() method takes exactly two arguments".to_string()
                             ));
                         }
-                        let from_type = self.check_expression(&args[0].value)?;
-                        let to_type = self.check_expression(&args[1].value)?;
+                        let from_type = self.check_expression(&args[0].value, None)?;
+                        let to_type = self.check_expression(&args[1].value, None)?;
                         if from_type != HirType::String || to_type != HirType::String {
                             return Err(DiagnosticError::Type(
                                 format!("replace_all() method expects two string arguments, got {:?} and {:?}", from_type, to_type)
@@ -3061,7 +3064,7 @@ impl TypeChecker {
                                 "split() method takes exactly one argument".to_string()
                             ));
                         }
-                        let arg_type = self.check_expression(&args[0].value)?;
+                        let arg_type = self.check_expression(&args[0].value, None)?;
                         if arg_type != HirType::String {
                             return Err(DiagnosticError::Type(
                                 format!("split() method expects string argument, got {:?}", arg_type)
@@ -3136,7 +3139,7 @@ impl TypeChecker {
                                 "get() method takes exactly one argument".to_string()
                             ));
                         }
-                        let arg_type = self.check_expression(&args[0].value)?;
+                        let arg_type = self.check_expression(&args[0].value, None)?;
                         if arg_type != **key_type {
                             return Err(DiagnosticError::Type(
                                 format!("get() method expects key of type {:?}, got {:?}", key_type, arg_type)
@@ -3150,13 +3153,13 @@ impl TypeChecker {
                                 "set() method takes exactly two arguments".to_string()
                             ));
                         }
-                        let key_arg_type = self.check_expression(&args[0].value)?;
+                        let key_arg_type = self.check_expression(&args[0].value, None)?;
                         if key_arg_type != **key_type {
                             return Err(DiagnosticError::Type(
                                 format!("set() method expects key of type {:?}, got {:?}", key_type, key_arg_type)
                             ));
                         }
-                        let value_arg_type = self.check_expression(&args[1].value)?;
+                        let value_arg_type = self.check_expression(&args[1].value, None)?;
                         if value_arg_type != **value_type {
                             return Err(DiagnosticError::Type(
                                 format!("set() method expects value of type {:?}, got {:?}", value_type, value_arg_type)
@@ -3170,7 +3173,7 @@ impl TypeChecker {
                                 "remove() method takes exactly one argument".to_string()
                             ));
                         }
-                        let arg_type = self.check_expression(&args[0].value)?;
+                        let arg_type = self.check_expression(&args[0].value, None)?;
                         if arg_type != **key_type {
                             return Err(DiagnosticError::Type(
                                 format!("remove() method expects key of type {:?}, got {:?}", key_type, arg_type)
@@ -3218,7 +3221,7 @@ impl TypeChecker {
                                 "has_key() method takes exactly one argument".to_string()
                             ));
                         }
-                        let arg_type = self.check_expression(&args[0].value)?;
+                        let arg_type = self.check_expression(&args[0].value, None)?;
                         if arg_type != **key_type {
                             return Err(DiagnosticError::Type(
                                 format!("has_key() method expects key of type {:?}, got {:?}", key_type, arg_type)
@@ -3232,7 +3235,7 @@ impl TypeChecker {
                                 "has_value() method takes exactly one argument".to_string()
                             ));
                         }
-                        let arg_type = self.check_expression(&args[0].value)?;
+                        let arg_type = self.check_expression(&args[0].value, None)?;
                         if arg_type != **value_type {
                             return Err(DiagnosticError::Type(
                                 format!("has_value() method expects value of type {:?}, got {:?}", value_type, arg_type)
@@ -3246,7 +3249,7 @@ impl TypeChecker {
                                 "merge() method takes exactly one argument".to_string()
                             ));
                         }
-                        let arg_type = self.check_expression(&args[0].value)?;
+                        let arg_type = self.check_expression(&args[0].value, None)?;
                         let expected_type = HirType::Dict(key_type.clone(), value_type.clone());
                         if arg_type != expected_type {
                             return Err(DiagnosticError::Type(
@@ -3261,13 +3264,13 @@ impl TypeChecker {
                                 "get_or() method takes exactly two arguments".to_string()
                             ));
                         }
-                        let key_arg_type = self.check_expression(&args[0].value)?;
+                        let key_arg_type = self.check_expression(&args[0].value, None)?;
                         if key_arg_type != **key_type {
                             return Err(DiagnosticError::Type(
                                 format!("get_or() method expects key of type {:?}, got {:?}", key_type, key_arg_type)
                             ));
                         }
-                        let default_arg_type = self.check_expression(&args[1].value)?;
+                        let default_arg_type = self.check_expression(&args[1].value, None)?;
                         if default_arg_type != **value_type {
                             return Err(DiagnosticError::Type(
                                 format!("get_or() method expects default value of type {:?}, got {:?}", value_type, default_arg_type)
@@ -3282,7 +3285,7 @@ impl TypeChecker {
                                 "add() method takes exactly one argument".to_string()
                             ));
                         }
-                        let value_type = self.check_expression(&args[0].value)?;
+                        let value_type = self.check_expression(&args[0].value, None)?;
                         if value_type != **element_type {
                             return Err(DiagnosticError::Type(
                                 format!("add() method expects value of type {:?}, got {:?}", element_type, value_type)
@@ -3296,7 +3299,7 @@ impl TypeChecker {
                                 "remove() method takes exactly one argument".to_string()
                             ));
                         }
-                        let value_type = self.check_expression(&args[0].value)?;
+                        let value_type = self.check_expression(&args[0].value, None)?;
                         if value_type != **element_type {
                             return Err(DiagnosticError::Type(
                                 format!("remove() method expects value of type {:?}, got {:?}", element_type, value_type)
@@ -3326,7 +3329,7 @@ impl TypeChecker {
                                 "contains() method takes exactly one argument".to_string()
                             ));
                         }
-                        let value_type = self.check_expression(&args[0].value)?;
+                        let value_type = self.check_expression(&args[0].value, None)?;
                         if value_type != **element_type {
                             return Err(DiagnosticError::Type(
                                 format!("contains() method expects value of type {:?}, got {:?}", element_type, value_type)
@@ -3340,7 +3343,7 @@ impl TypeChecker {
                                 "union() method takes exactly one argument".to_string()
                             ));
                         }
-                        let other_type = self.check_expression(&args[0].value)?;
+                        let other_type = self.check_expression(&args[0].value, None)?;
                         match other_type {
                             HirType::Set(other_element_type) if *other_element_type == **element_type => {
                                 Ok(HirType::Set(element_type.clone()))
@@ -3356,7 +3359,7 @@ impl TypeChecker {
                                 "intersection() method takes exactly one argument".to_string()
                             ));
                         }
-                        let other_type = self.check_expression(&args[0].value)?;
+                        let other_type = self.check_expression(&args[0].value, None)?;
                         match other_type {
                             HirType::Set(other_element_type) if *other_element_type == **element_type => {
                                 Ok(HirType::Set(element_type.clone()))
@@ -3372,7 +3375,7 @@ impl TypeChecker {
                                 "difference() method takes exactly one argument".to_string()
                             ));
                         }
-                        let other_type = self.check_expression(&args[0].value)?;
+                        let other_type = self.check_expression(&args[0].value, None)?;
                         match other_type {
                             HirType::Set(other_element_type) if *other_element_type == **element_type => {
                                 Ok(HirType::Set(element_type.clone()))
@@ -3388,7 +3391,7 @@ impl TypeChecker {
                                 "is_subset_of() method takes exactly one argument".to_string()
                             ));
                         }
-                        let other_type = self.check_expression(&args[0].value)?;
+                        let other_type = self.check_expression(&args[0].value, None)?;
                         match other_type {
                             HirType::Set(other_element_type) if *other_element_type == **element_type => {
                                 Ok(HirType::Bool)
@@ -3404,7 +3407,7 @@ impl TypeChecker {
                                 "is_superset_of() method takes exactly one argument".to_string()
                             ));
                         }
-                        let other_type = self.check_expression(&args[0].value)?;
+                        let other_type = self.check_expression(&args[0].value, None)?;
                         match other_type {
                             HirType::Set(other_element_type) if *other_element_type == **element_type => {
                                 Ok(HirType::Bool)
@@ -3420,7 +3423,7 @@ impl TypeChecker {
                                 "is_disjoint_from() method takes exactly one argument".to_string()
                             ));
                         }
-                        let other_type = self.check_expression(&args[0].value)?;
+                        let other_type = self.check_expression(&args[0].value, None)?;
                         match other_type {
                             HirType::Set(other_element_type) if *other_element_type == **element_type => {
                                 Ok(HirType::Bool)
@@ -3466,7 +3469,7 @@ impl TypeChecker {
 
                             // Check argument types
                             for (i, (arg, (param_name, expected_type))) in args.iter().zip(method_signature.params.iter()).enumerate() {
-                                let arg_type = self.check_expression(&arg.value)?;
+                                let arg_type = self.check_expression(&arg.value, None)?;
                                 if arg_type != *expected_type {
                                     return Err(DiagnosticError::Type(
                                         format!("Argument {} of method '{}::{}' has type {:?}, expected {:?}",
@@ -3500,7 +3503,7 @@ impl TypeChecker {
                             ));
                         }
                         // Check that argument type matches channel element type
-                        let arg_type = self.check_expression(&args[0].value)?;
+                        let arg_type = self.check_expression(&args[0].value, None)?;
                         if arg_type != **element_type {
                             return Err(DiagnosticError::Type(
                                 format!("send() expects type {:?}, got {:?}", element_type, arg_type)
@@ -3561,12 +3564,12 @@ impl TypeChecker {
                         format!("Enum '{}' has no variant '{}'", enum_name, variant)
                     ))?.clone();
 
-                // For generic enums (Option, Result), infer type parameters from arguments
+                // For generic enums (Option, Result), infer type parameters from expected type and arguments
                 let mut inferred_type_params = vec![];
 
                 if enum_name == "Option" && variant == "Some" && args.len() == 1 {
                     // Option::Some(value) - infer T from value type
-                    let arg_type = self.check_expression(&args[0].value)?;
+                    let arg_type = self.check_expression(&args[0].value, None)?;
                     inferred_type_params.push(arg_type.clone());
 
                     // Check argument count
@@ -3576,9 +3579,16 @@ impl TypeChecker {
                         ));
                     }
                 } else if enum_name == "Option" && variant == "None" {
-                    // Option::None - type will be inferred from context
-                    // We'll use I32 as default for now (ideally this would be a type variable)
-                    inferred_type_params.push(HirType::Int32);
+                    // Option::None - infer T from expected type if available
+                    if let Some(HirType::Enum(expected_enum, expected_params)) = expected_type {
+                        if expected_enum == "Option" && expected_params.len() == 1 {
+                            inferred_type_params.push(expected_params[0].clone());
+                        } else {
+                            inferred_type_params.push(HirType::Int32);
+                        }
+                    } else {
+                        inferred_type_params.push(HirType::Int32);
+                    }
 
                     if args.len() != 0 {
                         return Err(DiagnosticError::Type(
@@ -3586,10 +3596,20 @@ impl TypeChecker {
                         ));
                     }
                 } else if enum_name == "Result" && variant == "Ok" && args.len() == 1 {
-                    // Result::Ok(value) - infer T from value type
-                    let arg_type = self.check_expression(&args[0].value)?;
+                    // Result::Ok(value) - infer T from value type, E from expected type
+                    let arg_type = self.check_expression(&args[0].value, None)?;
                     inferred_type_params.push(arg_type.clone());
-                    inferred_type_params.push(HirType::Int32); // E defaults to I32
+
+                    // Try to infer E from expected return type
+                    if let Some(HirType::Enum(expected_enum, expected_params)) = expected_type {
+                        if expected_enum == "Result" && expected_params.len() == 2 {
+                            inferred_type_params.push(expected_params[1].clone());
+                        } else {
+                            inferred_type_params.push(HirType::Int32);
+                        }
+                    } else {
+                        inferred_type_params.push(HirType::Int32);
+                    }
 
                     if args.len() != 1 {
                         return Err(DiagnosticError::Type(
@@ -3597,9 +3617,20 @@ impl TypeChecker {
                         ));
                     }
                 } else if enum_name == "Result" && variant == "Err" && args.len() == 1 {
-                    // Result::Err(error) - infer E from error type
-                    let arg_type = self.check_expression(&args[0].value)?;
-                    inferred_type_params.push(HirType::Int32); // T defaults to I32
+                    // Result::Err(error) - infer T from expected type, E from error value
+
+                    // Try to infer T from expected return type
+                    if let Some(HirType::Enum(expected_enum, expected_params)) = expected_type {
+                        if expected_enum == "Result" && expected_params.len() == 2 {
+                            inferred_type_params.push(expected_params[0].clone());
+                        } else {
+                            inferred_type_params.push(HirType::Int32);
+                        }
+                    } else {
+                        inferred_type_params.push(HirType::Int32);
+                    }
+
+                    let arg_type = self.check_expression(&args[0].value, None)?;
                     inferred_type_params.push(arg_type.clone());
 
                     if args.len() != 1 {
@@ -3619,7 +3650,7 @@ impl TypeChecker {
 
                     // Check argument types
                     for (i, (arg, expected_type)) in args.iter().zip(variant_fields.iter()).enumerate() {
-                        let arg_type = self.check_expression(&arg.value)?;
+                        let arg_type = self.check_expression(&arg.value, None)?;
                         // For built-in generic types, skip type checking here as we handle it above
                         if !enum_info.type_params.is_empty() && *expected_type == HirType::Unit {
                             continue;
@@ -3637,7 +3668,7 @@ impl TypeChecker {
                 Ok(HirType::Enum(enum_name.clone(), inferred_type_params))
             }
             Expression::Match { value, arms, .. } => {
-                let value_type = self.check_expression(value)?;
+                let value_type = self.check_expression(value, None)?;
 
                 // Ensure match value is an enum
                 let (enum_name, _type_params) = match &value_type {
@@ -3670,7 +3701,9 @@ impl TypeChecker {
                     }
 
                     // Type check the arm body
-                    let arm_type = self.check_expression(&arm.body)?;
+                    // Pass down expected type to help with enum constructor type inference
+                    let arm_expected_type = expected_type.or(result_type.as_ref());
+                    let arm_type = self.check_expression(&arm.body, arm_expected_type)?;
 
                     // Pop the arm scope
                     self.pop_scope();
@@ -3700,7 +3733,7 @@ impl TypeChecker {
                 Ok(result_type.unwrap())
             }
             Expression::Try { expression, .. } => {
-                let expr_type = self.check_expression(expression)?;
+                let expr_type = self.check_expression(expression, None)?;
 
                 // The ? operator only works on Option<T> and Result<T, E> types
                 match &expr_type {
@@ -3744,7 +3777,7 @@ impl TypeChecker {
                 }
             }
             Expression::MemberAccess { object, member, .. } => {
-                let object_type = self.check_expression(object)?;
+                let object_type = self.check_expression(object, None)?;
 
                 match &object_type {
                     HirType::Class(class_name, _) => {
@@ -3847,7 +3880,7 @@ impl TypeChecker {
 
                     for arg in args {
                         if let Some(field_info) = class_info.fields.get(&arg.name) {
-                            let arg_type = self.check_expression(&arg.value)?;
+                            let arg_type = self.check_expression(&arg.value, None)?;
 
                             // Try to match field type with argument type to infer generics
                             if let HirType::TypeParameter(param_name) = &field_info.ty {
@@ -3881,7 +3914,7 @@ impl TypeChecker {
 
                 for arg in args {
                     if let Some(field_info) = class_info.fields.get(&arg.name) {
-                        let arg_type = self.check_expression(&arg.value)?;
+                        let arg_type = self.check_expression(&arg.value, None)?;
                         let expected_type = field_info.ty.substitute_types(&substitution);
 
                         // Check if argument type is compatible with field type (allows upcasting)
@@ -3950,7 +3983,7 @@ impl TypeChecker {
                             format!("Super method '{}' has no parameter named '{}'", method, arg.name)
                         ))?;
 
-                    let arg_type = self.check_expression(&arg.value)?;
+                    let arg_type = self.check_expression(&arg.value, None)?;
                     if arg_type != param.1 {
                         return Err(DiagnosticError::Type(
                             format!("Super method '{}' parameter '{}' expects type {:?}, got {:?}", method, arg.name, param.1, arg_type)
@@ -3961,8 +3994,8 @@ impl TypeChecker {
                 Ok(parent_method_signature.return_type)
             }
             Expression::Range { start, end, .. } => {
-                let start_type = self.check_expression(start)?;
-                let end_type = self.check_expression(end)?;
+                let start_type = self.check_expression(start, None)?;
+                let end_type = self.check_expression(end, None)?;
 
                 // Both start and end must be integers (i32 or i64)
                 if !matches!(start_type, HirType::Int32 | HirType::Int64) {
@@ -3990,7 +4023,7 @@ impl TypeChecker {
             }
             Expression::If { condition, then_branch, else_branch, .. } => {
                 // Check condition is bool
-                let condition_type = self.check_expression(condition)?;
+                let condition_type = self.check_expression(condition, None)?;
                 if condition_type != HirType::Bool {
                     return Err(DiagnosticError::Type(
                         format!("If condition must be bool, got {:?}", condition_type)
@@ -3998,11 +4031,11 @@ impl TypeChecker {
                 }
 
                 // Check then branch
-                let then_type = self.check_expression(then_branch)?;
+                let then_type = self.check_expression(then_branch, None)?;
 
                 // If there's an else branch, check it and ensure both branches have the same type
                 if let Some(else_expr) = else_branch {
-                    let else_type = self.check_expression(else_expr)?;
+                    let else_type = self.check_expression(else_expr, None)?;
                     if then_type != else_type {
                         return Err(DiagnosticError::Type(
                             format!("If-expression branches must have the same type: then={:?}, else={:?}", then_type, else_type)
@@ -4016,7 +4049,7 @@ impl TypeChecker {
             }
             Expression::Cast { value, target_type, .. } => {
                 // Check the value expression
-                let value_type = self.check_expression(value)?;
+                let value_type = self.check_expression(value, None)?;
 
                 // Convert AST type to HIR type
                 let target_hir_type = self.ast_type_to_hir_type(target_type)?;
@@ -4059,7 +4092,7 @@ impl TypeChecker {
                     }
                     _ => {
                         // For other expressions, just check normally
-                        self.check_expression(body)?
+                        self.check_expression(body, None)?
                     }
                 };
 
@@ -4094,7 +4127,7 @@ impl TypeChecker {
         match statement {
             Statement::Return { value, .. } => {
                 if let Some(expr) = value {
-                    let ret_type = self.check_expression(expr)?;
+                    let ret_type = self.check_expression(expr, None)?;
                     Ok(Some(ret_type))
                 } else {
                     Ok(Some(HirType::Unit))
@@ -4102,7 +4135,7 @@ impl TypeChecker {
             }
             Statement::If { condition, then_branch, else_branch, .. } => {
                 // Check condition first
-                self.check_expression(condition)?;
+                self.check_expression(condition, None)?;
 
                 // Look for returns in then branch
                 if let Some(ret_type) = self.find_return_type_in_block(then_branch)? {
@@ -4119,7 +4152,7 @@ impl TypeChecker {
                 Ok(None)
             }
             Statement::While { condition, body, .. } => {
-                self.check_expression(condition)?;
+                self.check_expression(condition, None)?;
                 self.find_return_type_in_block(body)
             }
             Statement::For { .. } => {
@@ -4174,11 +4207,11 @@ impl TypeChecker {
                 }
 
                 // Check first element to determine type
-                let first_type = self.check_expression(&elements[0])?;
+                let first_type = self.check_expression(&elements[0], None)?;
 
                 // Check all elements have the same type
                 for (i, element) in elements.iter().enumerate().skip(1) {
-                    let element_type = self.check_expression(element)?;
+                    let element_type = self.check_expression(element, None)?;
                     if element_type != first_type {
                         return Err(DiagnosticError::Type(
                             format!("Array element {} has type {:?}, expected {:?}", i, element_type, first_type)
@@ -4197,13 +4230,13 @@ impl TypeChecker {
 
                 // Check first pair to determine key and value types
                 let (first_key, first_value) = &pairs[0];
-                let key_type = self.check_expression(first_key)?;
-                let value_type = self.check_expression(first_value)?;
+                let key_type = self.check_expression(first_key, None)?;
+                let value_type = self.check_expression(first_value, None)?;
 
                 // Check all pairs have consistent key and value types
                 for (i, (key, value)) in pairs.iter().enumerate().skip(1) {
-                    let current_key_type = self.check_expression(key)?;
-                    let current_value_type = self.check_expression(value)?;
+                    let current_key_type = self.check_expression(key, None)?;
+                    let current_value_type = self.check_expression(value, None)?;
 
                     if current_key_type != key_type {
                         return Err(DiagnosticError::Type(
@@ -4228,11 +4261,11 @@ impl TypeChecker {
                 }
 
                 // Check first element to determine element type
-                let first_type = self.check_expression(&elements[0])?;
+                let first_type = self.check_expression(&elements[0], None)?;
 
                 // Check all elements have consistent type
                 for (i, element) in elements.iter().enumerate().skip(1) {
-                    let current_type = self.check_expression(element)?;
+                    let current_type = self.check_expression(element, None)?;
                     if current_type != first_type {
                         return Err(DiagnosticError::Type(
                             format!("Set element {} has type {:?}, expected {:?}", i, current_type, first_type)
