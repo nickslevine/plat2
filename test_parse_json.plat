@@ -1,0 +1,9 @@
+mod std::json;
+
+pub enum JsonValue {
+  Null
+}
+
+fn main() -> Int32 {
+  return 0;
+}

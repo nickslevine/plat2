@@ -1,0 +1,9 @@
+pub enum Node {
+  Leaf(Int32),
+  Branch(List[Node])
+}
+
+fn main() -> Int32 {
+  let leaf: Node = Node::Leaf(field0 = 42);
+  return 0;
+}

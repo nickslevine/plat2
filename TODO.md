@@ -125,3 +125,11 @@ Linting
 
   - Plat doesn't support blocks with multiple statements in match arms - only single expressions
   - Match patterns with early returns require careful structuring to avoid type checker confusion
+
+
+
+module caching:
+  The implementation uses the simpler object file caching
+  approach (rather than HIR serialization), which provides
+  immediate benefits with minimal complexity. This can be
+  upgraded to HIR-level caching in the future if needed.

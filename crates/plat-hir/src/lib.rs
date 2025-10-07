@@ -338,9 +338,23 @@ impl TypeChecker {
                     }
                     Symbol::Enum(info) => {
                         self.enums.insert(qualified_name.clone(), info.clone());
+                        // Also insert unqualified name for current module symbols
+                        if qualified_name.starts_with(&format!("{}::", current_module)) {
+                            let unqualified = qualified_name
+                                .strip_prefix(&format!("{}::", current_module))
+                                .unwrap_or(qualified_name);
+                            self.enums.insert(unqualified.to_string(), info.clone());
+                        }
                     }
                     Symbol::Class(info) => {
                         self.classes.insert(qualified_name.clone(), info.clone());
+                        // Also insert unqualified name for current module symbols
+                        if qualified_name.starts_with(&format!("{}::", current_module)) {
+                            let unqualified = qualified_name
+                                .strip_prefix(&format!("{}::", current_module))
+                                .unwrap_or(qualified_name);
+                            self.classes.insert(unqualified.to_string(), info.clone());
+                        }
                     }
                 }
             }
@@ -414,7 +428,51 @@ impl TypeChecker {
         // Update the module table's current module
         global_symbols.current_module = module_path.to_string();
 
-        // Collect all function declarations
+        // IMPORTANT: Collect enums FIRST (with two-phase registration) so functions/classes can reference them
+        // Phase 1: Register enum names with empty variants
+        for enum_decl in &program.enums {
+            let enum_info = EnumInfo {
+                name: enum_decl.name.clone(),
+                type_params: enum_decl.type_params.clone(),
+                variants: HashMap::new(), // Empty for now
+                methods: HashMap::new(),
+                is_public: enum_decl.is_public,
+            };
+            // Register in BOTH global_symbols AND local self.enums for type resolution
+            global_symbols.register(&enum_decl.name, Symbol::Enum(enum_info.clone()));
+            self.enums.insert(enum_decl.name.clone(), enum_info);
+        }
+
+        // Phase 2: Now resolve variant field types (enums are registered, so recursive refs work)
+        for enum_decl in &program.enums {
+            let mut variants = HashMap::new();
+            for variant in &enum_decl.variants {
+                let field_types: Result<Vec<HirType>, _> = variant.fields.iter()
+                    .map(|f| self.ast_type_to_hir_type(f))
+                    .collect();
+                let field_types = field_types?;
+                variants.insert(variant.name.clone(), field_types);
+            }
+
+            // Update the enum with resolved variants in BOTH local and global tables
+            if let Some(enum_info) = self.enums.get_mut(&enum_decl.name) {
+                enum_info.variants = variants.clone();
+            }
+
+            let qualified_name = if global_symbols.current_module.is_empty() {
+                enum_decl.name.clone()
+            } else {
+                format!("{}::{}", global_symbols.current_module, enum_decl.name)
+            };
+
+            if let Some(Symbol::Enum(enum_info)) = global_symbols.global_symbols.get(&qualified_name) {
+                let mut updated_enum = enum_info.clone();
+                updated_enum.variants = variants;
+                global_symbols.register(&enum_decl.name, Symbol::Enum(updated_enum));
+            }
+        }
+
+        // Now collect all function declarations (can now reference enums)
         for func in &program.functions {
             // Build function signature
             let params: Result<Vec<(String, HirType)>, _> = func.params.iter()
@@ -509,44 +567,6 @@ impl TypeChecker {
 
                     global_symbols.register(&func.name, Symbol::Function(sig));
                 }
-            }
-        }
-
-        // Collect all enum declarations (two-phase to support recursive types)
-        // Phase 1: Register enum names with empty variants
-        for enum_decl in &program.enums {
-            let enum_info = EnumInfo {
-                name: enum_decl.name.clone(),
-                type_params: enum_decl.type_params.clone(),
-                variants: HashMap::new(), // Empty for now
-                methods: HashMap::new(),
-                is_public: enum_decl.is_public,
-            };
-            global_symbols.register(&enum_decl.name, Symbol::Enum(enum_info));
-        }
-
-        // Phase 2: Now resolve variant field types (enums are registered, so recursive refs work)
-        for enum_decl in &program.enums {
-            let mut variants = HashMap::new();
-            for variant in &enum_decl.variants {
-                let field_types: Result<Vec<HirType>, _> = variant.fields.iter()
-                    .map(|f| self.ast_type_to_hir_type(f))
-                    .collect();
-                let field_types = field_types?;
-                variants.insert(variant.name.clone(), field_types);
-            }
-
-            // Update the enum with resolved variants
-            let qualified_name = if global_symbols.current_module.is_empty() {
-                enum_decl.name.clone()
-            } else {
-                format!("{}::{}", global_symbols.current_module, enum_decl.name)
-            };
-
-            if let Some(Symbol::Enum(enum_info)) = global_symbols.global_symbols.get(&qualified_name) {
-                let mut updated_enum = enum_info.clone();
-                updated_enum.variants = variants;
-                global_symbols.register(&enum_decl.name, Symbol::Enum(updated_enum));
             }
         }
 
@@ -888,19 +908,16 @@ impl TypeChecker {
             }
         }
 
-        // Register enum with empty variants
-        let enum_info = EnumInfo {
-            name: enum_decl.name.clone(),
-            type_params: enum_decl.type_params.clone(),
-            variants: HashMap::new(), // Empty for now
-            methods: HashMap::new(),
-            is_public: enum_decl.is_public,
-        };
-
-        if self.enums.insert(enum_decl.name.clone(), enum_info).is_some() {
-            return Err(DiagnosticError::Type(
-                format!("Enum '{}' is defined multiple times", enum_decl.name)
-            ));
+        // Register enum with empty variants (skip if already loaded from global symbols)
+        if !self.enums.contains_key(&enum_decl.name) {
+            let enum_info = EnumInfo {
+                name: enum_decl.name.clone(),
+                type_params: enum_decl.type_params.clone(),
+                variants: HashMap::new(), // Empty for now
+                methods: HashMap::new(),
+                is_public: enum_decl.is_public,
+            };
+            self.enums.insert(enum_decl.name.clone(), enum_info);
         }
 
         Ok(())
@@ -976,21 +993,18 @@ impl TypeChecker {
             }
         }
 
-        // Just register the class name with empty info for now
-        let class_info = ClassInfo {
-            name: class_decl.name.clone(),
-            type_params: class_decl.type_params.clone(),
-            parent_class: class_decl.parent_class.clone(),
-            fields: HashMap::new(),
-            methods: HashMap::new(),
-            virtual_methods: HashMap::new(),
-            is_public: class_decl.is_public,
-        };
-
-        if self.classes.insert(class_decl.name.clone(), class_info).is_some() {
-            return Err(DiagnosticError::Type(
-                format!("Class '{}' is defined multiple times", class_decl.name)
-            ));
+        // Just register the class name with empty info for now (skip if already loaded from global symbols)
+        if !self.classes.contains_key(&class_decl.name) {
+            let class_info = ClassInfo {
+                name: class_decl.name.clone(),
+                type_params: class_decl.type_params.clone(),
+                parent_class: class_decl.parent_class.clone(),
+                fields: HashMap::new(),
+                methods: HashMap::new(),
+                virtual_methods: HashMap::new(),
+                is_public: class_decl.is_public,
+            };
+            self.classes.insert(class_decl.name.clone(), class_info);
         }
 
         Ok(())
