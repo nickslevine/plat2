@@ -1,0 +1,8 @@
+use std::json;
+
+fn main() -> Int32 {
+  let value: json::JsonValue = json::JsonValue::Null;
+  let result: String = json::stringify(value = value);
+  print(value = result);
+  return 0;
+}

@@ -1,0 +1,8 @@
+// Test time functions
+
+fn main() -> Int32 {
+  print(value = "Testing time functions...");
+  let start_time: Int64 = time_now();
+  print(value = "Current time (ms): ${start_time}");
+  return 0;
+}

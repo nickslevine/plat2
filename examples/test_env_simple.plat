@@ -1,0 +1,12 @@
+fn main() -> Int32 {
+  print(value = "Testing environment variables");
+
+  let set_ok: Bool = env_set(name = "TEST_VAR", value = "test_value");
+  print(value = "Set result: ${set_ok}");
+
+  let args: String = process_args();
+  print(value = "Args:");
+  print(value = args);
+
+  return 0;
+}

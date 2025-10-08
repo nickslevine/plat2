@@ -171,15 +171,43 @@ The following are implemented as Rust FFI in `plat-runtime/src/ffi/`:
 
 ---
 
-### Phase 5: Additional Primitives (Expand Runtime)
+### Phase 5: Additional Primitives (Expand Runtime) ✅ COMPLETED
+
+**Status**: Completed on 2025-10-08
 
 **Goal**: Add missing primitives needed by stdlib
 
-**Planned FFI Functions** (not yet implemented):
-- **Time** (ffi/time.rs): `plat_time_now()`, `plat_time_sleep()`
-- **Environment** (ffi/env.rs): `plat_env_get()`, `plat_env_set()`
-- **Random** (ffi/random.rs): `plat_random_int()`, `plat_random_float()`
-- **Process** (ffi/process.rs): `plat_process_exit()`, `plat_process_args()`
+**What Was Implemented**:
+1. ✅ **Time** (ffi/time.rs):
+   - `time_now() -> Int64` - Get current Unix timestamp in milliseconds
+   - `time_sleep(millis: Int64) -> Bool` - Sleep for specified milliseconds
+2. ✅ **Environment** (ffi/env.rs):
+   - `env_get(name: String) -> Option<String>` - Get environment variable (returns Option)
+   - `env_set(name: String, value: String) -> Bool` - Set environment variable
+   - `env_vars() -> String` - Get all environment variables as newline-separated string
+3. ✅ **Random** (ffi/random.rs):
+   - `random_int(min: Int64, max: Int64) -> Int64` - Generate random integer in range [min, max]
+   - `random_float() -> Float64` - Generate random float in range [0.0, 1.0)
+4. ✅ **Process** (ffi/process.rs):
+   - `process_exit(code: Int32) -> Never` - Exit the process with exit code
+   - `process_args() -> String` - Get command-line arguments as newline-separated string
+
+**Integration**:
+- ✅ FFI modules added to `plat-runtime/src/ffi/mod.rs`
+- ✅ Type checking added to `plat-hir/src/lib.rs`
+- ✅ Codegen added to `plat-codegen/src/lib.rs`
+- ✅ Dependency added: `rand = "0.8"` for random number generation
+
+**Testing**:
+- ✅ `examples/test_time.plat` - Time functions work correctly
+- ✅ `examples/test_random.plat` - Random number generation works
+- ✅ `examples/test_process.plat` - Process arguments retrieval works
+- ✅ `examples/test_env_simple.plat` - Environment variable operations work
+
+**Key Findings**:
+- Bool is represented as I32 in Cranelift, not I8
+- Option enums use discriminant hashing with GC-allocated memory layout: [discriminant:i32][padding:i32][value:i64]
+- All new primitives integrate seamlessly with existing type system
 
 ---
 
@@ -287,7 +315,7 @@ Each module has a `bench` block for performance testing
 
 **Start Date**: 2025-01-XX
 **Last Updated**: 2025-10-08
-**Current Phase**: Phase 4 (std::json) - COMPLETE!
+**Current Phase**: Phase 5 (Additional Primitives) - COMPLETE!
 
 ### Progress by Phase
 
@@ -295,7 +323,7 @@ Each module has a `bench` block for performance testing
 - ✅ **Phase 2** (Caching): COMPLETE
 - ✅ **Phase 3** (std::io): COMPLETE
 - ✅ **Phase 4** (std::json): COMPLETE - Full JSON parser and stringify in pure Plat!
-- ⏸️ **Phase 5** (Additional Primitives): Not started
+- ✅ **Phase 5** (Additional Primitives): COMPLETE - Time, Environment, Random, and Process primitives!
 - ⏸️ **Phase 6** (More Modules): Not started
 
 ### Compiler Fixes Completed

@@ -3408,6 +3408,209 @@ impl CodeGenerator {
                     return Ok(builder.inst_results(call)[0]);
                 }
 
+                // Handle built-in time_now function
+                if function == "time_now" {
+                    // time_now() -> Int64
+                    let func_sig = {
+                        let mut sig = module.make_signature();
+                        sig.call_conv = CallConv::SystemV;
+                        sig.returns.push(AbiParam::new(I64)); // timestamp in milliseconds
+                        sig
+                    };
+
+                    let func_id = module.declare_function("plat_time_now", Linkage::Import, &func_sig)
+                        .map_err(CodegenError::ModuleError)?;
+                    let func_ref = module.declare_func_in_func(func_id, builder.func);
+
+                    let call = builder.ins().call(func_ref, &[]);
+                    return Ok(builder.inst_results(call)[0]);
+                }
+
+                // Handle built-in time_sleep function
+                if function == "time_sleep" {
+                    // time_sleep(millis: Int64) -> Bool
+                    let millis_arg = args.iter().find(|arg| arg.name == "millis")
+                        .ok_or_else(|| CodegenError::UnsupportedFeature("time_sleep missing 'millis' parameter".to_string()))?;
+
+                    let millis_val = Self::generate_expression_helper(builder, &millis_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+
+                    let func_sig = {
+                        let mut sig = module.make_signature();
+                        sig.call_conv = CallConv::SystemV;
+                        sig.params.push(AbiParam::new(I64)); // milliseconds
+                        sig
+                    };
+
+                    let func_id = module.declare_function("plat_time_sleep", Linkage::Import, &func_sig)
+                        .map_err(CodegenError::ModuleError)?;
+                    let func_ref = module.declare_func_in_func(func_id, builder.func);
+
+                    builder.ins().call(func_ref, &[millis_val]);
+                    // Return true (Bool is represented as i32)
+                    return Ok(builder.ins().iconst(I32, 1));
+                }
+
+                // Handle built-in env_get function
+                if function == "env_get" {
+                    // env_get(name: String) -> Option<String>
+                    let name_arg = args.iter().find(|arg| arg.name == "name")
+                        .ok_or_else(|| CodegenError::UnsupportedFeature("env_get missing 'name' parameter".to_string()))?;
+
+                    let name_val = Self::generate_expression_helper(builder, &name_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+
+                    let func_sig = {
+                        let mut sig = module.make_signature();
+                        sig.call_conv = CallConv::SystemV;
+                        sig.params.push(AbiParam::new(I64)); // name string pointer
+                        sig.returns.push(AbiParam::new(I64)); // Option enum pointer
+                        sig
+                    };
+
+                    let func_id = module.declare_function("plat_env_get", Linkage::Import, &func_sig)
+                        .map_err(CodegenError::ModuleError)?;
+                    let func_ref = module.declare_func_in_func(func_id, builder.func);
+
+                    let call = builder.ins().call(func_ref, &[name_val]);
+                    return Ok(builder.inst_results(call)[0]);
+                }
+
+                // Handle built-in env_set function
+                if function == "env_set" {
+                    // env_set(name: String, value: String) -> Bool
+                    let name_arg = args.iter().find(|arg| arg.name == "name")
+                        .ok_or_else(|| CodegenError::UnsupportedFeature("env_set missing 'name' parameter".to_string()))?;
+                    let value_arg = args.iter().find(|arg| arg.name == "value")
+                        .ok_or_else(|| CodegenError::UnsupportedFeature("env_set missing 'value' parameter".to_string()))?;
+
+                    let name_val = Self::generate_expression_helper(builder, &name_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+                    let value_val = Self::generate_expression_helper(builder, &value_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+
+                    let func_sig = {
+                        let mut sig = module.make_signature();
+                        sig.call_conv = CallConv::SystemV;
+                        sig.params.push(AbiParam::new(I64)); // name string pointer
+                        sig.params.push(AbiParam::new(I64)); // value string pointer
+                        sig.returns.push(AbiParam::new(I32)); // success (1) or failure (0)
+                        sig
+                    };
+
+                    let func_id = module.declare_function("plat_env_set", Linkage::Import, &func_sig)
+                        .map_err(CodegenError::ModuleError)?;
+                    let func_ref = module.declare_func_in_func(func_id, builder.func);
+
+                    let call = builder.ins().call(func_ref, &[name_val, value_val]);
+                    let result_i32 = builder.inst_results(call)[0];
+                    // Bool is represented as i32 in Cranelift
+                    return Ok(result_i32);
+                }
+
+                // Handle built-in env_vars function
+                if function == "env_vars" {
+                    // env_vars() -> String
+                    let func_sig = {
+                        let mut sig = module.make_signature();
+                        sig.call_conv = CallConv::SystemV;
+                        sig.returns.push(AbiParam::new(I64)); // string pointer
+                        sig
+                    };
+
+                    let func_id = module.declare_function("plat_env_vars", Linkage::Import, &func_sig)
+                        .map_err(CodegenError::ModuleError)?;
+                    let func_ref = module.declare_func_in_func(func_id, builder.func);
+
+                    let call = builder.ins().call(func_ref, &[]);
+                    return Ok(builder.inst_results(call)[0]);
+                }
+
+                // Handle built-in random_int function
+                if function == "random_int" {
+                    // random_int(min: Int64, max: Int64) -> Int64
+                    let min_arg = args.iter().find(|arg| arg.name == "min")
+                        .ok_or_else(|| CodegenError::UnsupportedFeature("random_int missing 'min' parameter".to_string()))?;
+                    let max_arg = args.iter().find(|arg| arg.name == "max")
+                        .ok_or_else(|| CodegenError::UnsupportedFeature("random_int missing 'max' parameter".to_string()))?;
+
+                    let min_val = Self::generate_expression_helper(builder, &min_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+                    let max_val = Self::generate_expression_helper(builder, &max_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+
+                    let func_sig = {
+                        let mut sig = module.make_signature();
+                        sig.call_conv = CallConv::SystemV;
+                        sig.params.push(AbiParam::new(I64)); // min
+                        sig.params.push(AbiParam::new(I64)); // max
+                        sig.returns.push(AbiParam::new(I64)); // random value
+                        sig
+                    };
+
+                    let func_id = module.declare_function("plat_random_int", Linkage::Import, &func_sig)
+                        .map_err(CodegenError::ModuleError)?;
+                    let func_ref = module.declare_func_in_func(func_id, builder.func);
+
+                    let call = builder.ins().call(func_ref, &[min_val, max_val]);
+                    return Ok(builder.inst_results(call)[0]);
+                }
+
+                // Handle built-in random_float function
+                if function == "random_float" {
+                    // random_float() -> Float64
+                    let func_sig = {
+                        let mut sig = module.make_signature();
+                        sig.call_conv = CallConv::SystemV;
+                        sig.returns.push(AbiParam::new(F64)); // random value
+                        sig
+                    };
+
+                    let func_id = module.declare_function("plat_random_float", Linkage::Import, &func_sig)
+                        .map_err(CodegenError::ModuleError)?;
+                    let func_ref = module.declare_func_in_func(func_id, builder.func);
+
+                    let call = builder.ins().call(func_ref, &[]);
+                    return Ok(builder.inst_results(call)[0]);
+                }
+
+                // Handle built-in process_exit function
+                if function == "process_exit" {
+                    // process_exit(code: Int32) -> Never
+                    let code_arg = args.iter().find(|arg| arg.name == "code")
+                        .ok_or_else(|| CodegenError::UnsupportedFeature("process_exit missing 'code' parameter".to_string()))?;
+
+                    let code_val = Self::generate_expression_helper(builder, &code_arg.value, variables, variable_types, functions, module, string_counter, variable_counter, class_metadata, test_mode, symbol_table)?;
+
+                    let func_sig = {
+                        let mut sig = module.make_signature();
+                        sig.call_conv = CallConv::SystemV;
+                        sig.params.push(AbiParam::new(I32)); // exit code
+                        sig
+                    };
+
+                    let func_id = module.declare_function("plat_process_exit", Linkage::Import, &func_sig)
+                        .map_err(CodegenError::ModuleError)?;
+                    let func_ref = module.declare_func_in_func(func_id, builder.func);
+
+                    builder.ins().call(func_ref, &[code_val]);
+                    // This function doesn't return, but we need to return something for the type checker
+                    // Bool is represented as i32
+                    return Ok(builder.ins().iconst(I32, 0));
+                }
+
+                // Handle built-in process_args function
+                if function == "process_args" {
+                    // process_args() -> String
+                    let func_sig = {
+                        let mut sig = module.make_signature();
+                        sig.call_conv = CallConv::SystemV;
+                        sig.returns.push(AbiParam::new(I64)); // string pointer
+                        sig
+                    };
+
+                    let func_id = module.declare_function("plat_process_args", Linkage::Import, &func_sig)
+                        .map_err(CodegenError::ModuleError)?;
+                    let func_ref = module.declare_func_in_func(func_id, builder.func);
+
+                    let call = builder.ins().call(func_ref, &[]);
+                    return Ok(builder.inst_results(call)[0]);
+                }
+
                 // Check if this is actually a class constructor with no arguments (e.g., Empty())
                 // This happens when a class has no fields and uses a default init
                 if args.is_empty() && class_metadata.contains_key(function) {

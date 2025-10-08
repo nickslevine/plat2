@@ -1,0 +1,6 @@
+fn main() -> Int32 {
+  print(value = "Testing env functions");
+  env_set(name = "TEST", value = "value");
+  print(value = "Done");
+  return 0;
+}

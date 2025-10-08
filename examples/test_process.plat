@@ -1,0 +1,7 @@
+fn main() -> Int32 {
+  print(value = "Testing process_args");
+  let args: String = process_args();
+  print(value = "Arguments:");
+  print(value = args);
+  return 0;
+}

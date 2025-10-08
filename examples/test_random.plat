@@ -1,0 +1,13 @@
+// Test random functions
+
+fn main() -> Int32 {
+  print(value = "Testing random functions...");
+
+  let random1: Int64 = random_int(min = 1i64, max = 100i64);
+  print(value = "Random int (1-100): ${random1}");
+
+  let random_float1: Float64 = random_float();
+  print(value = "Random float (0.0-1.0): ${random_float1}");
+
+  return 0;
+}

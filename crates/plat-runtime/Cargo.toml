@@ -17,6 +17,7 @@ crossbeam-deque = "0.8"
 crossbeam-channel = "0.5"
 parking_lot = "0.12"
 num_cpus = "1.16"
+rand = "0.8"
 
 [build-dependencies]
 # For linking with system libgc

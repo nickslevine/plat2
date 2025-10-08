@@ -2843,6 +2843,185 @@ impl TypeChecker {
                     return Ok(HirType::Channel(Box::new(HirType::Int32)));
                 }
 
+                // Handle built-in time_now function
+                if function == "time_now" {
+                    // time_now() -> Int64
+                    if args.len() != 0 {
+                        return Err(DiagnosticError::Type(
+                            "time_now requires no arguments".to_string()
+                        ));
+                    }
+
+                    return Ok(HirType::Int64);
+                }
+
+                // Handle built-in time_sleep function
+                if function == "time_sleep" {
+                    // time_sleep(millis: Int64) -> Bool
+                    if args.len() != 1 {
+                        return Err(DiagnosticError::Type(
+                            "time_sleep requires exactly 1 argument: 'millis'".to_string()
+                        ));
+                    }
+
+                    let millis_arg = args.iter().find(|arg| arg.name == "millis")
+                        .ok_or_else(|| DiagnosticError::Type("time_sleep requires a 'millis' parameter".to_string()))?;
+
+                    let millis_type = self.check_expression(&millis_arg.value, None)?;
+
+                    if millis_type != HirType::Int64 {
+                        return Err(DiagnosticError::Type(
+                            format!("time_sleep 'millis' parameter must be Int64, got {:?}", millis_type)
+                        ));
+                    }
+
+                    return Ok(HirType::Bool);
+                }
+
+                // Handle built-in env_get function
+                if function == "env_get" {
+                    // env_get(name: String) -> Option<String>
+                    if args.len() != 1 {
+                        return Err(DiagnosticError::Type(
+                            "env_get requires exactly 1 argument: 'name'".to_string()
+                        ));
+                    }
+
+                    let name_arg = args.iter().find(|arg| arg.name == "name")
+                        .ok_or_else(|| DiagnosticError::Type("env_get requires a 'name' parameter".to_string()))?;
+
+                    let name_type = self.check_expression(&name_arg.value, None)?;
+
+                    if name_type != HirType::String {
+                        return Err(DiagnosticError::Type(
+                            format!("env_get 'name' parameter must be String, got {:?}", name_type)
+                        ));
+                    }
+
+                    return Ok(HirType::Enum("Option".to_string(), vec![HirType::String]));
+                }
+
+                // Handle built-in env_set function
+                if function == "env_set" {
+                    // env_set(name: String, value: String) -> Bool
+                    if args.len() != 2 {
+                        return Err(DiagnosticError::Type(
+                            "env_set requires exactly 2 arguments: 'name' and 'value'".to_string()
+                        ));
+                    }
+
+                    let name_arg = args.iter().find(|arg| arg.name == "name")
+                        .ok_or_else(|| DiagnosticError::Type("env_set requires a 'name' parameter".to_string()))?;
+                    let value_arg = args.iter().find(|arg| arg.name == "value")
+                        .ok_or_else(|| DiagnosticError::Type("env_set requires a 'value' parameter".to_string()))?;
+
+                    let name_type = self.check_expression(&name_arg.value, None)?;
+                    let value_type = self.check_expression(&value_arg.value, None)?;
+
+                    if name_type != HirType::String {
+                        return Err(DiagnosticError::Type(
+                            format!("env_set 'name' parameter must be String, got {:?}", name_type)
+                        ));
+                    }
+                    if value_type != HirType::String {
+                        return Err(DiagnosticError::Type(
+                            format!("env_set 'value' parameter must be String, got {:?}", value_type)
+                        ));
+                    }
+
+                    return Ok(HirType::Bool);
+                }
+
+                // Handle built-in env_vars function
+                if function == "env_vars" {
+                    // env_vars() -> String
+                    if args.len() != 0 {
+                        return Err(DiagnosticError::Type(
+                            "env_vars requires no arguments".to_string()
+                        ));
+                    }
+
+                    return Ok(HirType::String);
+                }
+
+                // Handle built-in random_int function
+                if function == "random_int" {
+                    // random_int(min: Int64, max: Int64) -> Int64
+                    if args.len() != 2 {
+                        return Err(DiagnosticError::Type(
+                            "random_int requires exactly 2 arguments: 'min' and 'max'".to_string()
+                        ));
+                    }
+
+                    let min_arg = args.iter().find(|arg| arg.name == "min")
+                        .ok_or_else(|| DiagnosticError::Type("random_int requires a 'min' parameter".to_string()))?;
+                    let max_arg = args.iter().find(|arg| arg.name == "max")
+                        .ok_or_else(|| DiagnosticError::Type("random_int requires a 'max' parameter".to_string()))?;
+
+                    let min_type = self.check_expression(&min_arg.value, None)?;
+                    let max_type = self.check_expression(&max_arg.value, None)?;
+
+                    if min_type != HirType::Int64 {
+                        return Err(DiagnosticError::Type(
+                            format!("random_int 'min' parameter must be Int64, got {:?}", min_type)
+                        ));
+                    }
+                    if max_type != HirType::Int64 {
+                        return Err(DiagnosticError::Type(
+                            format!("random_int 'max' parameter must be Int64, got {:?}", max_type)
+                        ));
+                    }
+
+                    return Ok(HirType::Int64);
+                }
+
+                // Handle built-in random_float function
+                if function == "random_float" {
+                    // random_float() -> Float64
+                    if args.len() != 0 {
+                        return Err(DiagnosticError::Type(
+                            "random_float requires no arguments".to_string()
+                        ));
+                    }
+
+                    return Ok(HirType::Float64);
+                }
+
+                // Handle built-in process_exit function
+                if function == "process_exit" {
+                    // process_exit(code: Int32) -> Never (doesn't return, but we use Bool as a placeholder)
+                    if args.len() != 1 {
+                        return Err(DiagnosticError::Type(
+                            "process_exit requires exactly 1 argument: 'code'".to_string()
+                        ));
+                    }
+
+                    let code_arg = args.iter().find(|arg| arg.name == "code")
+                        .ok_or_else(|| DiagnosticError::Type("process_exit requires a 'code' parameter".to_string()))?;
+
+                    let code_type = self.check_expression(&code_arg.value, None)?;
+
+                    if code_type != HirType::Int32 {
+                        return Err(DiagnosticError::Type(
+                            format!("process_exit 'code' parameter must be Int32, got {:?}", code_type)
+                        ));
+                    }
+
+                    return Ok(HirType::Bool);
+                }
+
+                // Handle built-in process_args function
+                if function == "process_args" {
+                    // process_args() -> String
+                    if args.len() != 0 {
+                        return Err(DiagnosticError::Type(
+                            "process_args requires no arguments".to_string()
+                        ));
+                    }
+
+                    return Ok(HirType::String);
+                }
+
                 // Try to resolve the function name (handles both local and qualified names)
                 let resolved_name = self.module_table.resolve(function)
                     .unwrap_or_else(|| function.clone());

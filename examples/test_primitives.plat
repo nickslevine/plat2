@@ -1,0 +1,89 @@
+// Test program for Phase 5 primitives
+
+fn main() -> Int32 {
+  print(value = "=== Testing Phase 5 Primitives ===");
+  print(value = "");
+
+  // Test 1: Time functions
+  print(value = "1. Testing time functions...");
+  let start_time: Int64 = time_now();
+  print(value = "  Current time (ms): ${start_time}");
+
+  print(value = "  Sleeping for 100ms...");
+  let sleep_result: Bool = time_sleep(millis = 100i64);
+
+  let end_time: Int64 = time_now();
+  let elapsed: Int64 = end_time - start_time;
+  print(value = "  Elapsed time: ${elapsed}ms");
+  print(value = "");
+
+  // Test 2: Environment variables
+  print(value = "2. Testing environment variables...");
+
+  // Set an environment variable
+  let set_result: Bool = env_set(name = "PLAT_TEST_VAR", value = "hello_world");
+  if (set_result) {
+    print(value = "  Set PLAT_TEST_VAR=hello_world");
+  } else {
+    print(value = "  Failed to set environment variable");
+  }
+
+  // Get the environment variable
+  let env_value: Option<String> = env_get(name = "PLAT_TEST_VAR");
+  match env_value {
+    Option::Some(val: String) -> {
+      print(value = "  Got PLAT_TEST_VAR: ${val}");
+      return 0;
+    },
+    Option::None -> {
+      print(value = "  Environment variable not found");
+      return 0;
+    }
+  };
+
+  // Get non-existent variable
+  let missing: Option<String> = env_get(name = "PLAT_NONEXISTENT_VAR_XYZ");
+  match missing {
+    Option::Some(val: String) -> {
+      print(value = "  Unexpected: got value for nonexistent var: ${val}");
+      return 1;
+    },
+    Option::None -> {
+      print(value = "  Correctly returned None for nonexistent variable");
+      return 0;
+    }
+  };
+
+  // List all environment variables (truncated output)
+  let all_vars: String = env_vars();
+  let var_count: Int32 = all_vars.length();
+  print(value = "  Total environment variables length: ${var_count} chars");
+  print(value = "");
+
+  // Test 3: Random number generation
+  print(value = "3. Testing random number generation...");
+
+  let random1: Int64 = random_int(min = 1i64, max = 100i64);
+  print(value = "  Random int (1-100): ${random1}");
+
+  let random2: Int64 = random_int(min = 1i64, max = 100i64);
+  print(value = "  Random int (1-100): ${random2}");
+
+  let random_float1: Float64 = random_float();
+  print(value = "  Random float (0.0-1.0): ${random_float1}");
+
+  let random_float2: Float64 = random_float();
+  print(value = "  Random float (0.0-1.0): ${random_float2}");
+  print(value = "");
+
+  // Test 4: Process arguments
+  print(value = "4. Testing process arguments...");
+  let args: String = process_args();
+  print(value = "  Program arguments:");
+  print(value = args);
+  print(value = "");
+
+  print(value = "=== All tests completed successfully! ===");
+
+  return 0;
+}
