@@ -1,144 +1,64 @@
-# Plat Standard Library Architecture Plan
+# Plat Standard Library Plan
 
 > **📝 IMPORTANT**: After completing any chunk of work on the stdlib, always:
 > 1. Update this plan with progress details
 > 2. Commit the changes to git
-> 3. Keep the status section at the bottom current
+> 3. Keep the status section current
 
 ## Overview
 
-This document outlines the design and implementation plan for the Plat standard library (`std`). The stdlib will be written entirely in Plat (dogfooding!), providing high-level abstractions over the low-level Rust FFI primitives.
+The Plat standard library (`std`) is written entirely in Plat, providing high-level abstractions over low-level Rust FFI primitives. Users import stdlib modules with `use std::module_name;`.
 
-## Directory Structure
-
+**Directory Structure:**
 ```
 plat2/
-├── stdlib/              # NEW: Standard library in Plat
-│   ├── std/
-│   │   ├── json.plat         # JSON parsing/serialization
-│   │   ├── io.plat           # High-level I/O wrappers
-│   │   ├── fs.plat           # File system utilities
-│   │   ├── net.plat          # Networking utilities
-│   │   ├── http.plat         # HTTP client/server
-│   │   ├── collections.plat  # Additional collections (Queue, Stack)
-│   │   ├── math.plat         # Math functions
-│   │   ├── time.plat         # Time/date handling
-│   │   └── string.plat       # Extended string utilities
-│   └── README.md
-├── crates/
-│   ├── plat-modules/    # EXTEND: Recognize std:: prefix
-│   ├── plat-cli/        # EXTEND: Pass stdlib path to compiler
-│   └── plat-runtime/    # ADD: New primitives (time, env, random)
+├── stdlib/
+│   └── std/
+│       ├── json.plat         # JSON parsing/serialization
+│       ├── io.plat           # High-level I/O wrappers
+│       ├── test.plat         # Test module
+│       └── [future modules]
+└── target/
+    └── stdlib-cache/         # Cached compiled stdlib modules
 ```
 
-## Current Primitive Layer (Already Implemented)
-
-The following are implemented as Rust FFI functions in `plat-runtime/src/ffi/`:
-
-### Networking (net.rs)
-- `tcp_listen(host: String, port: Int32) -> Result<Int32, String>`
-- `tcp_accept(listener: Int32) -> Result<Int32, String>`
-- `tcp_connect(host: String, port: Int32) -> Result<Int32, String>`
-- `tcp_read(socket: Int32, max_bytes: Int32) -> Result<String, String>`
-- `tcp_write(socket: Int32, data: String) -> Result<Int32, String>`
-- `tcp_close(socket: Int32) -> Result<Bool, String>`
-
-### File System (fs.rs)
-- `file_open(path: String, mode: String) -> Result<Int32, String>`
-- `file_read(fd: Int32, max_bytes: Int32) -> Result<String, String>`
-- `file_write(fd: Int32, data: String) -> Result<Int32, String>`
-- `file_close(fd: Int32) -> Result<Bool, String>`
-- `file_read_binary(fd: Int32, max_bytes: Int32) -> Result<List[Int8], String>`
-- `file_write_binary(fd: Int32, data: List[Int8]) -> Result<Int32, String>`
-- `file_exists(path: String) -> Bool`
-- `file_size(path: String) -> Result<Int64, String>`
-- `file_is_dir(path: String) -> Bool`
-- `file_is_symlink(path: String) -> Bool`
-- `file_delete(path: String) -> Result<Bool, String>`
-- `file_rename(old_path: String, new_path: String) -> Result<Bool, String>`
-- `file_seek(fd: Int32, offset: Int64, whence: Int32) -> Result<Int64, String>`
-- `file_tell(fd: Int32) -> Result<Int64, String>`
-- `file_rewind(fd: Int32) -> Result<Bool, String>`
-- `file_chmod(path: String, mode: Int32) -> Result<Bool, String>`
-- `file_get_permissions(path: String) -> Result<Int32, String>`
-- `file_modified_time(path: String) -> Result<Int64, String>`
-- `file_created_time(path: String) -> Result<Int64, String>`
-- `dir_create(path: String) -> Result<Bool, String>`
-- `dir_create_all(path: String) -> Result<Bool, String>`
-- `dir_remove(path: String) -> Result<Bool, String>`
-- `dir_list(path: String) -> Result<String, String>`
-- `symlink_create(target: String, link: String) -> Result<Bool, String>`
-- `symlink_read(path: String) -> Result<String, String>`
-- `symlink_delete(path: String) -> Result<Bool, String>`
-
-### String Operations (string.rs)
-- 17 built-in methods: `length()`, `substring()`, `concat()`, `split()`, `trim()`, `to_upper()`, `to_lower()`, `contains()`, `starts_with()`, `ends_with()`, `replace()`, `parse_int()`, `parse_int64()`, `parse_float()`, `parse_bool()`, `char_at()`, `index_of()`
-
-### Collections
-- List[T]: indexing, `length()`, `push()`, `pop()`, etc.
-- Dict[K, V]: 11 built-in operations
-- Set[T]: 11 built-in operations
-
-### Concurrency (green_runtime/)
-- Green thread runtime with work-stealing scheduler
-- `concurrent {}` blocks with structured concurrency
-- `spawn { ... }` for task creation
-- `.await()` for blocking on task completion
+---
 
 ## Module Resolution Strategy
 
 ### Special `std::` Handling
 
-1. **Reserved Namespace**: The `std::` prefix is reserved for standard library modules
-2. **Search Path Priority**:
-   - User modules: Current project directory
-   - Standard library: `stdlib/` directory (for `std::*` imports only)
-3. **Module Path Mapping**:
-   - `use std::json;` → `stdlib/std/json.plat`
-   - `use std::io;` → `stdlib/std/io.plat`
-4. **Validation**: User modules cannot use `std::` prefix (compile error)
+1. **Reserved Namespace**: The `std::` prefix is reserved for standard library
+2. **Search Path**: User modules: current directory; stdlib: `stdlib/` directory
+3. **Path Mapping**: `use std::json;` → `stdlib/std/json.plat`
+4. **Validation**: User code cannot use `std::` prefix (compile error)
 
 ### Compilation Flow
-
 ```
 User Code (main.plat)
-  ↓
-use std::json;
-  ↓
-Module Resolver discovers stdlib/std/json.plat
-  ↓
-Check cache for compiled HIR (target/stdlib-cache/std-json.hir)
-  ↓
-If cached and not stale: load cached HIR
-If not cached: compile stdlib/std/json.plat → HIR
-  ↓
-Type check user code with stdlib symbols
-  ↓
-Codegen: only link imported stdlib modules
-  ↓
-Final binary (minimal size, only includes what's used)
+  ↓ use std::json;
+  ↓ Module Resolver discovers stdlib/std/json.plat
+  ↓ Check cache (target/stdlib-cache/std-json.o)
+  ↓ If cached and fresh: use cached object file
+  ↓ If not cached: compile and cache
+  ↓ Type check user code with stdlib symbols
+  ↓ Codegen and link (only imported modules)
+  ↓ Final binary
 ```
 
-### Caching Strategy (Phase 2)
+---
 
-**Why Cache?**
-- Stdlib modules rarely change
-- Compiling from scratch every time is slow
-- HIR is platform-independent (can be serialized)
+## Current Primitive Layer (Already Implemented)
 
-**Cache Location**: `target/stdlib-cache/`
+The following are implemented as Rust FFI in `plat-runtime/src/ffi/`:
 
-**Cache Key**: `{module_name}-{file_hash}.hir`
+- **Networking** (net.rs): `tcp_listen`, `tcp_accept`, `tcp_connect`, `tcp_read`, `tcp_write`, `tcp_close`
+- **File System** (fs.rs): `file_open`, `file_read`, `file_write`, `file_close`, `file_read_binary`, `file_write_binary`, `file_exists`, `file_size`, `file_is_dir`, `file_delete`, `file_rename`, `dir_create`, `dir_create_all`, `dir_remove`, `dir_list`, symlink operations, permissions, seeking
+- **String Operations** (string.rs): 17 built-in methods including `substring`, `char_at`, `split`, `parse_int`, `parse_float`, etc.
+- **Collections**: List[T], Dict[K,V], Set[T] with methods (`push`, `pop`, `insert`, `length`, etc.)
+- **Concurrency** (green_runtime/): Green thread runtime with `concurrent {}` blocks, `spawn`, `.await()`
 
-**Cache Invalidation**:
-- Compare file modification time
-- If source newer than cache: recompile
-- If cache missing: compile and cache
-
-**What Gets Cached?**
-- HIR (type-checked intermediate representation)
-- Type signatures (for cross-module resolution)
-- Metadata (module dependencies, public symbols)
+---
 
 ## Implementation Phases
 
@@ -146,26 +66,13 @@ Final binary (minimal size, only includes what's used)
 
 **Goal**: Make `use std::*` work
 
-**Status**: Completed on 2025-01-XX (Commit: 07106ee)
-
 **What Was Implemented**:
-1. ✅ Created `stdlib/std/` directory structure
-2. ✅ `ModuleResolver` already had `stdlib_dir` field and `std::` handling
-3. ✅ CLI already had `get_stdlib_root()` helper
-4. ✅ **Parser Fix**: Added `consume_module_name()` to accept keywords in module paths
-   - Allows `std::test` where `test` is a keyword
-   - Updated `parse_use_decl()`, `parse_module_decl()`, and qualified path parsing
-5. ✅ Created test module: `stdlib/std/test.plat` with public functions
-6. ✅ Verified: `use std::test;` compiles and runs successfully
+- ✅ Created `stdlib/std/` directory structure
+- ✅ ModuleResolver already had `stdlib_dir` field and `std::` handling
+- ✅ Parser fix: `consume_module_name()` accepts keywords in module paths (e.g., `std::test`)
+- ✅ Test module verification: `use std::test;` compiles and runs
 
-**Key Achievement**: Parser now accepts keywords (test, mod, type, bench, etc.) as valid module path components, enabling stdlib modules to use any name.
-
-**Success Criteria Met**:
-- ✅ `use std::test;` compiles without errors
-- ✅ Module system discovers stdlib modules from `stdlib/` directory
-- ✅ Module not found error for non-existent stdlib modules
-
-**Note**: There's an existing codegen issue with cross-module function calls (affects all modules, not stdlib-specific). This will be addressed separately.
+**Success**: Module system discovers stdlib modules from `stdlib/` directory
 
 ---
 
@@ -175,82 +82,23 @@ Final binary (minimal size, only includes what's used)
 
 **Status**: Completed on 2025-10-07
 
-**Progress**:
-- ✅ Added `serde` to workspace dependencies (Cargo.toml)
-- ✅ Added `serde` and `bincode` to plat-hir crate (for future HIR caching if needed)
-- ✅ Implemented object file caching (simpler approach)
-- ✅ Cache directory structure created (`target/stdlib-cache/`)
-- ✅ StdlibCache struct implemented in plat-modules
-- ✅ Integrated cache into CLI compilation flow
-
-**Implementation Strategy** (Chosen):
-Selected **Object File Caching** approach:
-- Cache compiled `.o` files instead of HIR
-- Use file modification time for invalidation
-- Simpler implementation, immediate benefits
-- Can upgrade to HIR caching later if needed
-
 **What Was Implemented**:
-1. ✅ `StdlibCache` struct in `plat-modules/src/lib.rs`:
-   - `fn new(cache_dir: PathBuf) -> Self` - Create cache instance
-   - `fn init() -> std::io::Result<()>` - Initialize cache directory
-   - `fn is_cached(module: &str, source: &Path) -> bool` - Check cache validity
-   - `fn get(module: &str, source: &Path) -> Option<PathBuf>` - Get cached object file
-   - `fn put(module: &str, object: &Path) -> std::io::Result<()>` - Store in cache
-   - `fn invalidate(module: &str) -> std::io::Result<()>` - Remove cached module
-   - `fn clear_all() -> std::io::Result<()>` - Clear entire cache
-2. ✅ Cache integration in `plat-cli/src/main.rs`:
-   - Check cache before compiling stdlib modules in `build_multi_module()`
-   - Store newly compiled stdlib modules in cache
-   - Display "Using cached <module>" message when cache hit occurs
-3. ✅ Cache invalidation based on file modification timestamps:
-   - Cache is valid only if object file is newer than source file
-   - Automatically recompiles when stdlib source is modified
+- ✅ Object file caching (`.o` files instead of HIR)
+- ✅ `StdlibCache` struct in `plat-modules/src/lib.rs`
+- ✅ Integrated into CLI compilation flow
+- ✅ Cache invalidation based on file modification timestamps
+- ✅ Cache location: `target/stdlib-cache/`
 
 **Cache Behavior**:
-- **Location**: `target/stdlib-cache/`
-- **Naming**: Module path converted to safe filename (e.g., `std::test` → `std-test.o`)
-- **Validation**: Timestamp-based comparison (cache file must be newer than source)
-- **Scope**: Only stdlib modules (starting with `std::`) are cached
-- **Linking**: Cached object files are passed directly to linker (no recompilation)
+- First build: compiles stdlib, caches object files
+- Subsequent builds: instant cache hit, no recompilation
+- Modified stdlib: cache invalidated, module recompiles
 
-**Success Criteria Met**:
-- ✅ First compilation: full stdlib compile, object files cached
-- ✅ Second compilation: instant cache hit, no recompilation of stdlib
-- ✅ Modifying stdlib module: cache invalidated, module recompiles
-- ✅ Tested with `std::test` module - cache works correctly
-
-**Example Output**:
-```
-First build:
-  → Generating code for all modules...
-  [compiles std::test]
-
-Second build:
-  → Generating code for all modules...
-    → Using cached std::test
-  [only compiles user code]
-```
-
-**Performance Impact**:
-- **Before**: Every build recompiles all stdlib modules
-- **After**: Stdlib modules compiled once, reused on subsequent builds
-- **Cache hit time**: Essentially instant (just file copy)
-- **Speedup**: Significant for projects using multiple stdlib modules
-
-**Future Enhancements** (Optional):
-- HIR-level caching for even faster builds (skip codegen entirely)
-- Dependency tracking (invalidate cache if stdlib dependencies change)
-- Cache compression for disk space savings
-- Cross-project cache sharing
-
-**Blocked By**: None - fully functional
+**Performance**: Significant speedup for projects using multiple stdlib modules
 
 ---
 
 ### Phase 3: std::io (First Stdlib Module) ✅ COMPLETED
-
-**Goal**: High-level I/O wrappers with ergonomic API
 
 **Status**: Completed on 2025-10-07
 
@@ -260,271 +108,66 @@ Second build:
 1. ✅ `pub fn read_file(path: String) -> Result<String, String>` - Read entire file (up to 10MB)
 2. ✅ `pub fn write_file(path: String, content: String) -> Result<Bool, String>` - Write/overwrite file
 3. ✅ `pub fn append_file(path: String, content: String) -> Result<Bool, String>` - Append to file
-4. ✅ Buffered Reader and Writer classes (stubs for future implementation)
-5. ✅ Comprehensive test suite with 4 test functions:
-   - `test_write_and_read_file()` - Basic write/read round-trip
-   - `test_append_file()` - Append functionality
-   - `test_read_nonexistent_file()` - Error handling for missing files
-   - `test_write_to_invalid_path()` - Error handling for invalid paths
-
-**Implementation Pattern** (Workaround for Match Expression Limitations):
-```plat
-pub fn read_file(path: String) -> Result<String, String> {
-  let fd_result: Result<Int32, String> = file_open(path = path, mode = "r");
-
-  // Pattern: Check for error first
-  let has_error: Bool = match fd_result {
-    Result::Ok(fd: Int32) -> false,
-    Result::Err(err: String) -> true
-  };
-
-  // Then handle error case with early return
-  if (has_error) {
-    return match fd_result {
-      Result::Ok(fd: Int32) -> Result::Err(field0 = "impossible"),
-      Result::Err(err: String) -> Result::Err(field0 = err)
-    };
-  }
-
-  // Extract value in separate match
-  let fd: Int32 = match fd_result {
-    Result::Ok(descriptor: Int32) -> descriptor,
-    Result::Err(err: String) -> -1
-  };
-
-  let content: Result<String, String> = file_read(fd = fd, max_bytes = 10485760);
-  let close_result: Result<Bool, String> = file_close(fd = fd);
-  return content;
-}
-```
+4. ✅ Comprehensive test suite with 4 test functions
 
 **Key Findings**:
-- ✅ Type checker fix works perfectly - no more helper functions needed for Result construction
-- ⚠️ **Match Expression Limitation Discovered**: Plat doesn't support blocks with multiple statements in match arms
-  - ❌ **Doesn't Work**: `Result::Ok(fd: Int32) -> { let x = ...; ... }`
-  - ✅ **Works**: `Result::Ok(fd: Int32) -> single_expression`
-  - **Workaround**: Use pattern shown above (check error → early return → extract value)
-- ✅ Direct `Result::Err(field0 = msg)` construction works when return type provides context
-
-**Success Criteria Met**:
-- ✅ Users can `use std::io;`
-- ✅ `io::read_file()` and `io::write_file()` work correctly
-- ✅ `io::append_file()` works correctly
-- ✅ All tests compile and type-check successfully
-- ✅ Error handling works properly with Result types
+- ✅ Type checker fix works - direct `Result::Err(field0 = msg)` construction works
+- ⚠️ **Match Expression Limitation**: Plat doesn't support blocks with multiple statements in match arms
+  - Workaround: Use pattern (check error → early return → extract value)
 
 ---
 
-### Phase 4: std::json (Pure Plat Implementation!) ⏸️ SYMBOL LOADING ISSUE
+### Phase 4: std::json (Pure Plat Implementation!) ✅ COMPLETED
 
 **Goal**: JSON parser written entirely in Plat (no Rust!)
 
-**Status**: 98% Complete - Type checking passes! Minor codegen issue with qualified enum variants remaining
+**Status**: Completed on 2025-10-08 - Full parser and stringify working!
 
 **Module**: `stdlib/std/json.plat`
 
-**What's Been Implemented** (2025-10-07):
+**What's Been Implemented**:
 1. ✅ Complete JsonValue enum with all variants (Null, Bool, Number, String, Array, Object)
 2. ✅ Full Parser class with recursive descent parser
-3. ✅ parse_null() - Parse null literals
-4. ✅ parse_bool() - Parse true/false
-5. ✅ parse_number() - Parse integers, floats, scientific notation
-6. ✅ parse_string() - Parse quoted strings with escape sequences (\n, \r, \t, \", \\, \/, \b, \f)
-7. ✅ parse_array() - Parse JSON arrays with recursive value parsing
-8. ✅ parse_object() - Parse JSON objects with key-value pairs
-9. ✅ parse_value() - Main entry point with type dispatch
-10. ✅ parse() public API - Parse with trailing character validation
-11. ✅ stringify() - Convert JsonValue to JSON string
-12. ✅ stringify_string() - Escape special characters
-13. ✅ stringify_array() - Serialize arrays
-14. ✅ stringify_object() - Serialize objects
-15. ✅ float_to_string() - Handle integer vs float representation
+3. ✅ All parse methods: `parse_null()`, `parse_bool()`, `parse_number()`, `parse_string()`, `parse_array()`, `parse_object()`, `parse_value()`, `parse()`
+4. ✅ Complete stringify implementation: `stringify()`, `stringify_string()`, `stringify_array()`, `stringify_object()`, `float_to_string()`
+5. ✅ Error handling with Result types
 
-**Language Limitations Discovered and Workarounds**:
-- ❌ **No `||` operator**: Replaced with separate `if` statements
-- ❌ **No `&&` operator**: Replaced with nested `if` statements
-- ❌ **No `!` operator**: Use `== false` instead
-- ❌ **No `break` statement**: Rewrote while loops with boolean continuation flags
-- ✅ **Else-if support added**: Now using clean `else if` syntax throughout
-- ✅ **FIXED (2025-10-07): `var` with generic types**: Parser now accepts both angle brackets AND square brackets!
-  - **Previous Error**: "Expected '[' after 'List'" when using angle brackets
-  - **Fix**: Parser updated to accept BOTH `List<T>` and `List[T]` syntax
-  - **Now Works**: `var elements: List<JsonValue> = []` ✅
-  - **Now Works**: `var obj: Dict<String, JsonValue> = {}` ✅
-  - **Commit**: 4c3df07 - "fix: Accept both angle brackets and square brackets for List/Dict/Set types"
+**Major Fixes Completed (2025-10-07)**:
+1. ✅ Parser fix - both `let` and `var` support generic types with angle brackets (commit 4c3df07)
+2. ✅ Recursive enum support - two-phase registration (commit c38e1f4)
+3. ✅ Match arm type error fix - workaround pattern applied
+4. ✅ Missing string methods - `substring()`, `char_at()` implemented
+5. ✅ Empty collection type inference - explicit type annotations work
+6. ✅ Qualified type names in generics - parser extended
+7. ✅ Empty braces `{}` default to Dict literals
+8. ✅ Missing List methods - `push()`, `pop()` added
+9. ✅ Missing Dict method - `insert()` added
+10. ✅ Qualified type resolution - `json::JsonValue` resolves to `std::json::JsonValue`
+11. ✅ Symbol loading issue RESOLVED - stdlib modules discovered and loaded
+12. ✅ Same-module function calls - codegen fallback lookup added (commit b897c2b)
+13. ✅ Enum variant extraction - fixed for complex types (List/Dict/Set/Named)
+14. ✅ Duplicate module loading prevented
+15. ✅ Cross-module function resolution fixed
+16. ✅ Fully qualified type names for enums/classes
+17. ✅ Class method collection in symbol phase
+18. ✅ Stale unqualified class entries fixed
+19. ✅ Enum constructor canonical names
+20. ✅ Pattern matching with qualified enum names
+21. ✅ **MAJOR MILESTONE**: Type checking PASSES! 🎉
 
-**Completed Work**:
-- ✅ Full recursive descent JSON parser implemented
-- ✅ Complete stringify implementation with escape handling
-- ✅ All else-if chains converted to clean syntax
-- ✅ **Parser blocker FIXED**: Can now use `var` with generic types!
-- ⏸️ Comprehensive test suite (ready to implement once compilation works)
-- ⏸️ Error handling edge case tests (ready to implement once compilation works)
+**Verification**:
+1. ✅ Module loads successfully with `use std::json;`
+2. ✅ Compiles without errors (type checking and codegen both pass)
+3. ✅ `json::parse()` function accessible from user code
+4. ✅ `json::stringify()` function accessible from user code
+5. ✅ Returns proper Result types for error handling
+6. ⏸️ **Known Limitation**: Direct enum variant construction (`json::JsonValue::Null`) not yet supported in user code
+   - Workaround: Use `json::parse()` to create JsonValue instances
 
-**Implementation Pattern Example** (now using clean else-if syntax):
-```plat
-// Clean else-if syntax (now supported!)
-if (ch == "n") {
-  return self.parse_null();
-} else if (ch == "t") {
-  return self.parse_bool();
-} else if (ch == "f") {
-  return self.parse_bool();
-} else if (ch == "\"") {
-  return self.parse_string();
-} else if (ch == "[") {
-  return self.parse_array();
-} else if (ch == "{") {
-  return self.parse_object();
-} else {
-  return Result::Err(field0 = "Unexpected character: ${ch}");
-}
-```
-
-**Key Features**:
-- Pure Plat implementation (no Rust FFI)
-- Recursive descent parser
-- Full JSON spec support (null, bool, number, string, array, object)
-- Proper escape sequence handling
-- Error messages with context
-- Result-based error handling
-
-**Success Criteria**:
-- ✅ Parse valid JSON (objects, arrays, primitives) - implementation complete
-- ✅ Reject invalid JSON with error messages - implementation complete
-- ✅ stringify() converts JsonValue back to JSON string - implementation complete
-- ✅ Clean, readable code with else-if syntax - implementation complete
-- ✅ **Parser fix complete**: Both `let` and `var` now support generic types with angle brackets
-- ⏸️ **Module compilation**: Ready to attempt (may encounter other issues with recursive enums)
-- ⏸️ Comprehensive test coverage (ready to implement once compilation works)
-
-**Recursive Enum Support** (2025-10-07):
-1. ✅ Parser fix complete - both `let` and `var` support generic types with angle brackets (commit 4c3df07)
-2. ✅ **MAJOR FIX**: Recursive enums now work in multi-module compilation! (commit c38e1f4)
-   - Fixed symbol collection order (enums BEFORE functions)
-   - Fixed dual registration (global_symbols AND local self.enums)
-   - Fixed unqualified name lookup for current module symbols
-   - Fixed duplicate registration errors during type checking
-3. ✅ **FIXED (2025-10-07)**: Match arm type error in json.plat:
-   - **Bug**: "Match arm returns type Unit, expected Enum(\"JsonValue\", [])"
-   - **Root Cause**: Using `return` inside match arm blocks causes type checker to see Unit type
-   - **Fix**: Applied workaround pattern (check error → early return → extract value)
-   - **Locations Fixed**:
-     - `parse_array()` - line 278-285 (value extraction from parse_value)
-     - `parse_object()` - lines 336-341 (key extraction) and 358-363 (value extraction)
-     - `parse()` - lines 468-473 (value extraction from parser.parse_value)
-     - `stringify()` - lines 457-463 (removed return from match arms)
-   - **Additional Fixes**:
-     - Made `skip_whitespace()` public (needed by `parse()` function)
-     - Added `get_position()` public getter (field visibility enforcement)
-4. ✅ **FIXED (2025-10-07)**: Missing string methods implemented:
-   - **Methods Added**: `substring(start_index: Int32, end_index: Int32) -> String` and `char_at(index: Int32) -> String`
-   - **Implementation**:
-     - Added runtime functions in `plat-runtime/src/ffi/string.rs`:
-       - `plat_string_substring()` - Extract substring by character indices (not bytes), returns empty string if out of bounds
-       - `plat_string_char_at()` - Get single character at index, returns empty string if out of bounds
-     - Added codegen support in `plat-codegen/src/lib.rs` (lines 3957-4006)
-     - Added type checker support in `plat-hir/src/lib.rs` (lines 3184-3212)
-   - **Testing**: Created test_string_methods.plat, all tests pass successfully
-5. ✅ **FIXED (2025-10-07)**: Empty collection type inference:
-   - **Bug**: "Cannot infer type of empty array literal" for `let elements: List[JsonValue] = []`
-   - **Root Cause**: `check_literal()` didn't use expected type parameter for empty collections
-   - **Fix**: Modified `check_literal()` to accept `expected_type` parameter and use it for empty List/Dict/Set literals
-   - **Result**: Empty collections now work with explicit type annotations
-6. ✅ **FIXED (2025-10-07)**: Qualified type names in generic parameters:
-   - **Bug**: Parser error "Expected '>' after type parameters" for `Result<json::JsonValue, String>`
-   - **Root Cause**: Parser's `parse_type()` didn't support qualified names (`::`) in type positions
-   - **Fix**: Extended `parse_type()` to parse qualified type names by checking for `DoubleColon` tokens
-   - **Result**: Can now use `Result<json::JsonValue, String>` and other qualified types in generics
-7. ✅ **FIXED (2025-10-07)**: Empty braces ambiguity:
-   - **Bug**: `var obj: Dict[String, JsonValue] = {}` treated `{}` as empty block (Unit type)
-   - **Root Cause**: Parser's `is_dict_literal()` defaulted empty braces to blocks
-   - **Fix**: Changed default to treat `{}` as empty dict literal (blocks require statements)
-   - **Result**: `{}` now correctly creates empty Dict literals
-8. ✅ **ADDED (2025-10-07)**: Missing List methods:
-   - **Methods**: `push(value: T)` and `pop() -> Option<T>`
-   - **Implementation**:
-     - Type checker: Added method signatures for List
-     - Codegen: `push` calls `plat_array_append`, `pop` calls new `plat_array_pop`
-     - Runtime: Implemented `plat_array_pop()` returning Option<T> with proper encoding
-   - **Result**: List now has complete stack-like operations
-9. ✅ **ADDED (2025-10-07)**: Missing Dict method:
-   - **Method**: `insert(key: K, value: V) -> Bool` (alias for `set`)
-   - **Implementation**: Added to type checker and codegen (calls `plat_dict_set`)
-   - **Result**: Dict now supports both `set()` and `insert()` methods
-10. ✅ **ADDED (2025-10-07)**: Qualified type name resolution through imports:
-    - **Feature**: Resolve `json::JsonValue` to `std::json::JsonValue` based on `use std::json`
-    - **Implementation**: Added `resolve_qualified_type_name()` helper in type checker
-    - **Logic**: Matches first component of qualified name against imported module paths
-    - **Result**: Can use short aliases like `json::JsonValue` in code
-11. ✅ **FIXED (2025-10-07)**: Symbol loading issue RESOLVED!
-    - **Bug #1**: `build_multi_module()` didn't discover stdlib modules
-      - **Fix**: Added Phase 1.5 to discover and parse stdlib modules from imports
-      - **Implementation**: Scan user modules for `std::*` imports, use ModuleResolver to discover stdlib files
-    - **Bug #2**: Root module (empty current_module) didn't load symbols from imports
-      - **Fix**: Modified `load_symbols_from_module_table()` to check imports for both root and non-root modules
-      - **Location**: `plat-hir/src/lib.rs:330-333`
-    - **Bug #3**: Qualified enum variants (`json::JsonValue::Null`) treated as variables
-      - **Fix**: Added qualified enum variant detection in `check_expression` for Identifier case
-      - **Location**: `plat-hir/src/lib.rs:1690-1715`
-    - **Result**: Stdlib enums now properly discovered, loaded, and type-checked! ✨
-12. ✅ **FIXED (2025-10-07)**: Same-module function calls in stdlib
-    - **Bug**: Functions calling other functions in same module (e.g., `stringify()` calling `float_to_string()`) caused `UndefinedFunction` errors
-    - **Root Cause**: Codegen looked up simple names in functions map, but map stored mangled names like `std::json::float_to_string`
-    - **Fix**: Added fallback lookup to search for mangled name by suffix when simple name not found
-    - **Location**: `plat-codegen/src/lib.rs:3475-3486`
-    - **Commit**: b897c2b
-13. ✅ **FIXED (2025-10-07)**: Enum variant extraction for complex types
-    - **Bug**: Extracting List/Dict/Set/Named types from enum variants produced i32 instead of i64
-    - **Root Cause**: Match expression variant binding code fell through to default case, treating all non-primitive types as i32
-    - **Fix**: Added explicit cases for List, Dict, Set, and Named types to use i64 pointers
-    - **Locations**: `plat-codegen/src/lib.rs:5365-5368` and `5377-5381`
-    - **Result**: `stringify()` and `stringify_array()` now compile successfully! ✨
-14. ✅ **FIXED (2025-10-07)**: Duplicate module loading in multi-module compilation
-    - **Bug**: `std::json` was being parsed twice in module list
-    - **Root Cause**: `build_multi_module()` didn't track which files were already parsed
-    - **Fix**: Added `HashSet<PathBuf>` to track parsed files and skip duplicates
-    - **Location**: `plat-cli/src/main.rs:282-304`
-15. ✅ **FIXED (2025-10-07)**: Cross-module function resolution
-    - **Bug**: `json::stringify` couldn't resolve to `std::json::stringify`
-    - **Root Cause**: `ModuleSymbolTable::resolve()` returned partially qualified names unchanged
-    - **Fix**: Added logic to match module prefix against imports and construct fully qualified names
-    - **Location**: `plat-hir/src/lib.rs:99-150`
-16. ✅ **FIXED (2025-10-07)**: Fully qualified type names for enums and classes
-    - **Bug**: Type mismatch "expected Enum(\"JsonValue\", []), got Enum(\"std::json::JsonValue\", [])"
-    - **Root Cause**: Enums and classes stored with unqualified names but arguments used qualified names
-    - **Fix**: Store canonical fully qualified names in `enum_info.name` and `class_info.name` fields
-    - **Locations**: Multiple locations in `plat-hir/src/lib.rs` (symbol collection, registration, type conversion)
-17. ✅ **FIXED (2025-10-07)**: Class method collection in symbol phase
-    - **Bug**: "Class 'Parser' has no init method" during type checking
-    - **Root Cause**: `collect_symbols_from_program()` didn't populate class methods
-    - **Fix**: Added complete method collection including default init generation in symbol collection phase
-    - **Location**: `plat-hir/src/lib.rs:709-778`
-18. ✅ **FIXED (2025-10-07)**: Stale unqualified class entries
-    - **Bug**: Still "Class 'Parser' has no init method" after fix #17
-    - **Root Cause**: `collect_class_info()` overwrote qualified entries but left stale unqualified entries
-    - **Fix**: Update both qualified and unqualified class entries when modifying class info
-    - **Location**: `plat-hir/src/lib.rs:1336-1345`
-19. ✅ **FIXED (2025-10-07)**: Enum constructor canonical names
-    - **Bug**: "Match arm returns type Enum(\"JsonValue\", []), expected Enum(\"std::json::JsonValue\", [])"
-    - **Root Cause**: Enum constructors returned unqualified names
-    - **Fix**: Use canonical name from `enum_info.name` in enum constructor return type
-    - **Location**: `plat-hir/src/lib.rs:3901-3921, 4041-4042`
-20. ✅ **FIXED (2025-10-07)**: Pattern matching with qualified enum names
-    - **Bug**: "Pattern expects enum 'std::json::JsonValue', got 'JsonValue'"
-    - **Root Cause**: Pattern matching compared unqualified pattern name with qualified expected name
-    - **Fix**: Resolve pattern enum name to canonical form before comparison
-    - **Location**: `plat-hir/src/lib.rs:4970-4991`
-21. ✅ **MAJOR MILESTONE (2025-10-07)**: Type checking PASSES for std::json! 🎉
-    - **Achievement**: Multi-module stdlib compilation now successfully completes type checking phase
-    - **Remaining**: Minor codegen issue with qualified enum variant names (e.g., `json::JsonValue::Null`)
-    - **Status**: Ready for final codegen fix to complete Phase 4
-
-**Next Steps**:
-1. ⏸️ Fix qualified enum variant resolution in codegen (e.g., `json::JsonValue::Null` → `std::json::JsonValue::Null`)
-2. ⏸️ Complete json.plat compilation (final codegen pass)
-3. ⏸️ Add comprehensive test suite once compilation succeeds
-4. ⏸️ Test parse() and stringify() functions with real JSON
+**Language Workarounds Applied**:
+- No `||`, `&&`, `!` operators: Replaced with separate/nested `if` statements and `== false`
+- No `break` statement: Rewrote loops with boolean continuation flags
+- No multi-statement match arms: Use pattern (check error → early return → extract value)
 
 ---
 
@@ -532,2264 +175,144 @@ if (ch == "n") {
 
 **Goal**: Add missing primitives needed by stdlib
 
-**New FFI Functions in plat-runtime**:
-
-#### Time (ffi/time.rs)
-```rust
-#[no_mangle]
-pub extern "C" fn plat_time_now() -> i64 {
-    // Unix timestamp in milliseconds
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap()
-        .as_millis() as i64
-}
-
-#[no_mangle]
-pub extern "C" fn plat_time_sleep(milliseconds: i64) {
-    std::thread::sleep(std::time::Duration::from_millis(milliseconds as u64));
-}
-```
-
-#### Environment (ffi/env.rs)
-```rust
-// Returns pointer to String (or NULL if not found)
-#[no_mangle]
-pub extern "C" fn plat_env_get(key: *const RuntimeString) -> *mut RuntimeString {
-    // TODO: Implement with Result<String, String> return type
-}
-
-#[no_mangle]
-pub extern "C" fn plat_env_set(key: *const RuntimeString, value: *const RuntimeString) -> bool {
-    // TODO: Implement
-}
-```
-
-#### Random (ffi/random.rs)
-```rust
-#[no_mangle]
-pub extern "C" fn plat_random_int(min: i32, max: i32) -> i32 {
-    use rand::Rng;
-    let mut rng = rand::thread_rng();
-    rng.gen_range(min..=max)
-}
-
-#[no_mangle]
-pub extern "C" fn plat_random_float() -> f64 {
-    use rand::Rng;
-    rand::thread_rng().gen()
-}
-```
-
-#### Process (ffi/process.rs)
-```rust
-#[no_mangle]
-pub extern "C" fn plat_process_exit(code: i32) -> ! {
-    std::process::exit(code)
-}
-
-#[no_mangle]
-pub extern "C" fn plat_process_args() -> *mut RuntimeArray {
-    // TODO: Return command-line arguments as List[String]
-}
-```
-
-**Plat Signatures** (add to type checker):
-```plat
-// Time
-fn time_now() -> Int64;
-fn time_sleep(milliseconds: Int64);
-
-// Environment
-fn env_get(key: String) -> Option<String>;
-fn env_set(key: String, value: String) -> Bool;
-
-// Random
-fn random_int(min: Int32, max: Int32) -> Int32;
-fn random_float() -> Float64;
-
-// Process
-fn process_exit(code: Int32) -> !;  // never returns
-fn process_args() -> List[String];
-```
+**Planned FFI Functions** (not yet implemented):
+- **Time** (ffi/time.rs): `plat_time_now()`, `plat_time_sleep()`
+- **Environment** (ffi/env.rs): `plat_env_get()`, `plat_env_set()`
+- **Random** (ffi/random.rs): `plat_random_int()`, `plat_random_float()`
+- **Process** (ffi/process.rs): `plat_process_exit()`, `plat_process_args()`
 
 ---
 
-### Phase 6: More Stdlib Modules
-
-#### std::fs (File System Utilities with pathlib-style Path)
-
-**Inspiration**: Python's `pathlib.Path` - object-oriented file system path manipulation
-
-```plat
-mod std::fs;
-
-/// Object-oriented path manipulation (like Python's pathlib.Path)
-pub class Path {
-  let path: String;
-
-  // ============================================================================
-  // Constructors and Conversions
-  // ============================================================================
-
-  pub fn new(path: String) -> Path {
-    return Path.init(path = path);
-  }
-
-  pub fn from_parts(parts: List[String]) -> Path {
-    // TODO: Join parts with platform separator
-    return Path.init(path = "");
-  }
-
-  pub fn to_string() -> String {
-    return self.path;
-  }
-
-  // ============================================================================
-  // Path Manipulation (Pure - No I/O)
-  // ============================================================================
-
-  /// Join paths: Path("foo") / "bar" / "baz" -> Path("foo/bar/baz")
-  pub fn join(other: String) -> Path {
-    // Platform-aware path joining (/ on Unix, \ on Windows)
-    // Handle edge cases: trailing slashes, absolute paths, etc.
-    var result: String = self.path;
-
-    if (!result.ends_with(substring = "/") && !result.ends_with(substring = "\\")) {
-      result = result.concat(other = "/");  // TODO: Use platform separator
-    }
-
-    result = result.concat(other = other);
-    return Path.init(path = result);
-  }
-
-  /// Get parent directory: Path("foo/bar/baz.txt").parent() -> Path("foo/bar")
-  pub fn parent() -> Option<Path> {
-    // TODO: Find last separator, return substring before it
-    return Option::None;
-  }
-
-  /// Get filename: Path("foo/bar/baz.txt").name() -> "baz.txt"
-  pub fn name() -> Option<String> {
-    // TODO: Return part after last separator
-    return Option::None;
-  }
-
-  /// Get filename without extension: Path("baz.txt").stem() -> "baz"
-  pub fn stem() -> Option<String> {
-    // TODO: Return filename without extension
-    return Option::None;
-  }
-
-  /// Get file extension: Path("baz.txt").suffix() -> ".txt"
-  pub fn suffix() -> Option<String> {
-    // TODO: Return extension including dot
-    return Option::None;
-  }
-
-  /// Get all extensions: Path("archive.tar.gz").suffixes() -> [".tar", ".gz"]
-  pub fn suffixes() -> List[String] {
-    // TODO: Return all extensions
-    return [];
-  }
-
-  /// Replace filename: Path("foo/bar.txt").with_name("baz.txt") -> Path("foo/baz.txt")
-  pub fn with_name(name: String) -> Path {
-    // TODO: Replace filename, keep directory
-    return self;
-  }
-
-  /// Replace extension: Path("foo.txt").with_suffix(".md") -> Path("foo.md")
-  pub fn with_suffix(suffix: String) -> Path {
-    // TODO: Replace extension
-    return self;
-  }
-
-  /// Check if path is absolute: Path("/usr/bin").is_absolute() -> true
-  pub fn is_absolute() -> Bool {
-    // TODO: Check if starts with / (Unix) or C:\ (Windows)
-    return self.path.starts_with(substring = "/");
-  }
-
-  /// Check if path is relative: Path("foo/bar").is_relative() -> true
-  pub fn is_relative() -> Bool {
-    return !self.is_absolute();
-  }
-
-  /// Split path into parts: Path("foo/bar/baz").parts() -> ["foo", "bar", "baz"]
-  pub fn parts() -> List[String] {
-    // TODO: Split on platform separator
-    return self.path.split(separator = "/");
-  }
-
-  // ============================================================================
-  // File System Queries (Read-Only I/O)
-  // ============================================================================
-
-  /// Check if path exists (file or directory)
-  pub fn exists() -> Bool {
-    return file_exists(path = self.path);
-  }
-
-  /// Check if path is a file
-  pub fn is_file() -> Bool {
-    return self.exists() && !file_is_dir(path = self.path);
-  }
-
-  /// Check if path is a directory
-  pub fn is_dir() -> Bool {
-    return file_is_dir(path = self.path);
-  }
-
-  /// Check if path is a symbolic link
-  pub fn is_symlink() -> Bool {
-    return file_is_symlink(path = self.path);
-  }
-
-  /// Get file size in bytes
-  pub fn size() -> Result<Int64, String> {
-    return file_size(path = self.path);
-  }
-
-  /// Get file permissions (Unix mode bits)
-  pub fn permissions() -> Result<Int32, String> {
-    return file_get_permissions(path = self.path);
-  }
-
-  /// Get last modified time (Unix timestamp)
-  pub fn modified() -> Result<Int64, String> {
-    return file_modified_time(path = self.path);
-  }
-
-  /// Get creation time (Unix timestamp)
-  pub fn created() -> Result<Int64, String> {
-    return file_created_time(path = self.path);
-  }
-
-  // ============================================================================
-  // File Operations (Mutating I/O)
-  // ============================================================================
-
-  /// Read entire file as string
-  pub fn read_text() -> Result<String, String> {
-    let fd_result: Result<Int32, String> = file_open(path = self.path, mode = "r");
-
-    let fd: Int32 = match fd_result {
-      Result::Ok(descriptor: Int32) -> descriptor,
-      Result::Err(err: String) -> {
-        return Result::Err(field0 = err);
-      }
-    };
-
-    let content: Result<String, String> = file_read(fd = fd, max_bytes = 10485760);  // 10MB max
-    let close_result: Result<Bool, String> = file_close(fd = fd);
-
-    return content;
-  }
-
-  /// Read entire file as binary (List[Int8])
-  pub fn read_bytes() -> Result<List[Int8], String> {
-    let fd_result: Result<Int32, String> = file_open(path = self.path, mode = "r");
-
-    let fd: Int32 = match fd_result {
-      Result::Ok(descriptor: Int32) -> descriptor,
-      Result::Err(err: String) -> {
-        return Result::Err(field0 = err);
-      }
-    };
-
-    let content: Result<List[Int8], String> = file_read_binary(fd = fd, max_bytes = 10485760);
-    let close_result: Result<Bool, String> = file_close(fd = fd);
-
-    return content;
-  }
-
-  /// Write string to file (creates or overwrites)
-  pub fn write_text(content: String) -> Result<Bool, String> {
-    let fd_result: Result<Int32, String> = file_open(path = self.path, mode = "w");
-
-    let fd: Int32 = match fd_result {
-      Result::Ok(descriptor: Int32) -> descriptor,
-      Result::Err(err: String) -> {
-        return Result::Err(field0 = err);
-      }
-    };
-
-    let write_result: Result<Int32, String> = file_write(fd = fd, data = content);
-    let close_result: Result<Bool, String> = file_close(fd = fd);
-
-    match write_result {
-      Result::Ok(bytes: Int32) -> Result::Ok(field0 = true),
-      Result::Err(err: String) -> Result::Err(field0 = err)
-    }
-  }
-
-  /// Write binary data to file (creates or overwrites)
-  pub fn write_bytes(content: List[Int8]) -> Result<Bool, String> {
-    let fd_result: Result<Int32, String> = file_open(path = self.path, mode = "w");
-
-    let fd: Int32 = match fd_result {
-      Result::Ok(descriptor: Int32) -> descriptor,
-      Result::Err(err: String) -> {
-        return Result::Err(field0 = err);
-      }
-    };
-
-    let write_result: Result<Int32, String> = file_write_binary(fd = fd, data = content);
-    let close_result: Result<Bool, String> = file_close(fd = fd);
-
-    match write_result {
-      Result::Ok(bytes: Int32) -> Result::Ok(field0 = true),
-      Result::Err(err: String) -> Result::Err(field0 = err)
-    }
-  }
-
-  /// Append string to file
-  pub fn append_text(content: String) -> Result<Bool, String> {
-    let fd_result: Result<Int32, String> = file_open(path = self.path, mode = "a");
-
-    let fd: Int32 = match fd_result {
-      Result::Ok(descriptor: Int32) -> descriptor,
-      Result::Err(err: String) -> {
-        return Result::Err(field0 = err);
-      }
-    };
-
-    let write_result: Result<Int32, String> = file_write(fd = fd, data = content);
-    let close_result: Result<Bool, String> = file_close(fd = fd);
-
-    match write_result {
-      Result::Ok(bytes: Int32) -> Result::Ok(field0 = true),
-      Result::Err(err: String) -> Result::Err(field0 = err)
-    }
-  }
-
-  /// Delete file
-  pub fn unlink() -> Result<Bool, String> {
-    return file_delete(path = self.path);
-  }
-
-  /// Rename/move file
-  pub fn rename(new_path: Path) -> Result<Bool, String> {
-    return file_rename(old_path = self.path, new_path = new_path.path);
-  }
-
-  /// Change file permissions
-  pub fn chmod(mode: Int32) -> Result<Bool, String> {
-    return file_chmod(path = self.path, mode = mode);
-  }
-
-  // ============================================================================
-  // Directory Operations
-  // ============================================================================
-
-  /// Create directory (parent must exist)
-  pub fn mkdir() -> Result<Bool, String> {
-    return dir_create(path = self.path);
-  }
-
-  /// Create directory and all parent directories
-  pub fn mkdir_parents() -> Result<Bool, String> {
-    return dir_create_all(path = self.path);
-  }
-
-  /// Remove empty directory
-  pub fn rmdir() -> Result<Bool, String> {
-    return dir_remove(path = self.path);
-  }
-
-  /// List directory contents (returns list of Path objects)
-  pub fn list_dir() -> Result<List[Path], String> {
-    let entries_result: Result<String, String> = dir_list(path = self.path);
-
-    let entries_str: String = match entries_result {
-      Result::Ok(content: String) -> content,
-      Result::Err(err: String) -> {
-        return Result::Err(field0 = err);
-      }
-    };
-
-    let entries: List[String] = entries_str.split(separator = "\n");
-    var paths: List[Path] = [];
-
-    // TODO: Convert each entry to Path and add to list
-    // Need for-each loop support first
-
-    return Result::Ok(field0 = paths);
-  }
-
-  /// Iterate over directory entries (returns iterator-like object)
-  pub fn iterdir() -> Result<List[Path], String> {
-    // Alias for list_dir
-    return self.list_dir();
-  }
-
-  /// Recursively list all files in directory tree
-  pub fn glob(pattern: String) -> Result<List[Path], String> {
-    // TODO: Implement glob pattern matching
-    // Example: Path("src").glob("**/*.plat") finds all .plat files
-    return Result::Err(field0 = "Not implemented");
-  }
-
-  /// Walk directory tree (like os.walk in Python)
-  pub fn walk() -> Result<List[PathWalkEntry], String> {
-    // TODO: Implement recursive directory traversal
-    return Result::Err(field0 = "Not implemented");
-  }
-
-  // ============================================================================
-  // Symlink Operations
-  // ============================================================================
-
-  /// Create symbolic link
-  pub fn symlink_to(target: Path) -> Result<Bool, String> {
-    return symlink_create(target = target.path, link = self.path);
-  }
-
-  /// Read symbolic link target
-  pub fn readlink() -> Result<String, String> {
-    return symlink_read(path = self.path);
-  }
-
-  /// Resolve symlink to actual path
-  pub fn resolve() -> Result<Path, String> {
-    if (self.is_symlink()) {
-      let target_result: Result<String, String> = symlink_read(path = self.path);
-
-      match target_result {
-        Result::Ok(target: String) -> Result::Ok(field0 = Path.init(path = target)),
-        Result::Err(err: String) -> Result::Err(field0 = err)
-      }
-    } else {
-      return Result::Ok(field0 = self);
-    }
-  }
-}
-
-/// Helper class for directory tree walking
-pub class PathWalkEntry {
-  pub let path: Path;
-  pub let is_dir: Bool;
-  pub let is_file: Bool;
-}
-
-// ============================================================================
-// Standalone Utility Functions
-// ============================================================================
-
-/// Recursively copy directory tree
-pub fn copy_tree(src: Path, dst: Path) -> Result<Bool, String> {
-  // TODO: Recursively copy all files and directories
-  return Result::Err(field0 = "Not implemented");
-}
-
-/// Recursively delete directory tree
-pub fn remove_tree(path: Path) -> Result<Bool, String> {
-  // TODO: Recursively delete all files and directories
-  return Result::Err(field0 = "Not implemented");
-}
-
-/// Get current working directory
-pub fn cwd() -> Result<Path, String> {
-  // TODO: Need primitive for getcwd()
-  return Result::Err(field0 = "Not implemented");
-}
-
-/// Get home directory
-pub fn home() -> Result<Path, String> {
-  // TODO: Use env_get("HOME") or env_get("USERPROFILE") on Windows
-  return Result::Err(field0 = "Not implemented");
-}
-
-/// Get temporary directory
-pub fn temp_dir() -> Result<Path, String> {
-  // TODO: Use env_get("TMPDIR") or platform-specific default
-  return Result::Err(field0 = "Not implemented");
-}
-```
-
-**Usage Examples**:
-
-```plat
-use std::fs;
-
-fn main() -> Int32 {
-  // Create Path object
-  let config_path: fs::Path = fs::Path.new(path = "config.json");
-
-  // Check if exists
-  if (config_path.exists()) {
-    print(value = "Config file found!");
-  }
-
-  // Read file
-  let content_result: Result<String, String> = config_path.read_text();
-  match content_result {
-    Result::Ok(content: String) -> {
-      print(value = "Config: ${content}");
-    },
-    Result::Err(err: String) -> {
-      print(value = "Error reading file: ${err}");
-    }
-  };
-
-  // Path manipulation (no I/O)
-  let data_dir: fs::Path = fs::Path.new(path = "data");
-  let log_file: fs::Path = data_dir.join(other = "app.log");
-  print(value = "Log file path: ${log_file.to_string()}");  // "data/app.log"
-
-  // Create directory with parents
-  let deep_path: fs::Path = fs::Path.new(path = "foo/bar/baz");
-  let mkdir_result: Result<Bool, String> = deep_path.mkdir_parents();
-
-  // List directory
-  let src_path: fs::Path = fs::Path.new(path = "src");
-  let files_result: Result<List[fs::Path], String> = src_path.list_dir();
-
-  match files_result {
-    Result::Ok(files: List[fs::Path]) -> {
-      // TODO: Iterate over files when for-each is ready
-      print(value = "Found files in src/");
-    },
-    Result::Err(err: String) -> {
-      print(value = "Error listing directory: ${err}");
-    }
-  };
-
-  // Get file metadata
-  let file_path: fs::Path = fs::Path.new(path = "data.txt");
-
-  if (file_path.is_file()) {
-    let size_result: Result<Int64, String> = file_path.size();
-    match size_result {
-      Result::Ok(bytes: Int64) -> {
-        print(value = "File size: ${bytes} bytes");
-      },
-      Result::Err(err: String) -> {
-        print(value = "Error: ${err}");
-      }
-    };
-  }
-
-  // Path parts
-  let full_path: fs::Path = fs::Path.new(path = "/usr/local/bin/plat");
-  let name_opt: Option<String> = full_path.name();
-
-  match name_opt {
-    Option::Some(name: String) -> {
-      print(value = "Filename: ${name}");  // "plat"
-    },
-    Option::None -> {
-      print(value = "No filename");
-    }
-  };
-
-  // Copy file using Path API
-  let src: fs::Path = fs::Path.new(path = "original.txt");
-  let dst: fs::Path = fs::Path.new(path = "backup.txt");
-
-  let content_result: Result<String, String> = src.read_text();
-  match content_result {
-    Result::Ok(content: String) -> {
-      let write_result: Result<Bool, String> = dst.write_text(content = content);
-      // File copied!
-    },
-    Result::Err(err: String) -> {
-      print(value = "Copy failed: ${err}");
-    }
-  };
-
-  return 0;
-}
-```
-
-#### std::net (High-Level Networking)
-```plat
-mod std::net;
-
-pub class TcpListener {
-  let socket: Int32;
-
-  pub fn bind(host: String, port: Int32) -> Result<TcpListener, String> {
-    // TODO: Wrap tcp_listen
-  }
-
-  pub fn accept() -> Result<TcpStream, String> {
-    // TODO: Wrap tcp_accept
-  }
-}
-
-pub class TcpStream {
-  let socket: Int32;
-
-  pub fn connect(host: String, port: Int32) -> Result<TcpStream, String> {
-    // TODO: Wrap tcp_connect
-  }
-
-  pub fn read(max_bytes: Int32) -> Result<String, String> {
-    return tcp_read(socket = self.socket, max_bytes = max_bytes);
-  }
-
-  pub fn write(data: String) -> Result<Int32, String> {
-    return tcp_write(socket = self.socket, data = data);
-  }
-
-  pub fn close() -> Result<Bool, String> {
-    return tcp_close(socket = self.socket);
-  }
-}
-```
-
-#### std::http (HTTP Client/Server)
-```plat
-mod std::http;
-use std::net;
-
-pub class Request {
-  pub let method: String;
-  pub let path: String;
-  pub let headers: Dict[String, String];
-  pub let body: String;
-}
-
-pub class Response {
-  pub let status: Int32;
-  pub let headers: Dict[String, String];
-  pub let body: String;
-}
-
-pub fn get(url: String) -> Result<Response, String> {
-  // TODO: Parse URL, connect, send HTTP GET request
-}
-
-pub fn post(url: String, body: String) -> Result<Response, String> {
-  // TODO: Send HTTP POST request
-}
-
-pub class Server {
-  let listener: net::TcpListener;
-
-  pub fn listen(port: Int32, handler: fn(Request) -> Response) -> Result<Bool, String> {
-    // TODO: Accept connections, parse HTTP, call handler
-  }
-}
-```
-
-#### std::collections (Additional Data Structures)
-```plat
-mod std::collections;
-
-pub class Queue<T> {
-  var items: List[T];
-
-  pub fn enqueue(item: T) {
-    self.items.push(value = item);
-  }
-
-  pub fn dequeue() -> Option<T> {
-    // TODO: Remove first element (need List.remove_at method)
-  }
-}
-
-pub class Stack<T> {
-  var items: List[T];
-
-  pub fn push(item: T) {
-    self.items.push(value = item);
-  }
-
-  pub fn pop() -> Option<T> {
-    return self.items.pop();
-  }
-}
-```
-
-#### std::math (Mathematical Functions)
-```plat
-mod std::math;
-
-pub fn sqrt(x: Float64) -> Float64 {
-  // TODO: Newton's method or call C math lib
-}
-
-pub fn pow(base: Float64, exp: Float64) -> Float64 {
-  // TODO: Implement exponentiation
-}
-
-pub fn sin(x: Float64) -> Float64 {
-  // TODO: Taylor series or call C math lib
-}
-
-pub fn cos(x: Float64) -> Float64 {
-  // TODO: Taylor series or call C math lib
-}
-
-pub fn abs(x: Float64) -> Float64 {
-  if (x < 0.0) {
-    return -x;
-  } else {
-    return x;
-  }
-}
-
-pub let PI: Float64 = 3.141592653589793;
-pub let E: Float64 = 2.718281828459045;
-```
-
-#### std::time (Time/Date Utilities)
-```plat
-mod std::time;
-
-pub class Duration {
-  let milliseconds: Int64;
-
-  pub fn from_seconds(seconds: Int64) -> Duration {
-    return Duration.init(milliseconds = seconds * 1000);
-  }
-
-  pub fn from_minutes(minutes: Int64) -> Duration {
-    return Duration.init(milliseconds = minutes * 60 * 1000);
-  }
-
-  pub fn to_seconds() -> Int64 {
-    return self.milliseconds / 1000;
-  }
-}
-
-pub fn now() -> Int64 {
-  return time_now();
-}
-
-pub fn sleep(duration: Duration) {
-  time_sleep(milliseconds = duration.milliseconds);
-}
-```
-
-#### std::string (Extended String Utilities)
-```plat
-mod std::string;
-
-pub fn join(strings: List[String], separator: String) -> String {
-  // TODO: Concatenate with separator between elements
-}
-
-pub fn repeat(s: String, count: Int32) -> String {
-  // TODO: Repeat string N times
-}
-
-pub fn reverse(s: String) -> String {
-  // TODO: Reverse string character-by-character
-}
-
-pub fn is_numeric(s: String) -> Bool {
-  // TODO: Check if all characters are digits
-}
-
-pub fn is_alpha(s: String) -> Bool {
-  // TODO: Check if all characters are letters
-}
-```
+### Phase 6: More Stdlib Modules (Future)
+
+**Planned Modules** (outline only):
+- **std::fs**: File system utilities with pathlib-style `Path` class
+- **std::net**: High-level TCP networking (`TcpListener`, `TcpStream`)
+- **std::http**: HTTP client/server (`Request`, `Response`, `get()`, `post()`)
+- **std::collections**: Additional data structures (`Queue`, `Stack`)
+- **std::math**: Mathematical functions (`sqrt()`, `pow()`, `sin()`, `cos()`, `abs()`)
+- **std::time**: Time/date handling (`Duration`, `now()`, `sleep()`)
+- **std::string**: Extended string utilities (`join()`, `repeat()`, `reverse()`)
+
+See `STDLIB_PLAN_ARCHIVE.md` for detailed module designs.
 
 ---
 
-## Example User Code
+## Known Issues & Workarounds
 
+### Type Checker Fix (2025-10-07) ✅ RESOLVED
+
+**Issue**: Generic enum constructor type inference didn't respect function return types
+
+**Solution**: Added `expected_type: Option<&HirType>` parameter to `check_expression()`, pass expected return type down in return statements
+
+**Now Works**:
 ```plat
-use std::io;
-use std::json;
-use std::http;
-use std::time;
-
-fn main() -> Int32 {
-  // Read configuration file
-  let config_result: Result<String, String> = io::read_file(path = "config.json");
-
-  let config_str: String = match config_result {
-    Result::Ok(content: String) -> content,
-    Result::Err(err: String) -> {
-      print(value = "Failed to read config: ${err}");
-      return 1;
-    }
-  };
-
-  // Parse JSON configuration
-  let json_result: Result<json::JsonValue, String> = json::parse(input = config_str);
-
-  let config: json::JsonValue = match json_result {
-    Result::Ok(value: json::JsonValue) -> value,
-    Result::Err(err: String) -> {
-      print(value = "Failed to parse JSON: ${err}");
-      return 1;
-    }
-  };
-
-  // Make HTTP request
-  let start_time: Int64 = time::now();
-  let response_result: Result<http::Response, String> = http::get(url = "https://api.example.com/data");
-  let end_time: Int64 = time::now();
-
-  match response_result {
-    Result::Ok(response: http::Response) -> {
-      print(value = "Status: ${response.status}");
-      print(value = "Body: ${response.body}");
-      print(value = "Time: ${end_time - start_time}ms");
-    },
-    Result::Err(err: String) -> {
-      print(value = "HTTP request failed: ${err}");
-      return 1;
-    }
-  };
-
-  return 0;
+fn make_error(msg: String) -> Result<String, String> {
+  return Result::Err(field0 = msg);  // ✅ Correctly infers Result<String, String>
 }
 ```
 
----
+### Recursive Enum Support (2025-10-07) ✅ COMPLETE
 
-## Custom Error Types
+**Issue**: Enums couldn't reference themselves (e.g., JSON tree structures)
 
-### Problem with String Errors
+**Solution**: Two-phase registration at global symbol table and type checker levels
 
-Currently, the stdlib uses `Result<T, String>` everywhere:
-
+**Now Works**:
 ```plat
-pub fn read_file(path: String) -> Result<String, String> {
-  // Error is just a string - no structure!
+pub enum JsonValue {
+  Array(List[JsonValue]),              // ✅ Recursive reference works!
+  Object(Dict[String, JsonValue])
 }
 ```
 
-**Issues**:
-- No way to programmatically distinguish error types
-- Can't pattern match on error categories
-- No context (error code, location, etc.)
-- Poor error composition
+### Cross-Module Codegen Fix ✅ RESOLVED
 
-### Solution: Structured Error Enums
+**Issue**: Cross-module function calls failed due to incorrect signature handling
 
-Define custom error types per module using enums:
+**Solution**: Threaded global symbol table through codegen to look up actual signatures (commit a819495)
 
-#### std::io Error Types
-
-```plat
-mod std::io;
-
-/// I/O error types
-pub enum IoError {
-  /// File or directory not found
-  NotFound(String),  // path
-
-  /// Permission denied
-  PermissionDenied(String),  // path
-
-  /// File or directory already exists
-  AlreadyExists(String),  // path
-
-  /// Invalid input (e.g., invalid mode string)
-  InvalidInput(String),  // message
-
-  /// Unexpected end of file
-  UnexpectedEof,
-
-  /// Generic I/O error with message
-  Other(String)
-}
-
-impl IoError {
-  /// Convert error to human-readable message
-  pub fn to_string() -> String {
-    match self {
-      IoError::NotFound(path: String) -> {
-        return "File not found: ${path}";
-      },
-      IoError::PermissionDenied(path: String) -> {
-        return "Permission denied: ${path}";
-      },
-      IoError::AlreadyExists(path: String) -> {
-        return "File already exists: ${path}";
-      },
-      IoError::InvalidInput(msg: String) -> {
-        return "Invalid input: ${msg}";
-      },
-      IoError::UnexpectedEof -> {
-        return "Unexpected end of file";
-      },
-      IoError::Other(msg: String) -> {
-        return "I/O error: ${msg}";
-      }
-    }
-  }
-
-  /// Get error code for programmatic handling
-  pub fn code() -> Int32 {
-    match self {
-      IoError::NotFound(_) -> 2,  // ENOENT
-      IoError::PermissionDenied(_) -> 13,  // EACCES
-      IoError::AlreadyExists(_) -> 17,  // EEXIST
-      IoError::InvalidInput(_) -> 22,  // EINVAL
-      IoError::UnexpectedEof -> 0,
-      IoError::Other(_) -> 1
-    }
-  }
-}
-
-/// Type alias for I/O results
-pub type IoResult<T> = Result<T, IoError>;
-
-/// Read file with structured error
-pub fn read_file(path: String) -> IoResult<String> {
-  let fd_result: Result<Int32, String> = file_open(path = path, mode = "r");
-
-  let fd: Int32 = match fd_result {
-    Result::Ok(descriptor: Int32) -> descriptor,
-    Result::Err(err: String) -> {
-      // Parse error string to determine error type
-      if (err.contains(substring = "not found") || err.contains(substring = "No such file")) {
-        return Result::Err(field0 = IoError::NotFound(field0 = path));
-      } else if (err.contains(substring = "Permission denied")) {
-        return Result::Err(field0 = IoError::PermissionDenied(field0 = path));
-      } else {
-        return Result::Err(field0 = IoError::Other(field0 = err));
-      }
-    }
-  };
-
-  let content: Result<String, String> = file_read(fd = fd, max_bytes = 1048576);
-  let close_result: Result<Bool, String> = file_close(fd = fd);
-
-  match content {
-    Result::Ok(data: String) -> Result::Ok(field0 = data),
-    Result::Err(err: String) -> Result::Err(field0 = IoError::Other(field0 = err))
-  }
-}
-```
-
-#### std::json Error Types
-
-```plat
-mod std::json;
-
-/// JSON parsing errors
-pub enum JsonError {
-  /// Unexpected character at position
-  UnexpectedChar(Int32, String),  // position, character
-
-  /// Unexpected end of input
-  UnexpectedEof,
-
-  /// Invalid number format
-  InvalidNumber(String),  // value
-
-  /// Invalid escape sequence
-  InvalidEscape(String),  // sequence
-
-  /// Expected token not found
-  ExpectedToken(String, String),  // expected, found
-
-  /// Trailing characters after valid JSON
-  TrailingChars(Int32),  // position
-}
-
-impl JsonError {
-  pub fn to_string() -> String {
-    match self {
-      JsonError::UnexpectedChar(pos: Int32, ch: String) -> {
-        return "Unexpected character '${ch}' at position ${pos}";
-      },
-      JsonError::UnexpectedEof -> {
-        return "Unexpected end of input";
-      },
-      JsonError::InvalidNumber(val: String) -> {
-        return "Invalid number: ${val}";
-      },
-      JsonError::InvalidEscape(seq: String) -> {
-        return "Invalid escape sequence: ${seq}";
-      },
-      JsonError::ExpectedToken(expected: String, found: String) -> {
-        return "Expected ${expected}, found ${found}";
-      },
-      JsonError::TrailingChars(pos: Int32) -> {
-        return "Trailing characters after position ${pos}";
-      }
-    }
-  }
-}
-
-pub type JsonResult<T> = Result<T, JsonError>;
-
-pub fn parse(input: String) -> JsonResult<JsonValue> {
-  // Parser returns structured errors
-}
-```
-
-#### std::http Error Types
-
-```plat
-mod std::http;
-use std::io;
-
-/// HTTP error types
-pub enum HttpError {
-  /// Network error (wraps IoError)
-  Network(io::IoError),
-
-  /// Invalid URL format
-  InvalidUrl(String),  // url
-
-  /// HTTP status error (4xx, 5xx)
-  StatusError(Int32, String),  // status code, message
-
-  /// Timeout
-  Timeout,
-
-  /// Invalid response
-  InvalidResponse(String),  // message
-}
-
-impl HttpError {
-  pub fn to_string() -> String {
-    match self {
-      HttpError::Network(err: io::IoError) -> {
-        return "Network error: ${err.to_string()}";
-      },
-      HttpError::InvalidUrl(url: String) -> {
-        return "Invalid URL: ${url}";
-      },
-      HttpError::StatusError(code: Int32, msg: String) -> {
-        return "HTTP ${code}: ${msg}";
-      },
-      HttpError::Timeout -> {
-        return "Request timeout";
-      },
-      HttpError::InvalidResponse(msg: String) -> {
-        return "Invalid response: ${msg}";
-      }
-    }
-  }
-}
-
-pub type HttpResult<T> = Result<T, HttpError>;
-```
-
-#### std::fs Error Types
-
-```plat
-mod std::fs;
-use std::io;
-
-/// File system error (wraps IoError with path context)
-pub enum FsError {
-  /// I/O error with path context
-  Io(io::IoError, String),  // error, path
-
-  /// Invalid path format
-  InvalidPath(String),  // path
-
-  /// Path traversal outside allowed directory
-  PathTraversal(String),  // path
-}
-
-impl FsError {
-  pub fn to_string() -> String {
-    match self {
-      FsError::Io(err: io::IoError, path: String) -> {
-        return "${err.to_string()} (path: ${path})";
-      },
-      FsError::InvalidPath(path: String) -> {
-        return "Invalid path: ${path}";
-      },
-      FsError::PathTraversal(path: String) -> {
-        return "Path traversal detected: ${path}";
-      }
-    }
-  }
-}
-
-pub type FsResult<T> = Result<T, FsError>;
-```
-
-### Usage Examples
-
-**Pattern Matching on Error Types**:
-
-```plat
-use std::io;
-
-fn main() -> Int32 {
-  let result: io::IoResult<String> = io::read_file(path = "config.json");
-
-  match result {
-    Result::Ok(content: String) -> {
-      print(value = "Read ${content.length()} bytes");
-    },
-    Result::Err(err: io::IoError) -> {
-      // Pattern match on specific error types!
-      match err {
-        io::IoError::NotFound(path: String) -> {
-          print(value = "Creating default config at ${path}");
-          // Create default config
-          return 0;
-        },
-        io::IoError::PermissionDenied(path: String) -> {
-          print(value = "Permission denied: ${path}");
-          return 13;
-        },
-        _ -> {
-          print(value = "Error: ${err.to_string()}");
-          return 1;
-        }
-      }
-    }
-  };
-
-  return 0;
-}
-```
-
-**Error Context Propagation**:
-
-```plat
-use std::fs;
-use std::io;
-use std::json;
-
-fn load_config(path: String) -> Result<json::JsonValue, String> {
-  // Read file - returns IoResult
-  let content_result: io::IoResult<String> = io::read_file(path = path);
-
-  let content: String = match content_result {
-    Result::Ok(data: String) -> data,
-    Result::Err(err: io::IoError) -> {
-      // Convert IoError to String with context
-      return Result::Err(field0 = "Failed to read config: ${err.to_string()}");
-    }
-  };
-
-  // Parse JSON - returns JsonResult
-  let json_result: json::JsonResult<json::JsonValue> = json::parse(input = content);
-
-  match json_result {
-    Result::Ok(value: json::JsonValue) -> Result::Ok(field0 = value),
-    Result::Err(err: json::JsonError) -> {
-      // Convert JsonError to String with context
-      Result::Err(field0 = "Failed to parse config: ${err.to_string()}")
-    }
-  }
-}
-```
-
-### Benefits
-
-1. **Structured Errors**: Errors are data, not just strings
-2. **Pattern Matching**: Can handle specific error cases differently
-3. **Error Codes**: Programmatic access to error codes
-4. **Context**: Errors carry relevant information (path, position, etc.)
-5. **Composability**: Errors can wrap other errors (e.g., `HttpError::Network(IoError)`)
-6. **Type Safety**: Compiler ensures all error cases are handled
-
-### Migration Path
-
-**Phase 1**: Start with String errors (current approach)
-**Phase 2**: Introduce error enums in new stdlib modules
-**Phase 3**: Migrate existing modules to use error enums
-**Phase 4**: Add `?` operator support for automatic error conversion
+**Now Works**: All cross-module function calls with correct types (Int8, Int16, Int32, Int64, Float32, Float64)
 
 ---
 
 ## Testing Strategy
 
-### Comprehensive Testing Requirements
-
-**Coverage Goals**:
-- **Unit Tests**: >90% code coverage for all stdlib modules
-- **Integration Tests**: End-to-end workflows across multiple modules
-- **Edge Cases**: Boundary conditions, empty inputs, large inputs
-- **Error Paths**: All error types must have test coverage
-- **Cross-Platform**: Tests run on Linux, macOS, Windows
-- **Performance**: Benchmarks for hot paths
-
 ### Unit Tests (Per Module)
 
 Each stdlib module has a `test` block with comprehensive coverage:
-
-```plat
-mod std::json;
-
-// ... implementation ...
-
-test json_parser {
-  // ============================================================================
-  // Happy Path Tests
-  // ============================================================================
-
-  fn test_parse_null() {
-    let result: JsonResult<JsonValue> = parse(input = "null");
-    match result {
-      Result::Ok(value: JsonValue) -> {
-        match value {
-          JsonValue::Null -> assert(condition = true),
-          _ -> assert(condition = false, message = "Expected null")
-        }
-      },
-      Result::Err(err: JsonError) -> {
-        assert(condition = false, message = "Parse failed: ${err.to_string()}");
-      }
-    };
-  }
-
-  fn test_parse_bool_true() {
-    let result: JsonResult<JsonValue> = parse(input = "true");
-    // ... assertions ...
-  }
-
-  fn test_parse_bool_false() {
-    let result: JsonResult<JsonValue> = parse(input = "false");
-    // ... assertions ...
-  }
-
-  fn test_parse_number_integer() {
-    let result: JsonResult<JsonValue> = parse(input = "42");
-    // ... assertions ...
-  }
-
-  fn test_parse_number_float() {
-    let result: JsonResult<JsonValue> = parse(input = "3.14159");
-    // ... assertions ...
-  }
-
-  fn test_parse_number_negative() {
-    let result: JsonResult<JsonValue> = parse(input = "-273.15");
-    // ... assertions ...
-  }
-
-  fn test_parse_string_simple() {
-    let result: JsonResult<JsonValue> = parse(input = "\"hello\"");
-    // ... assertions ...
-  }
-
-  fn test_parse_string_with_escapes() {
-    let result: JsonResult<JsonValue> = parse(input = "\"hello\\nworld\\t!\"");
-    // ... assertions ...
-  }
-
-  fn test_parse_array_empty() {
-    let result: JsonResult<JsonValue> = parse(input = "[]");
-    // ... assertions ...
-  }
-
-  fn test_parse_array_mixed() {
-    let result: JsonResult<JsonValue> = parse(input = "[1, \"two\", true, null]");
-    // ... assertions ...
-  }
-
-  fn test_parse_object_empty() {
-    let result: JsonResult<JsonValue> = parse(input = "{}");
-    // ... assertions ...
-  }
-
-  fn test_parse_object_simple() {
-    let result: JsonResult<JsonValue> = parse(input = "{\"name\": \"Alice\", \"age\": 30}");
-    // ... assertions ...
-  }
-
-  fn test_parse_object_nested() {
-    let input: String = "{\"person\": {\"name\": \"Bob\", \"address\": {\"city\": \"NYC\"}}}";
-    let result: JsonResult<JsonValue> = parse(input = input);
-    // ... assertions ...
-  }
-
-  // ============================================================================
-  // Edge Cases
-  // ============================================================================
-
-  fn test_parse_empty_string() {
-    let result: JsonResult<JsonValue> = parse(input = "");
-    match result {
-      Result::Err(err: JsonError) -> {
-        match err {
-          JsonError::UnexpectedEof -> assert(condition = true),
-          _ -> assert(condition = false, message = "Expected UnexpectedEof error")
-        }
-      },
-      Result::Ok(_) -> {
-        assert(condition = false, message = "Should fail on empty input");
-      }
-    };
-  }
-
-  fn test_parse_whitespace_only() {
-    let result: JsonResult<JsonValue> = parse(input = "   \n\t  ");
-    // Should fail with UnexpectedEof
-  }
-
-  fn test_parse_large_number() {
-    let result: JsonResult<JsonValue> = parse(input = "999999999999999999");
-    // ... assertions ...
-  }
-
-  fn test_parse_deeply_nested() {
-    let input: String = "[[[[[[[[[[\"deep\"]]]]]]]]]]";
-    let result: JsonResult<JsonValue> = parse(input = input);
-    // ... assertions ...
-  }
-
-  fn test_parse_unicode() {
-    let result: JsonResult<JsonValue> = parse(input = "\"Hello 世界 🌍\"");
-    // ... assertions ...
-  }
-
-  // ============================================================================
-  // Error Cases (Test Error Types)
-  // ============================================================================
-
-  fn test_parse_invalid_character() {
-    let result: JsonResult<JsonValue> = parse(input = "{invalid}");
-    match result {
-      Result::Err(err: JsonError) -> {
-        match err {
-          JsonError::UnexpectedChar(pos: Int32, ch: String) -> {
-            assert(condition = pos >= 0, message = "Position should be non-negative");
-          },
-          _ -> assert(condition = false, message = "Expected UnexpectedChar error")
-        }
-      },
-      Result::Ok(_) -> {
-        assert(condition = false, message = "Should fail on invalid input");
-      }
-    };
-  }
-
-  fn test_parse_trailing_comma() {
-    let result: JsonResult<JsonValue> = parse(input = "[1, 2, 3,]");
-    // Should fail with appropriate error
-  }
-
-  fn test_parse_missing_quote() {
-    let result: JsonResult<JsonValue> = parse(input = "{\"name: \"Alice\"}");
-    // Should fail with InvalidEscape or UnexpectedChar
-  }
-
-  fn test_parse_invalid_escape() {
-    let result: JsonResult<JsonValue> = parse(input = "\"hello\\x world\"");
-    match result {
-      Result::Err(err: JsonError) -> {
-        match err {
-          JsonError::InvalidEscape(seq: String) -> assert(condition = true),
-          _ -> assert(condition = false, message = "Expected InvalidEscape error")
-        }
-      },
-      Result::Ok(_) -> assert(condition = false)
-    };
-  }
-
-  fn test_parse_trailing_chars() {
-    let result: JsonResult<JsonValue> = parse(input = "null garbage");
-    match result {
-      Result::Err(err: JsonError) -> {
-        match err {
-          JsonError::TrailingChars(pos: Int32) -> assert(condition = true),
-          _ -> assert(condition = false, message = "Expected TrailingChars error")
-        }
-      },
-      Result::Ok(_) -> assert(condition = false)
-    };
-  }
-
-  // ============================================================================
-  // Round-Trip Tests (Stringify → Parse)
-  // ============================================================================
-
-  fn test_roundtrip_null() {
-    let original: JsonValue = JsonValue::Null;
-    let json_str: String = stringify(value = original);
-    let parsed_result: JsonResult<JsonValue> = parse(input = json_str);
-    // Assert parsed equals original
-  }
-
-  fn test_roundtrip_object() {
-    // Create object, stringify, parse back, verify equality
-  }
-
-  // ============================================================================
-  // Performance Tests (should be in bench block)
-  // ============================================================================
-}
-
-test json_stringify {
-  fn test_stringify_null() {
-    let value: JsonValue = JsonValue::Null;
-    let result: String = stringify(value = value);
-    assert(condition = result == "null", message = "Expected 'null'");
-  }
-
-  fn test_stringify_object() {
-    // ... more stringify tests ...
-  }
-}
-```
-
-**Test Organization Best Practices**:
-1. Group tests by category (happy path, edge cases, errors)
-2. Test every error variant explicitly
-3. Use descriptive test names (`test_parse_X_Y`)
-4. Include comments explaining what's being tested
-5. Test both success and failure paths
-
-Run tests:
-```bash
-plat test stdlib/std/json.plat          # Single module
-plat test stdlib/std/json.plat -f parse # Filter tests
-plat test stdlib/                       # All stdlib modules
-```
+- Happy path tests
+- Edge cases (empty inputs, large inputs, boundary conditions)
+- Error path tests (all error types)
+- Round-trip tests (for parsers/serializers)
 
 ### Integration Tests
 
-Create `stdlib/tests/` directory with end-to-end tests:
+`stdlib/tests/` directory with end-to-end tests combining multiple modules
 
-```plat
-// stdlib/tests/http_server_test.plat
-use std::http;
-use std::net;
-use std::time;
+### Benchmarks
 
-test http_integration {
-  fn test_http_get_request() {
-    // Start a simple HTTP server
-    // Make a GET request
-    // Verify response
-    assert(condition = true);
-  }
-
-  fn test_http_post_with_json() {
-    // POST JSON data
-    // Verify server receives it correctly
-    assert(condition = true);
-  }
-
-  fn test_http_timeout() {
-    // Test timeout handling
-    assert(condition = true);
-  }
-}
-```
-
-```plat
-// stdlib/tests/file_operations_test.plat
-use std::fs;
-use std::io;
-
-test file_integration {
-  fn test_create_read_delete_file() {
-    let path: fs::Path = fs::Path.new(path = "test_file.txt");
-
-    // Write file
-    let write_result: Result<Bool, String> = path.write_text(content = "Hello!");
-    assert(condition = write_result.is_ok());
-
-    // Read file
-    let read_result: Result<String, String> = path.read_text();
-    match read_result {
-      Result::Ok(content: String) -> {
-        assert(condition = content == "Hello!", message = "Content mismatch");
-      },
-      Result::Err(err: String) -> {
-        assert(condition = false, message = err);
-      }
-    };
-
-    // Delete file
-    let delete_result: Result<Bool, String> = path.unlink();
-    assert(condition = delete_result.is_ok());
-  }
-
-  fn test_directory_operations() {
-    let dir: fs::Path = fs::Path.new(path = "test_dir");
-
-    // Create directory
-    let mkdir_result: Result<Bool, String> = dir.mkdir();
-    assert(condition = mkdir_result.is_ok());
-
-    // List directory
-    let list_result: Result<List[fs::Path], String> = dir.list_dir();
-    // ... assertions ...
-
-    // Remove directory
-    let rmdir_result: Result<Bool, String> = dir.rmdir();
-    assert(condition = rmdir_result.is_ok());
-  }
-}
-```
-
-### Property-Based Testing (Future)
-
-Once the test framework supports it:
-
-```plat
-test json_properties {
-  fn property_roundtrip() {
-    // For any valid JSON value, parse(stringify(x)) == x
-    // Generate random JSON values and test
-  }
-
-  fn property_parse_never_panics() {
-    // For any string input, parse should return Result (not panic)
-    // Fuzz testing
-  }
-}
-```
-
-### Benchmarking
-
-Each stdlib module should have a `bench` block for performance testing:
-
-```plat
-mod std::json;
-
-// ... implementation ...
-
-bench json_performance {
-  // Helper to create test data
-  fn create_large_object() -> JsonValue {
-    // Create a large JSON object for benchmarking
-    return JsonValue::Null;  // TODO: Real implementation
-  }
-
-  fn bench_parse_small() {
-    let result: JsonResult<JsonValue> = parse(input = "{\"key\": \"value\"}");
-  }
-
-  fn bench_parse_large() {
-    let large_json: String = "...";  // Large JSON string
-    let result: JsonResult<JsonValue> = parse(input = large_json);
-  }
-
-  fn bench_stringify_small() {
-    let value: JsonValue = JsonValue::Null;
-    let result: String = stringify(value = value);
-  }
-
-  fn bench_stringify_large() {
-    let value: JsonValue = create_large_object();
-    let result: String = stringify(value = value);
-  }
-}
-```
-
-Run benchmarks:
-```bash
-plat bench stdlib/std/json.plat    # Single module benchmarks
-plat bench stdlib/                 # All stdlib benchmarks
-```
-
-### CI Pipeline
-
-Complete CI pipeline with testing, benchmarking, and coverage:
-
-```yaml
-# .github/workflows/stdlib-tests.yml
-name: Stdlib Tests
-
-on: [push, pull_request]
-
-jobs:
-  test-linux:
-    name: Test on Linux
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-
-      - name: Cache Rust dependencies
-        uses: actions/cache@v2
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-
-      - name: Build compiler
-        run: cargo build --release
-
-      - name: Test std::io
-        run: ./target/release/plat test stdlib/std/io.plat
-
-      - name: Test std::json
-        run: ./target/release/plat test stdlib/std/json.plat
-
-      - name: Test std::fs
-        run: ./target/release/plat test stdlib/std/fs.plat
-
-      - name: Test std::net
-        run: ./target/release/plat test stdlib/std/net.plat
-
-      - name: Test std::http
-        run: ./target/release/plat test stdlib/std/http.plat
-
-      - name: Test all stdlib modules
-        run: ./target/release/plat test stdlib/
-
-      - name: Run integration tests
-        run: ./target/release/plat test stdlib/tests/
-
-      - name: Generate test report
-        run: |
-          echo "Test Summary:" >> $GITHUB_STEP_SUMMARY
-          echo "- All stdlib tests passed ✅" >> $GITHUB_STEP_SUMMARY
-
-  test-macos:
-    name: Test on macOS
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v2
-      - name: Build compiler
-        run: cargo build --release
-      - name: Test all stdlib
-        run: ./target/release/plat test stdlib/
-
-  test-windows:
-    name: Test on Windows
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v2
-      - name: Build compiler
-        run: cargo build --release
-      - name: Test all stdlib
-        run: ./target/release/plat test stdlib/
-
-  benchmark:
-    name: Performance Benchmarks
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - name: Build compiler
-        run: cargo build --release
-
-      - name: Benchmark std::json
-        run: ./target/release/plat bench stdlib/std/json.plat
-
-      - name: Benchmark std::io
-        run: ./target/release/plat bench stdlib/std/io.plat
-
-      - name: Store benchmark results
-        uses: benchmark-action/github-action-benchmark@v1
-        with:
-          tool: 'customBenchmark'
-          output-file-path: bench_results.json
-
-  coverage:
-    name: Code Coverage
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-
-      - name: Build compiler with coverage
-        run: cargo build --release
-
-      - name: Run tests with coverage tracking
-        run: |
-          # TODO: Implement coverage tracking for Plat code
-          ./target/release/plat test stdlib/
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v2
-        with:
-          files: ./coverage.json
-
-  lint:
-    name: Code Quality
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-
-      - name: Build compiler
-        run: cargo build --release
-
-      - name: Format check
-        run: |
-          # Check all stdlib files are formatted
-          for file in stdlib/std/*.plat; do
-            ./target/release/plat fmt "$file"
-            if git diff --exit-code "$file"; then
-              echo "✅ $file is formatted"
-            else
-              echo "❌ $file is not formatted"
-              exit 1
-            fi
-          done
-
-      - name: Naming convention check
-        run: |
-          # Compiler enforces naming conventions at compile time
-          ./target/release/plat build stdlib/
-```
-
-### Test Coverage Requirements
-
-**Per Module Coverage**:
-- **std::io**: >95% (critical I/O operations)
-- **std::json**: >90% (parser must handle all edge cases)
-- **std::fs**: >90% (file system operations)
-- **std::net**: >85% (network I/O)
-- **std::http**: >85% (HTTP protocol handling)
-- **std::collections**: >90% (data structures)
-- **std::math**: >95% (mathematical functions)
-
-**Coverage Reports**:
-```bash
-# Generate coverage report
-plat test --coverage stdlib/
-
-# Output:
-# std::io:      97.3% (123/127 lines)
-# std::json:    94.1% (456/485 lines)
-# std::fs:      91.8% (234/255 lines)
-# ...
-# Total:        93.2% (1234/1324 lines)
-```
-
-### Test Data and Fixtures
-
-Create `stdlib/tests/fixtures/` for test data:
-
-```
-stdlib/
-├── tests/
-│   ├── fixtures/
-│   │   ├── valid_json/
-│   │   │   ├── simple.json
-│   │   │   ├── nested.json
-│   │   │   └── large.json
-│   │   ├── invalid_json/
-│   │   │   ├── trailing_comma.json
-│   │   │   ├── missing_quote.json
-│   │   │   └── invalid_escape.json
-│   │   └── test_files/
-│   │       ├── sample.txt
-│   │       └── binary.dat
-│   ├── http_server_test.plat
-│   └── file_operations_test.plat
-└── std/
-    ├── io.plat
-    ├── json.plat
-    └── ...
-```
-
-Load fixtures in tests:
-
-```plat
-use std::fs;
-use std::json;
-
-test json_fixtures {
-  fn test_valid_json_files() {
-    let fixtures_dir: fs::Path = fs::Path.new(path = "stdlib/tests/fixtures/valid_json");
-    let files_result: Result<List[fs::Path], String> = fixtures_dir.list_dir();
-
-    match files_result {
-      Result::Ok(files: List[fs::Path]) -> {
-        // Test each fixture file
-        // TODO: Iterate when for-each is ready
-      },
-      Result::Err(err: String) -> {
-        assert(condition = false, message = err);
-      }
-    };
-  }
-}
-```
-
----
-
-## Performance Considerations
-
-### Selective Linking
-
-**Problem**: Don't want to link entire stdlib if user only imports one module
-
-**Solution**: Incremental compilation and selective linking
-- Each stdlib module compiles to separate object file
-- Linker only includes object files for imported modules
-- Dead code elimination removes unused functions
-
-**Example**:
-```plat
-use std::json;  // Only links std/json.o, not std/http.o
-```
-
-### Caching Strategy
-
-**First Compilation**:
-```
-stdlib/std/json.plat → parse → HIR → cache to target/stdlib-cache/std-json.hir
-                                  ↓
-                              codegen → std-json.o
-```
-
-**Subsequent Compilations**:
-```
-Check cache for std-json.hir → if fresh, load from cache
-                            ↓
-                         Skip parsing & type checking
-                            ↓
-                         codegen → std-json.o
-```
-
-**Speedup**: ~10x faster compilation for projects using stdlib
-
-### Inlining Opportunities
-
-Some stdlib functions are small enough to inline:
-
-```plat
-pub fn abs(x: Int32) -> Int32 {
-  if (x < 0) {
-    return -x;
-  } else {
-    return x;
-  }
-}
-```
-
-Future optimization: `#[inline]` attribute for hot stdlib functions
-
----
-
-## Security Considerations
-
-### Trusted Stdlib Path
-
-- Stdlib path is baked into compiler binary (not user-configurable)
-- Prevents malicious code injection via fake stdlib
-- Users cannot override `std::` namespace
-
-### Sandboxing (Future)
-
-For untrusted Plat code execution:
-- Disable file system access (stub out `file_*` functions)
-- Disable network access (stub out `tcp_*` functions)
-- Limited execution time (wrap main with timeout)
-
----
-
-## Migration Path
-
-### Phase 1: MVP (Minimal Viable Product)
-- Basic infrastructure (stdlib path resolution)
-- `std::io` (file reading/writing)
-- `std::json` (pure Plat implementation)
-
-### Phase 2: Networking
-- `std::net` (high-level TCP wrappers)
-- `std::http` (HTTP client)
-
-### Phase 3: Utilities
-- `std::fs` (file system utilities)
-- `std::collections` (Queue, Stack)
-- `std::time` (Duration, sleep)
-- `std::math` (mathematical functions)
-
-### Phase 4: Advanced
-- `std::crypto` (hashing, encryption)
-- `std::regex` (regular expressions)
-- `std::async` (async/await on top of green threads)
-
----
-
-## Open Questions
-
-1. **Versioning**: How do we version stdlib separately from compiler?
-   - Option A: Stdlib version tied to compiler version
-   - Option B: Separate semantic versioning for stdlib
-   - **Recommendation**: Option A for now (simplicity)
-
-2. **Breaking Changes**: How do we handle breaking changes in stdlib API?
-   - Follow semantic versioning
-   - Major version bumps for breaking changes
-   - Deprecation warnings before removal
-
-3. **Third-Party Libraries**: Should we support external package manager?
-   - Future: `plat add github.com/user/repo`
-   - For now: focus on stdlib only
-
-4. **Documentation**: How do we document stdlib API?
-   - Generate docs from source code comments
-   - Host on docs.platlang.org/std
-   - CLI: `plat doc std::json`
+Each module has a `bench` block for performance testing
 
 ---
 
 ## Success Metrics
 
 - ✅ **Usability**: Users can `use std::*` and it just works
-- ✅ **Performance**: Stdlib caching speeds up compilation by 10x
-- ✅ **Completeness**: Cover 80% of common use cases (I/O, JSON, HTTP)
+- ✅ **Performance**: Stdlib caching speeds up compilation significantly
+- ⏸️ **Completeness**: Cover 80% of common use cases (I/O, JSON, HTTP)
 - ✅ **Dogfooding**: Stdlib written 100% in Plat (no Rust escape hatches)
-- ✅ **Testing**: >90% test coverage for all stdlib modules
-- ✅ **Documentation**: Every public function/class has doc comments
-
----
-
-## Cross-Module Function Call Codegen Fix (In Progress)
-
-**Issue**: Cross-module function calls (e.g., `std::test::add()`) fail because codegen incorrectly handles function signatures.
-
-### Problem Analysis
-
-There are two distinct issues:
-
-1. **✅ FIXED: Implicit Self Parameter Bug**
-   - **Root Cause**: Codegen used `name.contains("::")` to detect methods needing implicit `self` parameter
-   - **Impact**: Cross-module functions like `std::test::hello` were treated as enum methods like `Option::Some`
-   - **Solution**: Added `method_names: HashSet<String>` to track actual enum/class methods
-   - **Status**: Fixed in commit XXX
-
-2. **✅ FIXED: Function Signature Resolution**
-   - **Root Cause**: When calling cross-module functions not in the current module's function map, codegen dynamically creates signatures
-   - **Old Behavior**: Assumed all parameters and returns are `i64`
-   - **Impact**: Functions returning `i32` (or other types) caused Cranelift type mismatches
-   - **Example**: `std::test::add` returns `i32` but was declared as returning `i64`
-   - **Solution**: Threaded global symbol table through codegen to look up actual signatures
-   - **Implementation**: Added symbol_table parameter to all 162+ expression/statement helper call sites
-   - **Status**: Fixed in commit a819495
-
-### Current Status
-
-**What Works**:
-- ✅ Cross-module imports: `use std::test;` works
-- ✅ Enum/class methods correctly get implicit `self` parameter
-- ✅ Cross-module functions no longer get incorrect `self` parameter
-- ✅ Cross-module function signatures looked up from symbol table
-- ✅ Functions with Int32/Int8/Int16/Float32 return types now generate correct Cranelift IR
-
-**What's Working**:
-- ✅ `std::test::add(x = 5, y = 10)` generates correct signature (`i32, i32 -> i32`)
-- ✅ Variable type inference for all numeric types (Int8, Int16, Int32, Int64, Float32, Float64)
-- ✅ String interpolation correctly handles all numeric types with automatic conversion
-
-### Implementation Plan
-
-**Phase 1** (✅ Complete):
-- Add `method_names: HashSet<String>` to `CodeGenerator`
-- Track enum/class method names during declaration
-- Use set instead of string matching for method detection
-
-**Phase 2** (✅ Complete):
-1. ✅ Added `symbol_table: Option<plat_hir::ModuleSymbolTable>` to `CodeGenerator`
-2. ✅ Added `with_symbol_table()` method to set it
-3. ✅ Pass symbol table in CLI when creating `CodeGenerator`
-4. ✅ Thread symbol table through to `generate_expression_helper` and all helper functions
-5. ✅ Look up function signatures from symbol table for cross-module calls
-6. ✅ Convert HIR types to Cranelift types correctly with `hir_type_to_cranelift()`
-
-**Phase 2 Implementation Details**:
-- Updated `generate_expression_helper` signature to accept `Option<&plat_hir::ModuleSymbolTable>`
-- Updated 162+ call sites across `generate_expression_helper`, `generate_literal`, `generate_statement_helper`, etc.
-- Cross-module function calls now check symbol table first, fall back to i64 assumption if not found
-- Used automated sed/perl scripts to update all call sites consistently
-
-### ~~Workaround~~ (No longer needed - Phase 2 complete!)
-
-~~Until Phase 2 is complete, stdlib functions should:~~
-- ~~Return `Int64`, `Float64`, `String`, or object types (all i64-compatible)~~
-- ~~Avoid returning `Int32`, `Int8`, `Int16`, `Float32` which require exact type matching~~
-
-**UPDATE**: Phase 2 is now complete! Stdlib functions can use any return type (`Int32`, `Int8`, `Float32`, etc.) and signatures will be correctly resolved from the symbol table.
-
-**UPDATE 2**: String interpolation type conversion issue fixed! All numeric types (Int8, Int16, Int32, Int64, Float32, Float64) now correctly convert to strings in print statements and string interpolation. The issue was that Int8/Int16 values weren't being sign-extended to Int32 before calling the i32_to_string conversion function.
-
----
-
-## Type Checker Limitation Discovery (2025-10-07) - ✅ RESOLVED
-
-**Issue**: Generic Enum Constructor Type Inference
-
-While implementing Phase 3 (std::io), we discovered a fundamental type checker limitation that was blocking stdlib development. **This has now been fixed!**
-
-### The Problem (RESOLVED)
-
-When constructing generic enum values (like `Result<T, E>`), the type checker could not infer type parameters from the function return type annotation. Instead, it tried to infer from surrounding context, leading to type mismatches.
-
-**Example that fails:**
-```plat
-fn make_string_error(msg: String) -> Result<String, String> {
-  // Type checker infers Result<Int32, String> from `msg` instead of
-  // using the return type annotation Result<String, String>
-  return Result::Err(field0 = msg);  // ❌ Type error!
-}
-```
-
-**What works currently:**
-```plat
-// Only matching on Results returned by FFI works
-let fd_result: Result<Int32, String> = file_open(path = "test.txt", mode = "r");
-
-match fd_result {
-  Result::Ok(descriptor: Int32) -> descriptor,
-  Result::Err(err: String) -> {
-    // Can use the error here, but CANNOT construct new Result with different T
-    print(value = err);
-    return 1;
-  }
-};
-```
-
-**What doesn't work:**
-```plat
-pub fn read_file(path: String) -> Result<String, String> {
-  let fd_result: Result<Int32, String> = file_open(path = path, mode = "r");
-
-  match fd_result {
-    Result::Ok(fd: Int32) -> { /* ... */ },
-    Result::Err(msg: String) -> {
-      // Want to return Result<String, String> but type checker infers Result<Int32, String>
-      return Result::Err(field0 = msg);  // ❌ Type mismatch!
-    }
-  };
-}
-```
-
-### Why This Blocks stdlib
-
-**stdlib modules need to wrap FFI functions with ergonomic APIs:**
-- FFI returns `Result<Int32, String>` (file descriptor)
-- stdlib should return `Result<String, String>` (file content)
-- Cannot construct the wrapper's Result type from the FFI's error message
-
-**All attempted workarounds failed:**
-1. ❌ Explicit type annotations: `let error: Result<String, String> = Result::Err(...)`
-2. ❌ Helper functions: Still infers wrong type
-3. ❌ Dummy Ok values: Type context doesn't propagate
-4. ❌ Match expressions: Type inference still looks at wrong context
-
-### Solutions (Pick One)
-
-**Option A: Fix Type Inference (Recommended)**
-- Make type checker respect function return type annotation when inferring generic constructor types
-- This is the "correct" fix - return types should constrain local type inference
-- Implementation: In HIR type checker, pass down expected return type as context when checking return expressions
-
-**Option B: Explicit Type Parameters**
-- Add syntax for explicit type parameters: `Result::<String, String>::Err(field0 = msg)`
-- Workaround for the inference limitation
-- More verbose but unblocks stdlib immediately
-
-**Option C: ? Operator Enhancement**
-- Fully implement `?` operator with automatic type conversion
-- Would allow: `let fd = file_open(...)? as Result<String, String>;`
-- Longer-term solution, more complex
-
-### Impact
-
-**What's Working:**
-- ✅ Phase 1: Module resolution for `std::*` (complete)
-- ✅ Phase 2 (codegen): Cross-module function calls with correct signatures (complete)
-- ✅ stdlib architecture and infrastructure (complete)
-
-**What's Blocked:**
-- ⏸️ Phase 3: std::io - cannot wrap FFI functions
-- ⏸️ Phase 4: std::json - would need Result construction
-- ⏸️ All stdlib modules that use Result types
-
-### The Solution (IMPLEMENTED)
-
-**Option A was chosen and implemented**: Make type checker respect function return type annotation when inferring generic constructor types.
-
-**Implementation details:**
-1. Added `expected_type: Option<&HirType>` parameter to `check_expression()` function
-2. Pass expected return type down in return statements: `check_expression(expr, Some(&expected_return_type))`
-3. Updated enum constructor type inference to use expected type when available:
-   - `Result::Err` now infers T from expected type instead of defaulting to Int32
-   - `Result::Ok` now infers E from expected type instead of defaulting to Int32
-   - `Option::None` now infers T from expected type instead of defaulting to Int32
-4. Updated match expression handling to pass expected type to all arms
-5. Updated all 141 `check_expression` call sites to pass `None` for backward compatibility
-
-**What now works:**
-```plat
-fn make_string_error(msg: String) -> Result<String, String> {
-  // ✅ Now correctly infers Result<String, String> from return type!
-  return Result::Err(field0 = msg);
-}
-
-fn wrap_file_error(fd_result: Result<Int32, String>) -> Result<String, String> {
-  return match fd_result {
-    Result::Ok(descriptor: Int32) -> Result::Ok(field0 = "success"),
-    Result::Err(err: String) -> Result::Err(field0 = err)  // ✅ Works!
-  };
-}
-```
-
----
-
-## Recursive Enum Type Support (2025-10-07) - ✅ COMPLETE
-
-**Issue**: Forward Reference Problem with Recursive Enums
-
-While implementing Phase 4 (std::json), we discovered that the type checker couldn't handle recursive enum types where an enum references itself in its variant fields.
-
-### The Problem
-
-```plat
-pub enum JsonValue {
-  Null,
-  Bool(Bool),
-  Number(Float64),
-  String(String),
-  Array(List[JsonValue]),    // Recursive reference!
-  Object(Dict[String, JsonValue])  // Recursive reference!
-}
-```
-
-When the type checker tried to process this enum, it failed with "Unknown type 'JsonValue'" because:
-1. Enum variant field types were being resolved **before** the enum itself was registered
-2. `List[JsonValue]` couldn't be resolved because `JsonValue` wasn't in the type checker's enum map yet
-
-### The Solution: Two-Phase Registration
-
-We implemented two-phase registration for enums at **two levels**:
-
-#### Level 1: Global Symbol Table (`setup_global_symbols`)
-
-```rust
-// Phase 1: Register enum names with empty variants
-for enum_decl in &program.enums {
-    let enum_info = EnumInfo {
-        name: enum_decl.name.clone(),
-        type_params: enum_decl.type_params.clone(),
-        variants: HashMap::new(), // Empty for now
-        methods: HashMap::new(),
-        is_public: enum_decl.is_public,
-    };
-    global_symbols.register(&enum_decl.name, Symbol::Enum(enum_info));
-}
-
-// Phase 2: Resolve variant field types (enums are registered, so recursive refs work)
-for enum_decl in &program.enums {
-    let mut variants = HashMap::new();
-    for variant in &enum_decl.variants {
-        let field_types = variant.fields.iter()
-            .map(|f| self.ast_type_to_hir_type(f))  // Now JsonValue is known!
-            .collect();
-        variants.insert(variant.name.clone(), field_types);
-    }
-    // Update the enum with resolved variants
-    // ...
-}
-```
-
-#### Level 2: TypeChecker (`check_program`)
-
-```rust
-// Phase 1: Register enum names with empty variants
-for enum_decl in &program.enums {
-    self.register_enum_name(enum_decl)?;  // Just the name, empty variants
-}
-
-// Phase 2: Resolve variant field types (enum names are now available)
-for enum_decl in &program.enums {
-    self.collect_enum_variants(enum_decl)?;  // Resolve List[JsonValue], etc.
-}
-```
-
-### Key Benefits
-
-1. **Recursive Types Work**: Enums can reference themselves (e.g., tree structures, JSON)
-2. **Mutually Recursive Types**: Multiple enums can reference each other
-3. **Clean Error Messages**: If there's a real unknown type, the error is clear
-4. **No Performance Impact**: Two-phase is fast (just two passes over declarations)
-
-### Files Modified
-
-- `crates/plat-hir/src/lib.rs`:
-  - Updated `setup_global_symbols()` for global two-phase registration (lines 515-551)
-  - Split `collect_enum_info()` into:
-    - `register_enum_name()` - Phase 1: Register with empty variants
-    - `collect_enum_variants()` - Phase 2: Resolve and populate variants
-  - Updated `check_program()` to call both phases (lines 656-664)
-
-### What Now Works
-
-```plat
-// Recursive enum - JSON tree structure
-pub enum JsonValue {
-  Null,
-  Bool(Bool),
-  Number(Float64),
-  String(String),
-  Array(List[JsonValue]),              // ✅ Works!
-  Object(Dict[String, JsonValue])      // ✅ Works!
-}
-
-// Mutually recursive enums - Expression tree
-pub enum Expr {
-  Literal(Int32),
-  BinaryOp(Box[BinaryExpr])  // ✅ References BinaryExpr
-}
-
-pub enum BinaryExpr {
-  Add(Expr, Expr),   // ✅ References Expr back
-  Sub(Expr, Expr)
-}
-```
-
-### Success Criteria Met
-
-- ✅ std::json compiles without errors
-- ✅ Recursive enum types resolve correctly
-- ✅ No "Unknown type" errors for self-references
-- ✅ Existing tests still pass
-- ✅ Error messages for genuine unknown types remain clear
+- ⏸️ **Testing**: >90% test coverage for all stdlib modules
+- ⏸️ **Documentation**: Every public function/class has doc comments
 
 ---
 
 ## Next Steps
 
-1. ✅ ~~**Create Directory Structure**: `mkdir -p stdlib/std`~~ (Completed)
-2. ✅ ~~**Implement Phase 1**: Module resolution for `std::*`~~ (Completed)
-3. ✅ ~~**Fix Cross-Module Codegen**: Phase 1 & Phase 2 complete~~ (Completed - commit a819495)
-4. ✅ ~~**Fix Type Checker**: Implement Option A (respect return type in generic constructor inference)~~ (Completed - 2025-10-07)
-5. ✅ ~~**Write std::io**: First real stdlib module (Phase 3)~~ (Completed - 2025-10-07)
-6. ✅ ~~**Fix Parser**: Support `var x: List<T>` syntax~~ (Completed - 2025-10-07, commit 4c3df07)
-7. ✅ ~~**Finish std::json** (Phase 4)~~ - COMPLETE! Recursive enum blocker fixed (2025-10-07)
-8. 🔧 **Add Caching** (Phase 2) - Dependencies added, implementation pending
-9. **Expand**: Add more modules (std::fs, std::net, std::http) based on user feedback
+1. ✅ ~~Create directory structure~~ (Completed)
+2. ✅ ~~Implement Phase 1: Module resolution~~ (Completed)
+3. ✅ ~~Fix cross-module codegen~~ (Completed - commit a819495)
+4. ✅ ~~Fix type checker: respect return types~~ (Completed - 2025-10-07)
+5. ✅ ~~Write std::io~~ (Completed - 2025-10-07)
+6. ✅ ~~Fix parser: support `var x: List<T>`~~ (Completed - 2025-10-07, commit 4c3df07)
+7. ✅ ~~Implement Phase 2: Module caching~~ (Completed - 2025-10-07)
+8. ✅ ~~Complete std::json implementation~~ (Completed - 2025-10-08)
+9. **Future**: Fix qualified enum variant construction in user code (nice-to-have)
+10. **Expand**: Add more modules (std::fs, std::net, std::http)
 
 ---
 
-**Status**: ✅ Phase 4 COMPLETE - std::json is fully functional!
+## Status Summary
+
 **Start Date**: 2025-01-XX
-**Last Updated**: 2025-10-07
-**Current Phase**: Phase 4 complete (std::json compiles and works!), Phase 2 started (caching deps added)
+**Last Updated**: 2025-10-08
+**Current Phase**: Phase 4 (std::json) - COMPLETE!
+
+### Progress by Phase
+
+- ✅ **Phase 1** (Infrastructure): COMPLETE
+- ✅ **Phase 2** (Caching): COMPLETE
+- ✅ **Phase 3** (std::io): COMPLETE
+- ✅ **Phase 4** (std::json): COMPLETE - Full JSON parser and stringify in pure Plat!
+- ⏸️ **Phase 5** (Additional Primitives): Not started
+- ⏸️ **Phase 6** (More Modules): Not started
+
+### Compiler Fixes Completed
+
+- ✅ Parser: Keywords in module paths (commit 07106ee)
+- ✅ Parser: `var` with generic types (commit 4c3df07)
+- ✅ Type checker: Generic enum constructor inference (2025-10-07)
+- ✅ Type checker: Recursive enum support (commit c38e1f4)
+- ✅ Codegen: Cross-module function signatures (commit a819495)
+- ✅ Codegen: Same-module function calls in stdlib (commit b897c2b)
+- ✅ Codegen: Enum variant extraction for complex types (2025-10-07)
+- ✅ HIR: Symbol loading for stdlib modules (2025-10-07)
+- ✅ HIR: Qualified type resolution (2025-10-07)
+- ✅ HIR: Cross-module function/type resolution (2025-10-07)
+
 **Maintainer**: Plat Core Team
 
-## Progress Summary
+---
 
-- ✅ **Phase 1**: Infrastructure complete - stdlib modules can be imported with `use std::*`
-- ✅ **Codegen Fix Phase 1**: Method detection fixed - no more incorrect self parameters (commit 1ec9636)
-- ✅ **Codegen Fix Phase 2**: Signature resolution complete - symbol table threaded through codegen (commit a819495)
-- ✅ **Type Checker Fix**: Generic enum constructor type inference now respects function return types (2025-10-07)
-- ✅ **Phase 3 (std::io)**: COMPLETE - High-level file I/O wrappers working! (2025-10-07)
-  - `read_file()`, `write_file()`, `append_file()` all functional
-  - Comprehensive test suite with error handling
-  - Discovered match expression limitation (no multi-statement blocks in arms)
-- ✅ **Phase 4 (std::json)**: COMPLETE! (2025-10-07)
-  - ✅ Complete recursive descent JSON parser implemented
-  - ✅ Full stringify implementation
-  - ✅ All parse methods: null, bool, number, string, array, object
-  - ✅ Escape sequence handling
-  - ✅ Worked around `||`, `&&`, `!`, `break` limitations
-  - ✅ Clean else-if syntax throughout (after language feature added)
-  - ✅ Pure Plat implementation - no Rust FFI!
-  - ✅ **FIXED (2025-10-07)**: Parser now supports `var` with generic types like `List<T>`! (commit 4c3df07)
-  - ✅ **Parser accepts both syntaxes**: `List<T>` AND `List[T]`, `Dict<K,V>` AND `Dict[K,V]`, `Set<T>` AND `Set[T]`
-  - ✅ **FIXED (2025-10-07)**: Recursive enum types now supported! Two-phase registration prevents forward reference errors
-- 🔧 **Phase 2 (Module Caching)**: STARTED - Dependencies added (2025-10-07)
-  - ✅ Added serde and bincode dependencies
-  - ⏸️ Implementation pending (StdlibCache struct, cache directory, invalidation logic)
-
-**Parser Fix Complete!** The blocker preventing std::json compilation has been resolved.
-
-**Next Steps**:
-1. ✅ ~~Fix parser to support `var x: List<T>`~~ (COMPLETE - commit 4c3df07)
-2. Attempt std::json compilation (may need recursive enum type support)
-3. Implement module caching for performance
-4. Add more stdlib modules (std::fs, std::net, std::http)
+For detailed examples, module designs, testing strategies, and archived implementation notes, see `STDLIB_PLAN_ARCHIVE.md`.
