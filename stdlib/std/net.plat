@@ -1,0 +1,254 @@
+// std::net - High-level TCP networking
+//
+// This module provides object-oriented wrappers around the low-level
+// tcp_* primitives, making network programming more ergonomic.
+//
+// Example usage:
+//   use std::net;
+//
+//   // Server
+//   let listener_result: Result<net::TcpListener, String> = net::TcpListener::bind(host = "127.0.0.1", port = 8080);
+//   let listener: net::TcpListener = match listener_result {
+//     Result::Ok(l: net::TcpListener) -> l,
+//     Result::Err(err: String) -> { print(value = err); ... }
+//   };
+//
+//   let stream_result: Result<net::TcpStream, String> = listener.accept();
+//   let stream: net::TcpStream = match stream_result { ... };
+//
+//   // Client
+//   let stream_result: Result<net::TcpStream, String> = net::TcpStream::connect(host = "127.0.0.1", port = 8080);
+
+mod std::net;
+
+// TcpStream represents a TCP connection.
+// It wraps a socket file descriptor and provides high-level read/write methods.
+pub class TcpStream {
+  let socket_fd: Int32;
+  var is_closed: Bool;
+
+  // Connect to a remote host and port.
+  // Returns a TcpStream on success, or an error message on failure.
+  pub fn connect(host: String, port: Int32) -> Result<TcpStream, String> {
+    let connect_result: Result<Int32, String> = tcp_connect(host = host, port = port);
+
+    let has_error: Bool = match connect_result {
+      Result::Ok(socket: Int32) -> false,
+      Result::Err(msg: String) -> true
+    };
+
+    if (has_error) {
+      return match connect_result {
+        Result::Ok(socket: Int32) -> Result::Err(field0 = "impossible"),
+        Result::Err(msg: String) -> Result::Err(field0 = msg)
+      };
+    }
+
+    let fd: Int32 = match connect_result {
+      Result::Ok(socket: Int32) -> socket,
+      Result::Err(msg: String) -> -1
+    };
+
+    let stream: TcpStream = TcpStream.init(socket_fd = fd, is_closed = false);
+    return Result::Ok(field0 = stream);
+  }
+
+  // Read up to max_bytes from the stream.
+  // Returns the data read, or an error message on failure.
+  pub fn read(max_bytes: Int32) -> Result<String, String> {
+    if (self.is_closed) {
+      return Result::Err(field0 = "Stream is closed");
+    }
+
+    let read_result: Result<String, String> = tcp_read(socket = self.socket_fd, max_bytes = max_bytes);
+
+    return read_result;
+  }
+
+  // Write data to the stream.
+  // Returns the number of bytes written, or an error message on failure.
+  pub fn write(data: String) -> Result<Int32, String> {
+    if (self.is_closed) {
+      return Result::Err(field0 = "Stream is closed");
+    }
+
+    let write_result: Result<Int32, String> = tcp_write(socket = self.socket_fd, data = data);
+
+    return write_result;
+  }
+
+  // Close the stream.
+  // Returns true on success, or an error message on failure.
+  pub fn close() -> Result<Bool, String> {
+    if (self.is_closed) {
+      return Result::Ok(field0 = true);
+    }
+
+    let close_result: Result<Bool, String> = tcp_close(socket = self.socket_fd);
+
+    let has_error: Bool = match close_result {
+      Result::Ok(ok: Bool) -> false,
+      Result::Err(msg: String) -> true
+    };
+
+    if (has_error) {
+      return match close_result {
+        Result::Ok(ok: Bool) -> Result::Err(field0 = "impossible"),
+        Result::Err(msg: String) -> Result::Err(field0 = msg)
+      };
+    }
+
+    let success: Bool = match close_result {
+      Result::Ok(ok: Bool) -> ok,
+      Result::Err(msg: String) -> false
+    };
+
+    self.is_closed = true;
+    return Result::Ok(field0 = success);
+  }
+
+  // Get the underlying socket file descriptor.
+  // Useful for advanced use cases.
+  pub fn get_fd() -> Int32 {
+    return self.socket_fd;
+  }
+
+  // Check if the stream is closed.
+  pub fn is_stream_closed() -> Bool {
+    return self.is_closed;
+  }
+}
+
+// TcpListener represents a TCP listener (server socket).
+// It wraps a listener file descriptor and provides accept() to handle incoming connections.
+pub class TcpListener {
+  let listener_fd: Int32;
+  var is_closed: Bool;
+
+  // Bind to a host and port to create a listening socket.
+  // Returns a TcpListener on success, or an error message on failure.
+  pub fn bind(host: String, port: Int32) -> Result<TcpListener, String> {
+    let listen_result: Result<Int32, String> = tcp_listen(host = host, port = port);
+
+    let has_error: Bool = match listen_result {
+      Result::Ok(listener: Int32) -> false,
+      Result::Err(msg: String) -> true
+    };
+
+    if (has_error) {
+      return match listen_result {
+        Result::Ok(listener: Int32) -> Result::Err(field0 = "impossible"),
+        Result::Err(msg: String) -> Result::Err(field0 = msg)
+      };
+    }
+
+    let fd: Int32 = match listen_result {
+      Result::Ok(listener: Int32) -> listener,
+      Result::Err(msg: String) -> -1
+    };
+
+    let listener: TcpListener = TcpListener.init(listener_fd = fd, is_closed = false);
+    return Result::Ok(field0 = listener);
+  }
+
+  // Accept an incoming connection.
+  // Blocks until a client connects.
+  // Returns a TcpStream for the new connection, or an error message on failure.
+  pub fn accept() -> Result<TcpStream, String> {
+    if (self.is_closed) {
+      return Result::Err(field0 = "Listener is closed");
+    }
+
+    let accept_result: Result<Int32, String> = tcp_accept(listener = self.listener_fd);
+
+    let has_error: Bool = match accept_result {
+      Result::Ok(socket: Int32) -> false,
+      Result::Err(msg: String) -> true
+    };
+
+    if (has_error) {
+      return match accept_result {
+        Result::Ok(socket: Int32) -> Result::Err(field0 = "impossible"),
+        Result::Err(msg: String) -> Result::Err(field0 = msg)
+      };
+    }
+
+    let socket_fd: Int32 = match accept_result {
+      Result::Ok(socket: Int32) -> socket,
+      Result::Err(msg: String) -> -1
+    };
+
+    let stream: TcpStream = TcpStream.init(socket_fd = socket_fd, is_closed = false);
+    return Result::Ok(field0 = stream);
+  }
+
+  // Close the listener.
+  // Returns true on success, or an error message on failure.
+  pub fn close() -> Result<Bool, String> {
+    if (self.is_closed) {
+      return Result::Ok(field0 = true);
+    }
+
+    let close_result: Result<Bool, String> = tcp_close(socket = self.listener_fd);
+
+    let has_error: Bool = match close_result {
+      Result::Ok(ok: Bool) -> false,
+      Result::Err(msg: String) -> true
+    };
+
+    if (has_error) {
+      return match close_result {
+        Result::Ok(ok: Bool) -> Result::Err(field0 = "impossible"),
+        Result::Err(msg: String) -> Result::Err(field0 = msg)
+      };
+    }
+
+    let success: Bool = match close_result {
+      Result::Ok(ok: Bool) -> ok,
+      Result::Err(msg: String) -> false
+    };
+
+    self.is_closed = true;
+    return Result::Ok(field0 = success);
+  }
+
+  // Get the underlying listener file descriptor.
+  // Useful for advanced use cases.
+  pub fn get_fd() -> Int32 {
+    return self.listener_fd;
+  }
+
+  // Check if the listener is closed.
+  pub fn is_listener_closed() -> Bool {
+    return self.is_closed;
+  }
+}
+
+// Tests for std::net
+test net_tests {
+  fn test_tcp_stream_creation() {
+    // Test that we can create a TcpStream
+    let stream: TcpStream = TcpStream.init(socket_fd = -1, is_closed = false);
+    assert(condition = stream.get_fd() == -1, message = "Socket FD should be -1");
+    assert(condition = stream.is_stream_closed() == false, message = "Stream should not be closed");
+  }
+
+  fn test_tcp_listener_creation() {
+    // Test that we can create a TcpListener
+    let listener: TcpListener = TcpListener.init(listener_fd = -1, is_closed = false);
+    assert(condition = listener.get_fd() == -1, message = "Listener FD should be -1");
+    assert(condition = listener.is_listener_closed() == false, message = "Listener should not be closed");
+  }
+
+  fn test_stream_closed_state() {
+    // Test closed state getter
+    let stream: TcpStream = TcpStream.init(socket_fd = 100, is_closed = true);
+    assert(condition = stream.is_stream_closed() == true, message = "Stream should be closed");
+  }
+
+  fn test_listener_closed_state() {
+    // Test closed state getter
+    let listener: TcpListener = TcpListener.init(listener_fd = 200, is_closed = true);
+    assert(condition = listener.is_listener_closed() == true, message = "Listener should be closed");
+  }
+}
